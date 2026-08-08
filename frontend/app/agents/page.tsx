@@ -4,10 +4,7 @@ import { useAccount, useConnect, useWriteContract, useReadContract, useReadContr
 import { injected } from "wagmi/connectors";
 import { agentRegistryAbi } from "@/lib/abi";
 import { CONTRACT_ADDRESSES } from "@/lib/config";
-import { parseEther, formatEther, type Address } from "viem";
-
-// CONTRACT_ADDRESSES 未标注 as const，字段类型为 string；收窄为 0x 地址类型
-const REGISTRY_ADDRESS: Address = CONTRACT_ADDRESSES.agentRegistry as Address;
+import { parseEther, formatEther } from "viem";
 
 // agents(tokenId) 返回 [name, description, endpoint, owner, createdAt]
 // useReadContracts 的动态 contracts 数组无法推断 ABI 结果，需显式断言
@@ -22,14 +19,14 @@ type AgentMetadata = readonly [
 export default function AgentsPage() {
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
-  const { writeContract } = useWriteContract();
+  const { writeContract, isPending, isSuccess: writeSuccess } = useWriteContract();
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [fee, setFee] = useState("0");
 
   const { data: feeData } = useReadContract({
-    address: REGISTRY_ADDRESS,
+    address: CONTRACT_ADDRESSES.agentRegistry,
     abi: agentRegistryAbi,
     functionName: "registrationFee",
   });
@@ -39,27 +36,35 @@ export default function AgentsPage() {
     if (feeData !== undefined) setFee(formatEther(feeData));
   }, [feeData]);
 
-  const { data: agentCount } = useReadContract({
-    address: REGISTRY_ADDRESS,
+  const { data: agentCount, refetch: refetchCount } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
     abi: agentRegistryAbi,
     functionName: "agentCount",
   });
 
   // 批量读取已注册智能体元数据（agents(tokenId) 返回 [name, description, endpoint, owner, createdAt]）
   const count = Number(agentCount ?? 0);
-  const { data: agentList } = useReadContracts({
+  const { data: agentList, refetch: refetchList } = useReadContracts({
     contracts: Array.from({ length: count }, (_, i) => ({
-      address: REGISTRY_ADDRESS,
+      address: CONTRACT_ADDRESSES.agentRegistry,
       abi: agentRegistryAbi,
       functionName: "agents",
       args: [BigInt(i)],
     })),
   });
 
+  // 注册交易成功后刷新计数与列表
+  useEffect(() => {
+    if (writeSuccess) {
+      refetchCount();
+      refetchList();
+    }
+  }, [writeSuccess, refetchCount, refetchList]);
+
   function register() {
     if (!name || !desc || !endpoint) return alert("请填写完整信息");
     writeContract({
-      address: REGISTRY_ADDRESS,
+      address: CONTRACT_ADDRESSES.agentRegistry,
       abi: agentRegistryAbi,
       functionName: "registerAgent",
       args: [name, desc, endpoint],
@@ -85,8 +90,12 @@ export default function AgentsPage() {
               className="w-full border rounded p-2" />
             <input placeholder="MCP/A2A 端点（https://…）" value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
               className="w-full border rounded p-2" />
-            <button onClick={register} className="bg-blue-600 text-white px-4 py-2 rounded">
-              注册（注册费 {fee} ETH）
+            <button
+              onClick={register}
+              disabled={isPending || feeData === undefined}
+              className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isPending ? "注册中…" : feeData === undefined ? "加载中…" : `注册（注册费 ${fee} ETH）`}
             </button>
           </div>
           <h2 className="text-xl font-semibold mt-8 mb-2">已注册智能体（{String(agentCount ?? 0)}）</h2>
