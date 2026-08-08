@@ -19,8 +19,8 @@ contract ReputationHubTest is Test {
     function test_recordOutcome_updatesStats() public {
         vm.startPrank(escrow);
         hub.recordOutcome(1, ReputationHub.Outcome.COMPLETED);
-        hub.recordOutcome(1, ReputationHub.Outcome.SELLER_DEFAULTED);
-        hub.recordOutcome(2, ReputationHub.Outcome.BUYER_WON_DISPUTE);
+        hub.recordOutcome(1, ReputationHub.Outcome.DEFAULTED);
+        hub.recordOutcome(2, ReputationHub.Outcome.WON);
         vm.stopPrank();
 
         (uint256 completed, uint256 defaulted, uint256 disputesWon, uint256 disputesLost) =
@@ -35,17 +35,18 @@ contract ReputationHubTest is Test {
         assertEq(w2, 1);
     }
 
+    function test_recordOutcome_lostBranch() public {
+        vm.prank(escrow);
+        hub.recordOutcome(1, ReputationHub.Outcome.LOST);
+
+        (, , , uint256 disputesLost) = hub.reputation(1);
+        assertEq(disputesLost, 1);
+    }
+
     function test_recordOutcome_rejectsUnauthorized() public {
         vm.prank(stranger);
         vm.expectRevert(unicode"ReputationHub: 未授权调用方");
         hub.recordOutcome(1, ReputationHub.Outcome.COMPLETED);
-    }
-
-    function test_recordOutcome_rejectsSelfRating() public {
-        // 智能体 3 的 owner 尝试给 3 自己评分 → 未授权即失败（本 MVP 无 agent 侧写入口）
-        vm.prank(stranger);
-        vm.expectRevert(unicode"ReputationHub: 未授权调用方");
-        hub.recordOutcome(3, ReputationHub.Outcome.COMPLETED);
     }
 
     function test_setAuthorizedCaller_onlyOwner() public {
@@ -54,10 +55,37 @@ contract ReputationHubTest is Test {
         hub.setAuthorizedCaller(escrow, true);
     }
 
+    function test_revokeCaller_rejectsWrite() public {
+        hub.setAuthorizedCaller(escrow, false);
+
+        vm.prank(escrow);
+        vm.expectRevert(unicode"ReputationHub: 未授权调用方");
+        hub.recordOutcome(1, ReputationHub.Outcome.COMPLETED);
+    }
+
     function test_events_emitted() public {
         vm.expectEmit();
         emit ReputationHub.OutcomeRecorded(1, ReputationHub.Outcome.COMPLETED);
         vm.prank(escrow);
         hub.recordOutcome(1, ReputationHub.Outcome.COMPLETED);
+    }
+
+    function test_callerAuthorized_event() public {
+        vm.expectEmit();
+        emit ReputationHub.CallerAuthorized(voting, false);
+        hub.setAuthorizedCaller(voting, false);
+    }
+
+    function test_reputationScore_boundaries() public {
+        // 无记录的新智能体默认 50
+        assertEq(hub.reputationScore(1), 50);
+
+        vm.startPrank(escrow);
+        hub.recordOutcome(1, ReputationHub.Outcome.COMPLETED);
+        assertEq(hub.reputationScore(1), 100);
+
+        hub.recordOutcome(1, ReputationHub.Outcome.DEFAULTED);
+        vm.stopPrank();
+        assertEq(hub.reputationScore(1), 50);
     }
 }

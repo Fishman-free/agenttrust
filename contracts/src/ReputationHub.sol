@@ -9,10 +9,10 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 ///         ACL 设计：仅授权合约（Escrow/Voting）可写入，天然禁止自评。
 contract ReputationHub is Ownable {
     enum Outcome {
-        COMPLETED,            // 交易完成
-        SELLER_DEFAULTED,     // 卖方违约（超时未交付）
-        BUYER_WON_DISPUTE,    // 仲裁买家胜诉（含部分胜诉记作买家胜）
-        SELLER_WON_DISPUTE    // 仲裁卖家胜诉
+        COMPLETED, // 交易完成（记录到卖方）
+        DEFAULTED, // 卖方违约（记录到违约方）
+        WON,       // 争议胜诉（从被记录 agent 视角）
+        LOST       // 争议败诉（从被记录 agent 视角）
     }
 
     struct AgentReputation {
@@ -36,25 +36,26 @@ contract ReputationHub is Ownable {
         emit CallerAuthorized(caller, authorized);
     }
 
-    /// 记录一次交易/裁决结果（仅授权调用方）
+    /// 记录一次交易/裁决结果（仅授权调用方）。
+    /// 调用约定：WON/LOST 从"被记录 agent"的视角传参（T5/T6 按此语义调用）。
     function recordOutcome(uint256 agentId, Outcome outcome) external {
         require(authorizedCallers[msg.sender], unicode"ReputationHub: 未授权调用方");
 
         AgentReputation storage rep = reputation[agentId];
         if (outcome == Outcome.COMPLETED) {
             rep.tradesCompleted++;
-        } else if (outcome == Outcome.SELLER_DEFAULTED) {
+        } else if (outcome == Outcome.DEFAULTED) {
             rep.tradesDefaulted++;
-        } else if (outcome == Outcome.BUYER_WON_DISPUTE) {
+        } else if (outcome == Outcome.WON) {
             rep.disputesWon++;
-        } else {
+        } else if (outcome == Outcome.LOST) {
             rep.disputesLost++;
         }
 
         emit OutcomeRecorded(agentId, outcome);
     }
 
-    /// 便捷查询：信誉分（0-100，链下计算所需原始数据由 reputation() 提供）
+    /// 信誉分（0-100，链上直接计算；无记录的新 agent 默认 50）
     function reputationScore(uint256 agentId) external view returns (uint256 score) {
         AgentReputation storage rep = reputation[agentId];
         uint256 total = rep.tradesCompleted + rep.tradesDefaulted + rep.disputesWon + rep.disputesLost;
