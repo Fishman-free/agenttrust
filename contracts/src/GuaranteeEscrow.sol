@@ -21,7 +21,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         uint256 amount;      // 交易金额（wei）
         address guarantor;   // 担保人（0 地址=无担保）
         uint256 coverage;    // 覆盖率（1e18 = 100%）
-        uint256 premium;     // 保费（担保人报价）
+        uint256 premium;     // 保费（担保人报价，由卖家承担）
         State state;
         uint256 createdAt;
         uint256 fundedAt;
@@ -46,6 +46,8 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     event TradeConfirmed(uint256 indexed tradeId);
     event TradeDisputed(uint256 indexed tradeId);
     event TradeResolved(uint256 indexed tradeId, Verdict verdict, uint256 buyerShareBps);
+    event TradeAutoReleased(uint256 indexed tradeId);
+    event TradeRefunded(uint256 indexed tradeId);
 
     constructor(address registry_, address hub_) Ownable(msg.sender) {
         registry = AgentRegistry(registry_);
@@ -57,15 +59,22 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         external returns (uint256 tradeId)
     {
         require(amount > 0, unicode"GuaranteeEscrow: 金额必须大于零");
+        // C1: 未注册智能体（ownerOf 对不存在 token 直接 revert）不允许创建交易，
+        //     否则后续所有退款/结算路径在 ownerOf 处 revert，资金永久锁死
+        require(
+            registry.ownerOf(buyerAgentId) != address(0) && registry.ownerOf(sellerAgentId) != address(0),
+            unicode"GuaranteeEscrow: 智能体未注册"
+        );
         tradeId = nextTradeId++;
         trades[tradeId] = Trade(tradeId, buyerAgentId, sellerAgentId, amount, address(0), 0, 0, State.CREATED, block.timestamp, 0, 0, 0);
         emit TradeCreated(tradeId, buyerAgentId, sellerAgentId, amount);
     }
 
-    /// 买家付款进 escrow
+    /// 买家付款进 escrow（仅买家负责人）
     function fund(uint256 tradeId) external payable nonReentrant {
         Trade storage t = trades[tradeId];
         require(t.state == State.CREATED, unicode"GuaranteeEscrow: 状态错误");
+        require(registry.ownerOf(t.buyerAgentId) == msg.sender, unicode"GuaranteeEscrow: 仅买家负责人可付款");
         require(msg.value == t.amount, unicode"GuaranteeEscrow: 付款金额与交易金额不符");
         require(block.timestamp <= t.createdAt + FUND_WINDOW, unicode"GuaranteeEscrow: 付款超时");
         t.state = State.FUNDED;
@@ -73,14 +82,14 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         emit TradeFunded(tradeId, msg.sender);
     }
 
-    /// 担保人质押：覆盖率×金额 + 报价保费（金额必须精确匹配）
+    /// 担保人质押（仅质押本金=覆盖率×金额；保费由卖家承担，仅记录报价）
     function guarantee(uint256 tradeId, uint256 coverage, uint256 premium) external payable nonReentrant {
         Trade storage t = trades[tradeId];
         require(t.state == State.FUNDED, unicode"GuaranteeEscrow: 状态错误");
         require(coverage > 0 && coverage <= 2e18, unicode"GuaranteeEscrow: 覆盖率需在 0-200%");
         require(block.timestamp <= t.fundedAt + GUARANTEE_WINDOW, unicode"GuaranteeEscrow: 担保超时");
         uint256 requiredStake = (t.amount * coverage) / 1e18;
-        require(msg.value == requiredStake + premium, unicode"GuaranteeEscrow: 担保质押金额不符");
+        require(msg.value == requiredStake, unicode"GuaranteeEscrow: 担保质押金额不符");
 
         t.guarantor = msg.sender;
         t.coverage = coverage;
@@ -101,7 +110,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         emit TradeDelivered(tradeId);
     }
 
-    /// 买家确认收货（仅买家负责人）→ 释放：卖家收款，担保人拿回本金+保费
+    /// 买家确认收货（仅买家负责人）→ 释放：卖家收款（扣保费），担保人拿回本金+保费
     function confirm(uint256 tradeId) external nonReentrant {
         Trade storage t = trades[tradeId];
         require(t.state == State.DELIVERED, unicode"GuaranteeEscrow: 状态错误");
@@ -114,6 +123,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     }
 
     /// 买家/卖家发起争议（双方负责人均可）
+    /// 已知限制：争议无时间窗口限制（DELIVERED 起任意时刻可发起），论文版可引入争议窗口
     function dispute(uint256 tradeId) external nonReentrant {
         Trade storage t = trades[tradeId];
         require(t.state == State.DELIVERED, unicode"GuaranteeEscrow: 仅交付后可争议");
@@ -138,10 +148,10 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
             _resolveBuyerWins(t, buyerShareBps);
             hub.recordOutcome(t.sellerAgentId, ReputationHub.Outcome.LOST);
         } else {
-            // 卖家胜诉：全额放给卖家，担保人拿回本金+保费
+            // 卖家胜诉：金额放给卖家（扣保费），担保人拿回本金+保费
             uint256 stake = (t.amount * t.coverage) / 1e18;
             _pay(t.guarantor, stake + t.premium);
-            _pay(registry.ownerOf(t.sellerAgentId), t.amount);
+            _pay(registry.ownerOf(t.sellerAgentId), t.amount - t.premium);
             t.state = State.RESOLVED;
             hub.recordOutcome(t.sellerAgentId, ReputationHub.Outcome.WON); // 从卖家视角：胜诉
         }
@@ -155,6 +165,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         require(block.timestamp > t.deliveredAt + CONFIRM_WINDOW, unicode"GuaranteeEscrow: 未到超时时间");
         _release(t);
         hub.recordOutcome(t.sellerAgentId, ReputationHub.Outcome.COMPLETED);
+        emit TradeAutoReleased(tradeId);
     }
 
     /// 退款路径（任一超时/卖家未交付/担保未达成）→ 买家收回金额，违约时罚没担保金
@@ -166,6 +177,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
             require(block.timestamp > t.fundedAt + GUARANTEE_WINDOW, unicode"GuaranteeEscrow: 未到担保截止");
             _pay(registry.ownerOf(t.buyerAgentId), t.amount);
             t.state = State.RESOLVED;
+            emit TradeRefunded(tradeId);
         } else {
             require(block.timestamp > t.guaranteedAt + DELIVER_WINDOW, unicode"GuaranteeEscrow: 未到交付截止");
             _resolveBuyerWins(t, 10000); // 卖家违约：退款+罚没
@@ -175,24 +187,26 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
 
     // ---------- 内部 ----------
 
-    /// 买家胜诉结算：买家拿回本金 + 担保金罚没补偿；担保人失去质押、拿回保费
+    /// 买家胜诉结算：买家拿回本金 + 担保金罚没补偿；担保人判断失误，质押全失、无保费补偿
+    /// 注意：转账先于状态更新，依赖所有入口 nonReentrant 防护
     function _resolveBuyerWins(Trade storage t, uint256 buyerShareBps) private {
         uint256 stake = (t.amount * t.coverage) / 1e18;
         uint256 buyerRefund = (t.amount * buyerShareBps) / 10000;
         uint256 sellerShare = t.amount - buyerRefund;
         _pay(registry.ownerOf(t.buyerAgentId), buyerRefund + stake);
         if (sellerShare > 0) _pay(registry.ownerOf(t.sellerAgentId), sellerShare);
-        _pay(t.guarantor, t.premium); // 担保人只拿回保费（服务费），本金罚没
         t.state = State.RESOLVED;
+        emit TradeRefunded(t.id);
     }
 
-    /// 正常释放：卖家收款 + 担保人拿回本金和保费
+    /// 正常释放：卖家收款（扣保费）+ 担保人拿回本金和保费
+    /// 注意：转账先于状态更新，依赖所有入口 nonReentrant 防护；
+    ///      不再 emit TradeResolved（避免 BUYER_WINS 伪事件误导），confirm/timeoutAutoRelease 各自发确认事件
     function _release(Trade storage t) private {
         uint256 stake = (t.amount * t.coverage) / 1e18;
-        _pay(registry.ownerOf(t.sellerAgentId), t.amount);
+        _pay(registry.ownerOf(t.sellerAgentId), t.amount - t.premium);
         _pay(t.guarantor, stake + t.premium);
         t.state = State.RELEASED;
-        emit TradeResolved(t.id, Verdict.BUYER_WINS, 0); // verdict 仅作事件标记
     }
 
     function _pay(address to, uint256 amount) private {

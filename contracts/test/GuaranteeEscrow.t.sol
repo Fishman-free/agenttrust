@@ -56,7 +56,7 @@ contract GuaranteeEscrowTest is Test {
 
         // 担保人质押（100% 覆盖率 + 5% 保费）
         vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT + 0.05 ether}(tradeId, COVERAGE, 0.05 ether);
+        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
         assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.GUARANTEED));
 
         // 卖家交付声明
@@ -71,7 +71,7 @@ contract GuaranteeEscrowTest is Test {
         escrow.confirm(tradeId);
 
         assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.RELEASED));
-        assertEq(seller.balance - sellerBefore, AMOUNT, unicode"卖家应收到交易金额");
+        assertEq(seller.balance - sellerBefore, AMOUNT - 0.05 ether, unicode"卖家应收到交易金额（扣保费）");
         assertEq(guarantor.balance - guarantorBefore, 1.05 ether, unicode"担保人应拿回本金+保费");
     }
 
@@ -79,7 +79,7 @@ contract GuaranteeEscrowTest is Test {
         vm.prank(buyer);
         escrow.fund{value: AMOUNT}(tradeId);
         vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT + 0.05 ether}(tradeId, COVERAGE, 0.05 ether);
+        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
         vm.prank(seller);
         escrow.deliver(tradeId);
 
@@ -104,7 +104,7 @@ contract GuaranteeEscrowTest is Test {
         vm.prank(buyer);
         escrow.fund{value: AMOUNT}(tradeId);
         vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT + 0.05 ether}(tradeId, COVERAGE, 0.05 ether);
+        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
         vm.prank(seller);
         escrow.deliver(tradeId);
 
@@ -114,7 +114,7 @@ contract GuaranteeEscrowTest is Test {
         escrow.timeoutAutoRelease(tradeId);
 
         assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.RELEASED));
-        assertEq(seller.balance, AMOUNT);
+        assertEq(seller.balance, AMOUNT - 0.05 ether, unicode"卖家得金额扣保费");
     }
 
     function test_fundDeadline_refund() public {
@@ -136,7 +136,7 @@ contract GuaranteeEscrowTest is Test {
         vm.prank(buyer);
         escrow.fund{value: AMOUNT}(tradeId);
         vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT + 0.05 ether}(tradeId, COVERAGE, 0.05 ether);
+        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
 
         vm.warp(block.timestamp + escrow.DELIVER_WINDOW() + 1);
         vm.prank(stranger);
@@ -152,7 +152,7 @@ contract GuaranteeEscrowTest is Test {
         vm.prank(buyer);
         escrow.fund{value: AMOUNT}(tradeId);
         vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT + 0.05 ether}(tradeId, COVERAGE, 0.05 ether);
+        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
 
         vm.prank(stranger);
         vm.expectRevert(unicode"GuaranteeEscrow: 仅卖家负责人可交付");
@@ -172,7 +172,7 @@ contract GuaranteeEscrowTest is Test {
         vm.prank(buyer);
         escrow.fund{value: AMOUNT}(tradeId);
         vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT + 0.05 ether}(tradeId, COVERAGE, 0.05 ether);
+        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
         vm.prank(seller);
         escrow.deliver(tradeId);
         vm.prank(buyer);
@@ -186,5 +186,29 @@ contract GuaranteeEscrowTest is Test {
 
         assertEq(buyer.balance - buyerBefore, (AMOUNT * 70) / 100 + AMOUNT, unicode"70% 退款 + 全额罚没");
         assertEq(seller.balance - sellerBefore, (AMOUNT * 30) / 100, unicode"卖家得 30%");
+    }
+
+    function test_sellerWins_resolution() public {
+        vm.prank(buyer);
+        escrow.fund{value: AMOUNT}(tradeId);
+        vm.prank(guarantor);
+        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        vm.prank(buyer);
+        escrow.dispute(tradeId);
+
+        // 卖家胜诉：金额放给卖家（扣保费），担保人拿回本金+保费
+        uint256 sellerBefore = seller.balance;
+        uint256 guarantorBefore = guarantor.balance;
+        vm.prank(escrow.owner());
+        escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.SELLER_WINS, 0);
+
+        assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.RESOLVED));
+        assertEq(seller.balance - sellerBefore, AMOUNT - 0.05 ether, unicode"卖家得金额扣保费");
+        assertEq(guarantor.balance - guarantorBefore, 1.05 ether, unicode"担保人拿回本金+保费");
+        // 信誉记录：卖家争议胜诉（第三位 disputesWon）
+        (, , uint256 won,) = hub.reputation(sellerAgentId);
+        assertEq(won, 1);
     }
 }
