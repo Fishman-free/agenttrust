@@ -1,15 +1,7 @@
 // Base Sepolia 测试网（MVP 部署目标）
-import { defineChain } from "viem";
+import { baseSepolia } from "viem/chains";
 
-export const baseSepolia = defineChain({
-  id: 84532,
-  name: "Base Sepolia",
-  nativeCurrency: { name: "Base Sepolia Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: ["https://sepolia.base.org"] } },
-  blockExplorers: {
-    default: { name: "BaseScan", url: "https://sepolia.basescan.org" },
-  },
-});
+export { baseSepolia };
 
 export const CHAIN_ID = 84532;
 
