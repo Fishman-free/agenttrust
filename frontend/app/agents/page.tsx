@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useAccount, useConnect, useWriteContract, useReadContract } from "wagmi";
+import { useAccount, useConnect, useWriteContract, useReadContract, useReadContracts } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { agentRegistryAbi } from "@/lib/abi";
 import { CONTRACT_ADDRESSES } from "@/lib/config";
@@ -8,6 +8,16 @@ import { parseEther, formatEther, type Address } from "viem";
 
 // CONTRACT_ADDRESSES 未标注 as const，字段类型为 string；收窄为 0x 地址类型
 const REGISTRY_ADDRESS: Address = CONTRACT_ADDRESSES.agentRegistry as Address;
+
+// agents(tokenId) 返回 [name, description, endpoint, owner, createdAt]
+// useReadContracts 的动态 contracts 数组无法推断 ABI 结果，需显式断言
+type AgentMetadata = readonly [
+  name: string,
+  description: string,
+  endpoint: string,
+  owner: `0x${string}`,
+  createdAt: bigint,
+];
 
 export default function AgentsPage() {
   const { address, isConnected } = useAccount();
@@ -33,6 +43,17 @@ export default function AgentsPage() {
     address: REGISTRY_ADDRESS,
     abi: agentRegistryAbi,
     functionName: "agentCount",
+  });
+
+  // 批量读取已注册智能体元数据（agents(tokenId) 返回 [name, description, endpoint, owner, createdAt]）
+  const count = Number(agentCount ?? 0);
+  const { data: agentList } = useReadContracts({
+    contracts: Array.from({ length: count }, (_, i) => ({
+      address: REGISTRY_ADDRESS,
+      abi: agentRegistryAbi,
+      functionName: "agents",
+      args: [BigInt(i)],
+    })),
   });
 
   function register() {
@@ -69,6 +90,25 @@ export default function AgentsPage() {
             </button>
           </div>
           <h2 className="text-xl font-semibold mt-8 mb-2">已注册智能体（{String(agentCount ?? 0)}）</h2>
+          {count === 0 ? (
+            <p className="text-sm text-gray-500">暂无智能体，注册第一个吧</p>
+          ) : (
+            <ul className="space-y-2">
+              {agentList?.map((item, i) => {
+                const agent = item?.status === "success" ? (item.result as unknown as AgentMetadata) : undefined;
+                return (
+                  <li key={i} className="border rounded p-3 text-sm break-all">
+                    <span className="font-semibold">#{i}</span>
+                    {agent ? (
+                      <> · {agent[0]}（{agent[1]}） · {agent[2]} · {agent[3]}</>
+                    ) : (
+                      <> · 加载失败</>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </>
       )}
     </main>
