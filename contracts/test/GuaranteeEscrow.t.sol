@@ -188,6 +188,16 @@ contract GuaranteeEscrowTest is Test {
         assertEq(seller.balance - sellerBefore, (AMOUNT * 30) / 100, unicode"卖家得 30%");
     }
 
+    function test_guarantee_premiumBounded() public {
+        vm.prank(buyer);
+        escrow.fund{value: AMOUNT}(tradeId);
+
+        // premium > amount 会令释放路径 amount - premium 下溢，必须拒绝
+        vm.prank(guarantor);
+        vm.expectRevert(unicode"GuaranteeEscrow: 保费不能超过交易金额");
+        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 2 ether); // premium > amount
+    }
+
     function test_sellerWins_resolution() public {
         vm.prank(buyer);
         escrow.fund{value: AMOUNT}(tradeId);

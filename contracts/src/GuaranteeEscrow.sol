@@ -87,6 +87,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         Trade storage t = trades[tradeId];
         require(t.state == State.FUNDED, unicode"GuaranteeEscrow: 状态错误");
         require(coverage > 0 && coverage <= 2e18, unicode"GuaranteeEscrow: 覆盖率需在 0-200%");
+        require(premium <= t.amount, unicode"GuaranteeEscrow: 保费不能超过交易金额"); // 防 amount-premium 下溢锁死释放路径
         require(block.timestamp <= t.fundedAt + GUARANTEE_WINDOW, unicode"GuaranteeEscrow: 担保超时");
         uint256 requiredStake = (t.amount * coverage) / 1e18;
         require(msg.value == requiredStake, unicode"GuaranteeEscrow: 担保质押金额不符");
