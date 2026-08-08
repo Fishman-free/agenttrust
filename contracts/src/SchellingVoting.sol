@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {GuaranteeEscrow} from "./GuaranteeEscrow.sol";
-import {ReputationHub} from "./ReputationHub.sol";
 
 /// @title SchellingVoting —— 争议质押投票（Schelling 点收敛）
 /// @notice 争议案：成员质押投票 {BUYER/SELLER/ABSTAIN}；窗口结束后结算。
@@ -33,17 +32,16 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     }
 
     GuaranteeEscrow public immutable escrow;
-    ReputationHub public immutable hub;
     uint256 public nextCaseId;
     mapping(uint256 => Case) public cases;
+    mapping(uint256 => bool) private tradeHasCase; // 同一交易仅一个争议案
 
     event CaseOpened(uint256 indexed caseId, uint256 tradeId, uint256 stake, uint256 deadline);
     event CaseVoted(uint256 indexed caseId, address voter, Side side, uint256 stake);
     event CaseSettled(uint256 indexed caseId, Side winningSide, uint256 voters, bool effective);
 
-    constructor(address escrow_, address hub_) Ownable(msg.sender) {
+    constructor(address escrow_) Ownable(msg.sender) {
         escrow = GuaranteeEscrow(escrow_);
-        hub = ReputationHub(hub_);
     }
 
     /// 发起争议案（需交易处于 DISPUTED 状态；仅 owner 可开——论文版由 escrow 自动驱动）
@@ -51,8 +49,10 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         external onlyOwner returns (uint256 caseId)
     {
         require(stake > 0, unicode"SchellingVoting: 质押必须大于零");
+        require(!tradeHasCase[tradeId], unicode"SchellingVoting: 该交易已有争议案");
         (,,,,,,, GuaranteeEscrow.State st,,,,) = escrow.trades(tradeId);
         require(st == GuaranteeEscrow.State.DISPUTED, unicode"SchellingVoting: 交易不在争议中");
+        tradeHasCase[tradeId] = true;
 
         caseId = nextCaseId++;
         Case storage c = cases[caseId];
@@ -90,10 +90,15 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
 
         c.settled = true;
         uint256 total = c.votesForBuyer + c.votesForSeller;
-        bool buyerMaj = c.votesForBuyer * 10000 >= total * MAJORITY_BPS;
-        bool sellerMaj = c.votesForSeller * 10000 >= total * MAJORITY_BPS;
-        c.effective = total >= MIN_VOTERS && (buyerMaj || sellerMaj);
-        c.winner = buyerMaj ? Side.BUYER : (sellerMaj ? Side.SELLER : Side.ABSTAIN);
+        if (total == 0) {
+            // 无人投票：winner 显式置 ABSTAIN（0>=0 会使两侧多数判定恒真，需短路）
+            c.winner = Side.ABSTAIN;
+        } else {
+            bool buyerMaj = c.votesForBuyer * 10000 >= total * MAJORITY_BPS;
+            bool sellerMaj = c.votesForSeller * 10000 >= total * MAJORITY_BPS;
+            c.winner = buyerMaj ? Side.BUYER : (sellerMaj ? Side.SELLER : Side.ABSTAIN);
+        }
+        c.effective = total >= MIN_VOTERS && (c.winner != Side.ABSTAIN);
 
         if (!c.effective) {
             // 作废：所有投票者凭 claimRefund 领回质押；escrow 保守默认买家胜（退款+罚没担保金）
@@ -111,14 +116,16 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     function claimReward(uint256 caseId) external nonReentrant {
         Case storage c = cases[caseId];
         require(c.settled, unicode"SchellingVoting: 未结算");
+        require(c.hasVoted[msg.sender], unicode"SchellingVoting: 未投票");
         require(c.effective, unicode"SchellingVoting: 案件作废，请领取退款");
-        require(c.hasVoted[msg.sender] && c.side[msg.sender] == c.winner, unicode"SchellingVoting: 非多数派");
+        require(c.side[msg.sender] == c.winner, unicode"SchellingVoting: 非多数派");
         require(!c.claimed[msg.sender], unicode"SchellingVoting: 已领取");
 
         uint256 winnerCount = c.winner == Side.BUYER ? c.votesForBuyer : c.votesForSeller;
         uint256 loserCount = c.winner == Side.BUYER ? c.votesForSeller : c.votesForBuyer;
         c.claimed[msg.sender] = true;
         // 多数派每票：本金 + 罚没池均分（罚没池 = 少数派票数 × stake）
+        // 整除余数 dust wei 滞留合约（MVP 已知限制，论文版批量结算解决）
         uint256 reward = c.stake + (c.stake * loserCount) / winnerCount;
         _pay(msg.sender, reward);
     }

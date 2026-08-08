@@ -35,9 +35,8 @@ contract SchellingVotingTest is Test {
         registry = new AgentRegistry();
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
-        voting = new SchellingVoting(address(escrow), address(hub));
+        voting = new SchellingVoting(address(escrow));
         hub.setAuthorizedCaller(address(escrow), true);
-        hub.setAuthorizedCaller(address(voting), true);
         escrow.transferOwnership(address(voting)); // 论文版：Voting 代平台行使裁决权
 
         // makeAddr 初始余额为 0：deal 金额恰好覆盖支出，使绝对余额断言 = 净额
@@ -222,6 +221,69 @@ contract SchellingVotingTest is Test {
 
         vm.prank(juror1);
         vm.expectRevert(unicode"SchellingVoting: 投票窗口未结束");
+        voting.settle(caseId);
+    }
+
+    function test_openCase_duplicateRejected() public {
+        // 同一交易只能开一个争议案（否则第二案 settle 时 escrow 已 RESOLVED，质押永久锁死）
+        vm.expectRevert(unicode"SchellingVoting: 该交易已有争议案");
+        voting.openCase(tradeId, buyerAgentId, sellerAgentId, STAKE, WINDOW);
+    }
+
+    function test_claimReward_doubleClaimRejected() public {
+        vm.prank(juror1);
+        voting.vote{value: STAKE}(caseId, SchellingVoting.Side.BUYER);
+        vm.prank(juror2);
+        voting.vote{value: STAKE}(caseId, SchellingVoting.Side.BUYER);
+        vm.prank(juror3);
+        voting.vote{value: STAKE}(caseId, SchellingVoting.Side.SELLER);
+
+        vm.warp(block.timestamp + WINDOW + 1);
+        vm.prank(juror1);
+        voting.settle(caseId);
+
+        vm.prank(juror1);
+        voting.claimReward(caseId);
+        vm.prank(juror1);
+        vm.expectRevert(unicode"SchellingVoting: 已领取");
+        voting.claimReward(caseId);
+    }
+
+    function test_claim_unauthorizedRejected() public {
+        vm.prank(juror1);
+        voting.vote{value: STAKE}(caseId, SchellingVoting.Side.BUYER);
+        vm.prank(juror2);
+        voting.vote{value: STAKE}(caseId, SchellingVoting.Side.BUYER);
+        vm.prank(juror3);
+        voting.vote{value: STAKE}(caseId, SchellingVoting.Side.SELLER);
+
+        vm.warp(block.timestamp + WINDOW + 1);
+        vm.prank(juror1);
+        voting.settle(caseId);
+
+        // 未投票者（juror5）无论领奖还是退款均被拒
+        vm.prank(juror5);
+        vm.expectRevert(unicode"SchellingVoting: 未投票");
+        voting.claimReward(caseId);
+        vm.prank(juror5);
+        vm.expectRevert(unicode"SchellingVoting: 未投票");
+        voting.claimRefund(caseId);
+    }
+
+    function test_settle_doubleSettleRejected() public {
+        vm.prank(juror1);
+        voting.vote{value: STAKE}(caseId, SchellingVoting.Side.BUYER);
+        vm.prank(juror2);
+        voting.vote{value: STAKE}(caseId, SchellingVoting.Side.BUYER);
+        vm.prank(juror3);
+        voting.vote{value: STAKE}(caseId, SchellingVoting.Side.BUYER);
+
+        vm.warp(block.timestamp + WINDOW + 1);
+        vm.prank(juror1);
+        voting.settle(caseId);
+
+        vm.prank(juror1);
+        vm.expectRevert(unicode"SchellingVoting: 已结算");
         voting.settle(caseId);
     }
 }
