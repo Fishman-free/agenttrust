@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -13,11 +14,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Providers>
           <nav className="p-4 border-b flex gap-4">
-            <a href="/" className="font-bold">AgentTrust</a>
-            <a href="/agents">智能体</a>
-            <a href="/trade">交易</a>
-            <a href="/disputes">争议</a>
-            <a href="/reputation">信誉</a>
+            <Link href="/" className="font-bold">AgentTrust</Link>
+            <Link href="/agents">智能体</Link>
+            <Link href="/trade">交易</Link>
+            <Link href="/disputes">争议</Link>
+            <Link href="/reputation">信誉</Link>
           </nav>
           {children}
         </Providers>

@@ -1,5 +1,8 @@
 // 自动生成：contracts/out/*.sol/*.json —— 合约变更后重新生成
-export const agentregistryAbi = [
+// 再生成命令（项目根目录执行，Git Bash）：
+// node -e "const fs=require('fs');const ns=['AgentRegistry','ReputationHub','GuaranteeEscrow','SchellingVoting'];const p='frontend/lib/abi.ts';const old=fs.existsSync(p)?fs.readFileSync(p,'utf8'):'';const head=old.match(/^\/\/[^\n]*/gm);let o=(head&&head.length?head.join('\n'):'// 自动生成：contracts/out/*.sol/*.json —— 合约变更后重新生成')+'\n\n';for(const n of ns){const a=JSON.parse(fs.readFileSync('contracts/out/'+n+'.sol/'+n+'.json','utf8')).abi;o+='export const '+n[0].toLowerCase()+n.slice(1)+'Abi = '+JSON.stringify(a,null,2)+' as const;\n\n'}fs.writeFileSync(p,o);"
+
+export const agentRegistryAbi = [
   {
     "type": "constructor",
     "inputs": [],
@@ -671,7 +674,7 @@ export const agentregistryAbi = [
   }
 ] as const;
 
-export const reputationhubAbi = [
+export const reputationHubAbi = [
   {
     "type": "constructor",
     "inputs": [],
@@ -899,7 +902,7 @@ export const reputationhubAbi = [
   }
 ] as const;
 
-export const guaranteeescrowAbi = [
+export const guaranteeEscrowAbi = [
   {
     "type": "constructor",
     "inputs": [
@@ -1486,7 +1489,7 @@ export const guaranteeescrowAbi = [
   }
 ] as const;
 
-export const schellingvotingAbi = [
+export const schellingVotingAbi = [
   {
     "type": "constructor",
     "inputs": [
