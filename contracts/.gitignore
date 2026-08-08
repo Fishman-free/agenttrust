@@ -1,0 +1,12 @@
+# Foundry
+out/
+cache/
+broadcast/
+
+# Env
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
