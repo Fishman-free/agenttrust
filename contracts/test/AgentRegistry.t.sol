@@ -65,6 +65,8 @@ contract AgentRegistryTest is Test {
     }
 
     function test_withdrawFees_onlyOwner() public {
+        registry.setRegistrationFee(0.01 ether);
+
         vm.prank(alice);
         registry.registerAgent{value: 0.01 ether}("A", "desc", "x");
 
@@ -75,5 +77,30 @@ contract AgentRegistryTest is Test {
         vm.prank(registry.owner());
         registry.withdrawFees();
         assertEq(registry.owner().balance, 0.01 ether);
+    }
+
+    function test_registerAgent_refundsOverpayment() public {
+        registry.setRegistrationFee(0.01 ether);
+
+        vm.prank(alice);
+        registry.registerAgent{value: 0.015 ether}("A", "desc", "https://a.example/mcp");
+
+        assertEq(address(registry).balance, 0.01 ether, unicode"合约应仅保留注册质押");
+        assertEq(alice.balance, 99.99 ether, unicode"多付部分应退回调用方");
+    }
+
+    function test_setRegistrationFee_positivePath() public {
+        vm.expectEmit();
+        emit AgentRegistry.RegistrationFeeUpdated(0.1 ether);
+        registry.setRegistrationFee(0.1 ether);
+
+        assertEq(registry.registrationFee(), 0.1 ether);
+    }
+
+    function test_registerAgent_emitsEvent() public {
+        vm.prank(alice);
+        vm.expectEmit();
+        emit AgentRegistry.AgentRegistered(0, alice, "DataAgent");
+        registry.registerAgent("DataAgent", unicode"数据分析服务", "https://a.example/mcp");
     }
 }

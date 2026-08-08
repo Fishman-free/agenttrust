@@ -43,6 +43,12 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         agents[tokenId] = AgentInfo(name, description, endpoint, msg.sender, block.timestamp);
 
         emit AgentRegistered(tokenId, msg.sender, name);
+
+        // 超额支付显式退款（CEI：外部调用置于状态变更之后，nonReentrant 已防护）
+        if (msg.value > registrationFee) {
+            (bool ok,) = msg.sender.call{value: msg.value - registrationFee}("");
+            require(ok, unicode"AgentRegistry: 退款失败");
+        }
     }
 
     /// 提取注册质押（仅 owner）
