@@ -9,6 +9,9 @@ import { parseEther } from "viem";
 // 对应合约 GuaranteeEscrow.State 枚举（0-6）
 const STATE_LABEL = ["已创建", "已付款", "已担保", "已交付", "争议中", "已释放", "已结算"] as const;
 
+// 合约 coverage 单位：1e18 = 100%（tsconfig target ES2017，禁用 10n 字面量，用 BigInt() 构造）
+const WEI_ONE = BigInt(10) ** BigInt(18);
+
 // 各状态下的下一步可用操作（用于操作台提示）
 const STATE_ACTIONS: Record<number, string> = {
   0: "买家可付款（①）",
@@ -87,18 +90,25 @@ export default function TradePage() {
   function guarantee() {
     // T5 语义：担保人只质押本金（覆盖率×金额），保费仅报价记录、由卖家承担
     const t = parseId(tradeId);
-    const cov = Number(coverage);
+    const covPct = Number(coverage); // 用户输入的百分比（默认 100）
     const prem = parseAmount(premium);
-    if (t === null || !(cov > 0 && cov <= 200) || prem === null) {
+    const formAmount = parseAmount(amount);
+    if (t === null || !(covPct > 0 && covPct <= 200) || prem === null || formAmount === null) {
       return alert("请填写有效的 Trade ID、覆盖率（0-200%）与保费");
     }
-    const stake = (Number(amount) * cov) / 100;
+    // coverage 合约单位为 1e18 = 100%：百分比（精度 0.01%）→ 1e18 单位，纯 wei 整数运算
+    // （与合约 requiredStake = amount*coverage/1e18 同式），避免浮点/舍入导致的金额不符 revert
+    const coverageWei = (BigInt(Math.round(covPct * 100)) * WEI_ONE) / BigInt(10000);
+    if (coverageWei === BigInt(0)) return alert("覆盖率至少 0.01%");
+    // 优先用链上真实金额（trades 下标 3），表单金额仅作回退
+    const amountWei = tradeData !== undefined ? tradeData[3] : formAmount;
+    const stakeWei = (amountWei * coverageWei) / WEI_ONE;
     writeContract({
       address: CONTRACT_ADDRESSES.guaranteeEscrow,
       abi: guaranteeEscrowAbi,
       functionName: "guarantee",
-      args: [t, parseEther(String(cov)), prem],
-      value: parseEther(stake.toFixed(6)),
+      args: [t, coverageWei, prem],
+      value: stakeWei,
     });
   }
   function deliver() {
@@ -122,7 +132,11 @@ export default function TradePage() {
     });
   }
 
-  const stake = (Number(amount) * Number(coverage)) / 100;
+  // 担保质押额展示：与 guarantee 逻辑一致（链上金额优先 × 覆盖率）
+  const covPct = Number(coverage);
+  const chainAmount = tradeData !== undefined ? Number(tradeData[3]) / 1e18 : Number(amount);
+  const stakeDisplay =
+    Number.isFinite(chainAmount) && Number.isFinite(covPct) ? chainAmount * (covPct / 100) : 0;
 
   return (
     <main className="max-w-2xl mx-auto p-6">
@@ -168,7 +182,7 @@ export default function TradePage() {
               </button>
               <button onClick={guarantee} disabled={isPending || !canAct(1)}
                 className="border px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed">
-                ② 担保（质押 {stake.toFixed(4)} ETH）
+                ② 担保（质押 {stakeDisplay.toFixed(4)} ETH）
               </button>
               <input placeholder="保费 ETH" value={premium} onChange={(e) => setPremium(e.target.value)}
                 className="border rounded p-1.5 w-28" />
