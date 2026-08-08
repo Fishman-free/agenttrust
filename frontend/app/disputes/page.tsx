@@ -120,6 +120,10 @@ export default function DisputesPage() {
               className="w-full border rounded p-2 mb-2" />
             <input placeholder="卖家 Agent ID" value={sellerId} onChange={(e) => setSellerId(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
+            {/* 质押与投票区共享同一 stake state：同一案件的质押额必须一致
+                （T6 语义：vote 的 msg.value 必须 == case 的 stake） */}
+            <input placeholder="质押（ETH）" value={stake} onChange={(e) => setStake(e.target.value)}
+              className="w-full border rounded p-2 mb-2" />
             <button onClick={openCase} disabled={isPending}
               className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">
               {isPending ? "提交中…" : "开设投票案（窗口 1 天）"}
