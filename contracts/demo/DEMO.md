@@ -64,7 +64,8 @@ MetaMask 添加网络：RPC http://127.0.0.1:8545、Chain ID 31337、符号 ETH�
 - 结算 → 观察：买家拿回本金 + 罚没担保金，担保人 0.1 质押全失（判断失误代价），少数派陪审员质押被罚没均分给多数派
 
 ### 7. 信誉变化（信誉页）
-- 输入卖家 Agent ID（0）：争议败诉 +1，信誉分公式计算 = 100 − 0 − 50·1/1 = **50**（1 次败诉；与默认值持平，多次败诉/违约才会低于 50）
+- 输入卖家 Agent ID（0）：此时卖家已有 1 次完成（第 5 步确认）+ 1 次争议败诉（第 6 步结算），total=2
+- 信誉分公式计算 = 100 − 100·0/2 − 50·1/2 = **75**（构成：完成 1、败诉 1；1 次败诉只扣 25，仍高于新智能体默认 50，多次败诉/违约才会跌破 50）
 
 ## 快速验证（不用前端）
 
@@ -102,19 +103,20 @@ VOTING=0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
 PK=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80   # 平台 owner（部署者）
 STAKE=$(cast --to-wei 0.05 ether)
 
-# 开案：trade=0, buyer=1, seller=0, stake=0.05, window=60s
-cast send $VOTING "openCase(uint256,uint256,uint256,uint256,uint256)" 0 1 0 $STAKE 60 \
+# 开案：trade=1（第 6 步"再建的那笔"已 DISPUTED；trade=0 已 RELEASED 不可开案）, buyer=1, seller=0, stake=0.05, window=60s
+cast send $VOTING "openCase(uint256,uint256,uint256,uint256,uint256)" 1 1 0 $STAKE 60 \
   --rpc-url $RPC --private-key $PK
 
 # 三个钱包投票（case=0；BUYER=0, SELLER=1），A、B 支持买家，C 支持卖家
-cast send $VOTING "vote(uint256,uint8)" 0 0 --value $STAKE --rpc-url $RPC --private-key 0xac09...
-cast send $VOTING "vote(uint256,uint8)" 0 0 --value $STAKE --rpc-url $RPC --private-key 0x59c6...
-cast send $VOTING "vote(uint256,uint8)" 0 1 --value $STAKE --rpc-url $RPC --private-key 0x5de4...
+# 完整私钥见上方"演示用钱包"表：A=钱包A、B=钱包B、C=钱包C，直接粘贴对应私钥即可
+cast send $VOTING "vote(uint256,uint8)" 0 0 --value $STAKE --rpc-url $RPC --private-key <钱包A私钥>
+cast send $VOTING "vote(uint256,uint8)" 0 0 --value $STAKE --rpc-url $RPC --private-key <钱包B私钥>
+cast send $VOTING "vote(uint256,uint8)" 0 1 --value $STAKE --rpc-url $RPC --private-key <钱包C私钥>
 
 # 推进 61s 后结算（solo 链无竞争者，可跳时间）
 cast rpc anvil_setNextBlockTimestamp $(( $(date +%s) + 61 )) --rpc-url $RPC
 cast rpc anvil_mine --rpc-url $RPC
-cast send $VOTING "settle(uint256)" 0 --rpc-url $RPC --private-key 0xac09...
+cast send $VOTING "settle(uint256)" 0 --rpc-url $RPC --private-key <钱包A私钥>
 ```
 
 ## 已知限制（MVP 诚实说明）
