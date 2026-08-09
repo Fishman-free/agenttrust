@@ -27,13 +27,15 @@
 
 ```bash
 # 合约测试（38 个测试全通过）
-cd contracts && NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
+cd contracts && export PATH="$HOME/.foundry/bin:$PATH" && NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 
 # 全链路演示（详见 contracts/demo/DEMO.md）
-# 1. anvil 启动 + 部署 + 前端 dev
+# 1. anvil 启动 + 部署（见 contracts/README.md）
+# 2. 启动前端
+cd frontend && npm run dev   # 打开 http://localhost:3000
 ```
 
-> **Windows 注意**：本机代理会导致 cast/forge 请求 502，所有链上命令必须带 `NO_PROXY="127.0.0.1,localhost,::1"`。
+> **Windows 注意**：foundry 不在 PATH 需先 `export PATH="$HOME/.foundry/bin:$PATH"`；本机代理会导致 cast/forge 请求 502，所有链上命令必须带 `NO_PROXY="127.0.0.1,localhost,::1"`。
 
 ## 合规说明
 

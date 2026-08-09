@@ -15,18 +15,20 @@ AgentTrust 协议的四层 Solidity 合约实现，使用 Foundry 开发、测�
 
 ```bash
 # 38 个测试全通过（含 E2E 全链路）
+export PATH="$HOME/.foundry/bin:$PATH"
 NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 
 # 仅 E2E 全链路
 NO_PROXY="127.0.0.1,localhost,::1" forge test --match-contract E2ETest -vvv
 ```
 
-> **Windows 注意**：本机代理会导致 cast/forge 请求 502，必须带 `NO_PROXY="127.0.0.1,localhost,::1"`。
+> **Windows 注意**：foundry 不在 PATH 需先 `export PATH="$HOME/.foundry/bin:$PATH"`；本机代理会导致 cast/forge 请求 502，必须带 `NO_PROXY="127.0.0.1,localhost,::1"`。
 
 ## 部署
 
 ```bash
 # 本地 anvil 演示链（配合全链路演示）
+export PATH="$HOME/.foundry/bin:$PATH"
 NO_PROXY="127.0.0.1,localhost,::1" anvil --chain-id 31337 --port 8545
 
 # 部署（需同时导出 PRIVATE_KEY，Deploy.s.sol 内部用 vm.envUint 读取）
