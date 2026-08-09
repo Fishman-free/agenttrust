@@ -1,0 +1,527 @@
+=== 第1页 ===
+区块链 · AI Agent · 信任基础设施
+学术研究
+R E S E A R C H  R E P O R T
+基于区块链的智能体交互
+安全性研究
+身份认证、信任机制与责任追溯
+一个面向“数字孪生交易主体”的三层信任架构
+Identity, Trust & Accountability for Blockchain-based Agent Interactions
+2 0 2 6  年 8  月
+
+=== 第2页 ===
+基于区块链的智能体交互安全性研究
+目录
+摘要
+2
+1
+引言
+4
+1.1
+背景：从“分析工具”到“数字孪生交易主体” . . . . . . . . . . . . . . . . . . .
+4
+1.2
+问题定义
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+4
+1.3
+现实诉求与本文定位. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+4
+2
+相关工作综述
+5
+2.1
+去中心化身份与可验证凭证. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+5
+2.2
+灵魂绑定代币与绑定NFT . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+5
+2.3
+智能体自主账户与支付. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+5
+2.4
+链上信誉与证明. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+5
+2.5
+去中心化仲裁与担保. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+5
+2.6
+智能体信任的专门研究. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+6
+3
+问题建模
+6
+3.1
+系统主体
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+6
+3.2
+信任属性
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+6
+3.3
+攻击模型
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+6
+4
+提出架构：身份—信任—责任（ITA）三层信任架构
+7
+4.1
+总体设计
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+7
+4.2
+身份层（Layer 1）：数字孪生身份证
+. . . . . . . . . . . . . . . . . . . . . . . . .
+7
+4.3
+信任层（Layer 2）：信誉与授权. . . . . . . . . . . . . . . . . . . . . . . . . . . .
+7
+4.4
+责任层（Layer 3）：担保、仲裁与追责. . . . . . . . . . . . . . . . . . . . . . . .
+8
+4.5
+信任维护的两种模式. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+8
+5
+客观可行性与局限分析
+8
+5.1
+可行性：为什么技术路线成立. . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+8
+5.2
+局限：必须正视的结构性风险. . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+9
+5.3
+核心张力与本文主张. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+9
+6
+经济激励与合规路径
+9
+6.1
+代币经济设计. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+9
+6.2
+合规发币路径. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+10
+6.3
+监管约束
+. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+10
+7
+分阶段落地建议
+10
+8
+结论与展望
+10
+1
+
+=== 第3页 ===
+基于区块链的智能体交互安全性研究
+摘要
+随着大语言模型（LLM）与工具调用能力的成熟，AI 智能体（AI Agent）正从“分析工具”
+演化为能够自主谈判、签约、转账、结算的交易对手方。当其成为人类在数字世界的“数字孪生”
+并代替人类执行交易时，一类全新的安全问题随之浮现：匿名智能体之间如何建立互信？恶意智
+能体（“骗子智能体”）作恶后如何界定与追溯责任？
+本文在系统梳理W3C 去中心化身份（DID）/可验证凭证（VC）标准、灵魂绑定代币（SBT）、
+ERC-4337 账户抽象、链上证明（EAS）、去中心化仲裁（Kleros/UMA）、链上互助保险（Nexus
+Mutual）等既有技术的基础上，针对“智能体领证后再交易、交易由第三方担保、行为被可审
+计存证、作恶可追溯追责”这一现实诉求，提出一个身份层—信任层—责任层（Identity-Trust-
+Accountability, ITA）三层信任架构。
+本文客观分析了该架构的优势与局限，并着重指出其最大的结构性张力：在“社会信用式”
+中心化信用裁判模式下，单点权威同时握有评分、吊销与取证权，存在作恶、垄断、隐私与公平
+性风险。据此，本文主张设计重心应从“中心化裁判”转向“去中心化信任基础设施的运营商与
+规则制定者”，让信任由可验证的代码与多方治理共同维护，而非依赖单一中心的主观背书。最
+后，本文结合中国与海外监管（社会信用体系、生成式AI 备案、欧盟AI Act、MiCA、香港稳
+定币条例）与ICO 的历史教训，讨论了技术落地的可行路径与合规边界。
+关键词：AI 智能体；区块链；去中心化身份（DID）；灵魂绑定代币（SBT）；数字孪生；信任机
+制；责任追溯；代理经济
+Abstract
+As large language models and tool-use capabilities mature, AI agents are evolving from
+analytical tools into counterparties capable of autonomously negotiating, signing, transferring
+funds, and settling. When they become “digital twins” of humans and execute transactions
+on their behalf, a new class of security problems emerges: how can anonymous agents establish
+mutual trust, and how can malicious (“scammer”) agents be held accountable after misbehavior?
+Building on a systematic review of W3C Decentralized Identifiers (DID) / Verifiable Cre-
+dentials (VC), Soulbound Tokens (SBT), ERC-4337 Account Abstraction, on-chain attestation
+(EAS), decentralized arbitration (Kleros/UMA), and on-chain mutual insurance (Nexus Mu-
+tual), this paper proposes an Identity–Trust–Accountability (ITA) three-layer trust architecture
+tailored to the practical requirement that agents “obtain credentials before trading, have trans-
+actions guaranteed by third parties, have behavior auditably recorded, and be traceable for
+accountability.”
+This paper objectively analyzes the strengths and limitations of the proposed architecture,
+and highlights its most fundamental structural tension: under a “social-credit-style” centralized
+credit-adjudicator model, a single authority simultaneously holds scoring, revocation, and evi-
+dentiary powers, entailing risks of abuse, monopoly, privacy, and fairness. Accordingly, the de-
+sign emphasis should shift from a “centralized adjudicator” toward an “operator and rule-setter
+of decentralized trust infrastructure.” Finally, considering domestic and overseas regulation and
+2
+
+=== 第4页 ===
+基于区块链的智能体交互安全性研究
+the historical lessons of ICOs, the paper discusses feasible deployment paths and compliance
+boundaries.
+Keywords: AI agents; blockchain; decentralized identifiers (DID); soulbound tokens (SBT);
+digital twins; trust mechanisms; accountability; agentic commerce
+3
+
+=== 第5页 ===
+基于区块链的智能体交互安全性研究
+1
+引言
+1.1
+背景：从“分析工具”到“数字孪生交易主体”
+2023 年以来，以GPT、Claude 等为代表的大语言模型使得智能体具备自主规划、调用外部
+工具、执行多步骤任务的能力。随之而来的关键转变在于：智能体不再仅仅是“回答问题”的工
+具，而是可以代表其所有者在数字世界做出具有经济后果的承诺与行为——包括自动协商价格、
+签署条款、发起转账、执行智能合约。当智能体持有资金并能完成支付时，它实质上构成人类所
+有者的“数字孪生交易主体”。
+这一趋势已催生出“代理经济（Agentic Commerce）”与“智能体金融（Agent-to-Agent
+Finance, A2A Finance）”等新范畴。相关研究指出，AI 智能体正在从分析工具转变为交易对手
+方，由此产生了对身份、授权、支付、验证、信誉与问责的金融级基础设施需求[18]。然而，智
+能体的广泛采用也放大了三类系统性风险：一是身份欺诈——任何人都能低成本批量制造“假智
+能体”；二是互信缺失——匿名交易对手无法判断对方是否可信；三是责任悬空——智能体作恶
+后，缺乏清晰的追责路径与制裁手段。
+1.2
+问题定义
+本文聚焦以下三个相互关联的核心问题：
+• Q1（互信）：当智能体代替人类进行交易时，如何保证智能体之间的互信，防止“骗子智能
+体”混入？
+• Q2（追责）：当骗子智能体出现并实施欺诈后，如何界定责任、提供证据并实施制裁？
+• Q3（激励）：采用何种经济与治理机制，使得这套信任体系能够自我维持并规模化？
+这三个问题本质上可以归结为传统信任问题在“机器对机器（M2M）、匿名为默认”环境下
+的重构：信任不再来自对某个人身份与历史的了解，而必须来自可验证、可审计、可追溯的技术
+基础设施。
+1.3
+现实诉求与本文定位
+实践中，一套贴近市场的可行方案通常包含以下诉求：给匿名智能体发放“数字孪生身份
+证”（基于NFT/SBT），要求其领证后方可交易；依据身份证对交易进行认证并为交易提供担保
+（类似保险）；对所有交易行为进行认证存证，为执法方提供取证支持以追踪不可信智能体；并在
+海外通过发行代币（ICO 式）进行创业融资。
+本文的定位并非提出一套全新密码学原语，而是在既有成熟技术栈之上，论证一种集成式信
+任架构（ITA）的可行性、优劣与边界，并据此给出客观的建设性建议。这一“技术系统+ 组织
+治理+ 经济激励+ 合规路径”的综合视角，正是目前学术与工业界讨论的空白地带。
+4
+
+=== 第6页 ===
+基于区块链的智能体交互安全性研究
+2
+相关工作综述
+2.1
+去中心化身份与可验证凭证
+W3C 已将DID 与VC 确立为核心推荐标准，且二者彼此独立、可组合：DID（Decentralized
+Identifier）是“关联DID 文档、支持可信交互的URI”，文档中可包含控制者（controller）、验证方
+法（如公钥）等信息，不同DID method 定义了各自的创建、解析与更新规则[1]；VC（Verifiable
+Credential）则定义了一种可被加密验证的声明数据模型，可用于表达资质、授权、信誉等信息[2]。
+在实现层面，ION（Identity Overlay Network）基于Sidetree 协议构建于比特币之上，无需
+新代币即可锚定大量DID 操作，强调无中心控制[3]。这些标准共同提供了“给智能体发身份”
+的底层骨架。
+2.2
+灵魂绑定代币与绑定NFT
+Buterin、Weyl 与Ohlhaver 在《Decentralized Society: Finding Web3’s Soul》中提出“灵
+魂（souls）”概念：账户持有公开可见、不可转让的灵魂绑定代币（SBT），用以编码凭据与声
+誉[4]。工程化方面，EIP-5192 为ERC-721 增加了“灵魂绑定NFT”极简接口，锁定后禁止一
+切转账[5]；EIP-4973 则定义“账户绑定代币（ABT）”，实现元数据接口但禁止转账接口，支持
+签发（give/take）与解除关联（unequip）[6]。这些标准为“不可转让、但可吊销”的数字孪生
+身份证提供了直接的工程参考。
+2.3
+智能体自主账户与支付
+ERC-4337 账户抽象允许在不修改共识层的前提下，让用户或智能体以“智能合约账户”形
+式存在，支持自定义签名校验、批量交易、代付gas 等能力[7, 8]。这为智能体自主持有资产、自
+主结算提供了技术底座，也使得“身份锁定到具体账户”成为可能。
+2.4
+链上信誉与证明
+Ethereum Attestation Service（EAS）提供链上/链下可验证的“证明（attestation）”，官
+方明确定位为“让开发者与智能体签署结构化数据以供他人依赖”，并支持用可组合证明构建可
+信信誉系统[12]。ERC-8004 智能体注册标准已在以太坊登记超过一万个智能体，包含链上身份、
+信誉摘要与反馈记录[14]。
+2.5
+去中心化仲裁与担保
+Kleros 通过质押代币的陪审团进行争议仲裁[15]；UMA 采用“乐观仲裁（Optimistic Ora-
+cle）”，通过保证金与代币持有者投票裁决事实争议[16]；Nexus Mutual 以链上互助保险承保智
+能合约风险，将slashing 等列为可投保风险[17]。这些机制为“担保、理赔与争议解决”提供了
+去中心化路径。
+5
+
+=== 第7页 ===
+基于区块链的智能体交互安全性研究
+2.6
+智能体信任的专门研究
+A2A Finance 提出“有限自治（bounded autonomy）”原则，主张以可编程结算、智能钱包、
+ERC-8004 与可验证计算约束代理的金融行为[18]。一篇2026 年综述将智能体信任危机归纳为
+实体/能力、授权/委托、信息/溯源、协作鲁棒、问责/结算五个维度，并指出区块链应作为“共
+享信任层”而非安全与语义验证的替代品[19]。AgentReputation 则警示统一信誉分会被智能体
+“策略性优化”，建议采用情境条件化的信誉卡[13]。
+3
+问题建模
+3.1
+系统主体
+设系统中有三类主体：
+• 智能体Ai：持有数字孪生身份，能代表其所有者Oi（真人或组织）进行交易。
+• 认证/担保服务商S：签发身份证、为交易提供担保与认证。
+• 仲裁/执法主体E：裁决争议、执行制裁。
+3.2
+信任属性
+一个可用的智能体交互系统应满足以下性质：
+1. 身份真实性（Authenticity）：每个参与交易的智能体具有唯一、可验证、不可转让（可吊
+销）的身份。
+2. 不可抵赖性（Non-repudiation）：智能体的关键行为可被可审计地记录，事后不可否认。
+3. 可追溯性（Traceability）：给定任一行为，可回溯到发起智能体及其背后的责任主体。
+4. 公平性（Fairness）：仲裁与制裁不依赖单一主观权威，避免作恶、垄断与误判。
+5. 激励兼容（Incentive Compatibility）：作恶的成本高于收益，诚信成为理性选择。
+6. 隐私可调（Privacy-preserving）：在满足可审计的前提下，最小化不必要的数据暴露。
+3.3
+攻击模型
+本文考虑以下威胁：
+• 女巫攻击（Sybil）：批量制造假身份以操纵信誉或稀释投票。
+• 信誉操纵（Reputation Gaming）：针对评估流程做策略性优化，刷高信用分。
+• 作恶后逃避（Impunity）：作恶后销毁身份、更换身份、无法被追责。
+• 单点权威滥用（Authoritarian Abuse）：掌握评分/吊销/取证权的中心被滥用。
+6
+
+=== 第8页 ===
+基于区块链的智能体交互安全性研究
+4
+提出架构：身份—信任—责任（ITA）三层信任架构
+4.1
+总体设计
+针对“领证后交易、交易有担保、行为可存证、作恶可追责”的现实诉求，本文提出ITA
+（Identity–Trust–Accountability）三层信任架构，如图1 所示。
+Layer 3
+责任层（Accountability）
+仲裁（Kleros/UMA）·担保保险（Nexus Mutual）·罚没/吊销
+Layer 2
+信任层（Trust）
+信誉证明（EAS/AgentReputation）·情境化评分·授权委托
+Layer 1
+身份层（Identity）
+DID + VC + SBT（EIP-5192/4973）+ ERC-4337 + 人格证明
+图1: ITA 三层信任架构
+4.2
+身份层（Layer 1）：数字孪生身份证
+身份层的目标是为每个智能体签发唯一、可验证、不可转让、可吊销的“数字孪生身份证”。
+其组成为：
+• DID：作为智能体的全局唯一标识，并承载公钥等验证方法，用于签名与验签[1]。
+• VC：承载资质、授权、信誉等可验证声明[2]。
+• SBT/ABT（EIP-5192/4973）：以不可转让代币形式固化身份与关键凭证，防止倒卖，同
+时保留吊销能力[5, 6]。
+• ERC-4337 账户：身份证绑定到智能合约账户，使智能体能够自主持币、自主结算[7]。
+• 人格证明（可选）：用于将智能体与其背后的真人/组织绑定，缓解“主体是人是机”的模糊
+性（如Worldcoin、Proof of Humanity、Gitcoin Passport）[9, 10, 11]。
+身份绑定关系为Oi ↔Ai ↔DID ↔ERC-4337 账户，形成从“真人所有者”到“可交易账户”
+的完整链条，为后续追溯提供锚点。
+4.3
+信任层（Layer 2）：信誉与授权
+信任层的目标是为互信提供动态依据：
+• 链上证明（EAS）：将关键行为、评价、授权签发为可验证的attestation，公开可审计[12]。
+• 情境化信誉：借鉴AgentReputation 的警示[13]，按交易情境打标签而非给出全局总分，避
+免被策略性刷分。
+• 授权委托：用VC 表达“某智能体被某所有者授权执行某类交易”，明确责任边界。
+信任层使得“互信”不再是主观判断，而是基于可验证历史与情境化证据的可计算结论。
+7
+
+=== 第9页 ===
+基于区块链的智能体交互安全性研究
+4.4
+责任层（Layer 3）：担保、仲裁与追责
+责任层的目标是对“骗子智能体”形成威慑与制裁闭环：
+1. 入场押金（Staking）：智能体领取身份证或参与高风险交易前缴纳押金，作恶可被罚没
+（slashing）。
+2. 交易担保（Escrow + 保险）：交易资金先托管于智能合约（escrow），履约后释放；可选加
+入链上互助保险（Nexus Mutual 模式）以分担风险[17]。
+3. 争议仲裁（Kleros/UMA）：理赔与履约争议交由质押陪审团或乐观仲裁裁决[15, 16]。
+4. 制裁执行：裁决后执行押金罚没、吊销SBT 身份证、将其列入黑名单（吊销后无法再领取
+新证），阻断其逃避路径。
+取证链路为：身份层锚定主体→行为层以attestation 存证→溯源层经ERC-4337 账户回溯至
+所有者→裁决层仲裁→执行层制裁。这一链路为“数字执法”提供了证据基础。
+4.5
+信任维护的两种模式
+本文特别强调，架构的治理模式决定了其能否成立，而非技术本身。表1 对比了两种模式。
+表1: 信任维护的两种模式对比
+维度
+模式A：中心化信用裁判
+模式B：去中心化信任基础
+设施
+权威来源
+单一中心（服务商S）
+多方治理+ 可验证代码
+数据可见性
+集中于S，不可审计
+链上公开，可审计
+优点
+简单、快、可控
+可信、防作恶、可融资
+风险
+作恶/垄断/隐私/误判
+治理复杂、需激励设计
+适用
+短期MVP 验证
+面向市场与规模化
+5
+客观可行性与局限分析
+5.1
+可行性：为什么技术路线成立
+1. 需求真实：智能体成为交易对手方是已发生的趋势[18]，互信与追责是其落地的金融级刚需。
+2. 技术成熟：DID/VC [1, 2]、SBT [4, 5, 6]、ERC-4337 [7]、EAS [12]、Kleros [15]、UMA [16]、
+Nexus Mutual [17] 均为可用、可复用的成熟标准与项目，无需从零发明。
+3. 先发机会：目前“智能体身份证+ 担保”尚无统一标准，早期制定规则者存在先发优势。
+4. 经济自洽：担保（保险）+ 认证手续费+ 押金+ 代币治理可形成自洽商业模式。
+8
+
+=== 第10页 ===
+基于区块链的智能体交互安全性研究
+5.2
+局限：必须正视的结构性风险
+1. 中心化信用裁判的作恶与垄断（最关键）：在模式A 中，单一中心同时握有评分、吊销与取
+证权，形成事实上的“数字生杀大权”。缺乏对裁判本身的制衡，存在寻租、误判与滥用风
+险；这与区块链去中心化叙事的初衷相悖，也会成为海外投资人与监管最质疑之处。
+2. 隐私与数据安全：集中掌握全部交易证据构成巨大攻击面；需借助零知识证明与选择性披露
+缓解，但会牺牲部分便利。
+3. 女巫攻击：智能体可批量制造假身份；人格证明可缓解但本身亦有隐私争议，且“证明是真
+人”不等于“证明是好人”。
+4. 信誉操纵：统一信用分会被针对性优化[13]；需情境化、多维度证据。
+5. 代码追责vs 法律追责：链上罚没、吊销是“代码层”制裁，但真正的赔偿、拘留、诉诸法
+律仍需中心化执法机构配合。区块链能给证据，给不了执法本身。
+6. 责任主体不清：作恶的是人还是智能体？写代码者、部署者、持有者谁担责？目前无统一结
+论。
+7. 监管冲突（国内）：中国全面禁止加密资产交易与挖矿，链上身份证+ 代币激励在国内合规
+落地难度大[23]。
+5.3
+核心张力与本文主张
+本文认为，架构的最大张力不在技术，而在治理模式。若将“社会信用式”中心化裁判作为
+终极形态，则前文3.2 中的“公平性”与“激励兼容”难以同时满足。
+据此，本文主张：设计重心应从“中心化裁判”转向“去中心化信任基础设施的运营商与规
+则制定者”。服务商的核心价值并非“我背书谁可信”，而是“我搭建并运营一套可验证、可审
+计、有治理的信任框架”。信任由代码与多方治理共同维护；服务商的认证、担保与取证能力依
+然是护城河，但从“独裁者”转变为“可信守门人与保险承保人”。
+6
+经济激励与合规路径
+6.1
+代币经济设计
+在海外场景中，可设计一种治理与激励型代币，如图2 所示。
+代币（治理+ 激励）
+,→质押：智能体质押代币入场（作恶罚没）→押金
+,→保险池：保费收入回流池子，赔付出险
+,→认证费：领证/认证收取手续费
+,→仲裁激励：陪审团质押代币参与裁决获报酬
+,→治理：代币持有人决定何种行为构成违规
+图2: 代币经济结构
+9
+
+=== 第11页 ===
+基于区块链的智能体交互安全性研究
+需警惕ICO 的历史教训：发币不是商业模式。若代币被判定为证券却未注册，法律风险极
+高（SEC Howey 测试）[27]。价值应来自实际运营收入（保险、手续费），代币仅是激励层。
+6.2
+合规发币路径
+• 实用型代币（Utility Token）：用于支付平台服务，弱化证券属性。
+• STO / RWA：将担保或保险权益代币化，作为合规投资标的。
+• 稳定币结算：香港《稳定币条例》2025-08-01 生效，为agent 经济提供合规结算媒介[26]。
+6.3
+监管约束
+国内：社会信用体系并非统一数字信用分，官方规定“不得因分数低惩罚公民”，链上声誉
+与AI agent 尚无对接政策[20]；生成式AI 与深度合成采用备案+ 标识+ 实名制[21, 22]；2021
+年已全面禁止加密交易[23]。建议国内聚焦认证与担保服务，将公链与代币置于海外。
+海外：欧盟AI Act 按风险分级监管，要求高风险系统留痕与人工监督[24]；MiCA 规范代
+币发行披露与反洗钱[25]。本文所提“留痕+ 人工监督”取证设计可主动对齐AI Act，成为合
+规卖点。
+7
+分阶段落地建议
+• 阶段一（MVP，3–6 月）：选择具体场景（如两个AI 间的数据/服务交易），用SBT 发证
++ escrow 托管+ 简单保险池验证需求，不急于发币，以手续费验证收入模型。可先采用模
+式A，但为去中心化预留接口。
+• 阶段二（信任层，6–12 月）：引入EAS 链上证明、Kleros/UMA 仲裁、质押与罚没、人格
+证明，规则由社区/DAO 治理，从模式A 转向模式B。
+• 阶段三（代币经济，12–24 月）：以海外主体+ 合规路径发行实用型代币或STO，代币承载
+质押、保险池与治理；以稳定币作为结算媒介。
+• 阶段四（生态扩展）：支持多链、跨链信誉，与主流AI Agent 框架集成，输出“Agent 身份
+证+ 信誉”标准接口。
+8
+结论与展望
+本文针对智能体成为数字孪生交易主体后的互信与追责问题，提出了身份—信任—责任
+（ITA）三层信任架构。研究结论如下：
+1. 该问题真实且紧迫，是代理经济时代的金融级刚需。
+2. 技术路线可行，DID/VC/SBT/ERC-4337/EAS/仲裁/保险提供了完整可复用的技术栈。
+3. 最大的软肋是“中心化信用裁判”模式：既不可持续、不可融资、不可推广，也有作恶、垄
+断、隐私与公平性风险。
+10
+
+=== 第12页 ===
+基于区块链的智能体交互安全性研究
+4. 最优路线是成为“去中心化信任基础设施的运营商与规则制定者”，身份认证、担保保险与
+取证能力仍是核心护城河。
+5. 国内做认证与担保服务，海外用合规路径发行代币融资，是兼顾需求与合规的务实选择。
+未来研究方向包括：跨链可移植的智能体信誉凭证、面向智能体的原生DID 标准、隐私保
+护下的可审计取证（零知识+ 选择性披露）、以及“人vs 智能体”责任边界的治理实验。本文
+期望为后续研究提供一个兼顾技术、治理与合规的综合性起点。
+参考文献
+[1] W3C. Decentralized Identifiers (DIDs) v1.0. https://www.w3.org/TR/did-core/
+[2] W3C. Verifiable Credentials Data Model v2.0. https://www.w3.org/TR/vc-data-model-2.0/
+[3] Decentralized Identity Foundation. ION. https://github.com/decentralized-identity/ion
+[4] V. Buterin, E. G. Weyl, P. Ohlhaver. Decentralized Society: Finding Web3’s Soul. 2022.
+https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4105763
+[5] EIP-5192: Minimal Soulbound NFTs. https://eips.ethereum.org/EIPS/eip-5192
+[6] EIP-4973: Account-Bound Tokens (ABT). https://eips.ethereum.org/EIPS/eip-4973
+[7] EIP-4337: Account Abstraction Using Alt Mempool. https://eips.ethereum.org/EIPS/eip-
+4337
+[8] Ethereum Foundation. Account Abstraction. https://ethereum.org/en/roadmap/account-
+abstraction/
+[9] Worldcoin / World ID. https://en.wikipedia.org/wiki/Worldcoin
+[10] Proof of Humanity. https://www.proofofhumanity.id/
+[11] Gitcoin Passport. https://docs.passport.human.tech/
+[12] Ethereum Attestation Service (EAS). https://attest.org/
+[13] AgentReputation. arXiv:2605.00073. http://export.arxiv.org/api/query?id_list=2605.00073
+[14] C. Liu. A Dataset of Early Blockchain-Registered AI Agents on Ethereum. arXiv:2604.22652.
+http://export.arxiv.org/api/query?id_list=2604.22652
+[15] Kleros. https://kleros.io/
+[16] UMA Optimistic Oracle. https://uma.xyz/
+[17] Nexus Mutual. https://nexusmutual.io/
+11
+
+=== 第13页 ===
+基于区块链的智能体交互安全性研究
+[18] H.
+Gong.
+Agent-to-Agent
+Finance:
+Blockchain
+Payments
+and
+Trust
+Infrastructure
+for
+Autonomous
+AI
+Agents.
+arXiv:2607.00245.
+http://export.arxiv.org/api/query?id_list=2607.00245
+[19] Trust in Agent Networks. arXiv:2608.04626. http://export.arxiv.org/api/query?id_list=2608.04626
+[20] Wikipedia. Social Credit System. https://en.wikipedia.org/wiki/Social_Credit_System
+[21] 网信办.《互联网信息服务深度合成管理规定》.
+https://www.cac.gov.cn/2022-
+12/11/c_1672221949354811.htm
+[22] 网信办.《生成式人工智能服务管理暂行办法》.
+https://www.cac.gov.cn/2023-
+07/13/c_1690898327029107.htm
+[23] Wikipedia. Digital Renminbi. https://en.wikipedia.org/wiki/Digital_renminbi
+[24] European
+Commission.
+Regulatory
+framework
+on
+AI
+(AI
+Act).
+https://digital-
+strategy.ec.europa.eu/en/policies/regulatory-framework-ai
+[25] European
+Commission.
+Crypto-assets
+regulation
+(MiCA).
+https://finance.ec.europa.eu/digital-finance/crypto-assets_en
+[26] Hong Kong Monetary Authority. Stablecoin issuers. https://www.hkma.gov.hk/eng/key-
+functions/international-financial-centre/stablecoin-issuers/
+[27] SEC. Report of Investigation: The DAO (2017-131). https://www.sec.gov/newsroom/press-
+releases/2017-131
+12
