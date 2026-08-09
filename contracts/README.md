@@ -1,66 +1,47 @@
-## Foundry
+# AgentTrust 智能合约（Foundry）
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+AgentTrust 协议的四层 Solidity 合约实现，使用 Foundry 开发、测试与部署。
 
-Foundry consists of:
+## 合约清单
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+| 合约 | 职责 |
+|---|---|
+| `src/AgentRegistry.sol` | 智能体身份注册表（ERC-721 Agent ID + 责任主体 owner 绑定） |
+| `src/GuaranteeEscrow.sol` | 交易担保托管（escrow 质押 + 违约罚没） |
+| `src/SchellingVoting.sol` | 争议裁决（Schelling 点社区质押投票） |
+| `src/ReputationHub.sol` | 信誉中心（链上 attestation，仅 Escrow/Voting 可写，禁止自评） |
 
-## Documentation
+## 测试
 
-https://book.getfoundry.sh/
+```bash
+# 38 个测试全通过（含 E2E 全链路）
+NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 
-## Usage
-
-### Build
-
-```shell
-$ forge build
+# 仅 E2E 全链路
+NO_PROXY="127.0.0.1,localhost,::1" forge test --match-contract E2ETest -vvv
 ```
 
-### Test
+> **Windows 注意**：本机代理会导致 cast/forge 请求 502，必须带 `NO_PROXY="127.0.0.1,localhost,::1"`。
 
-```shell
-$ forge test
+## 部署
+
+```bash
+# 本地 anvil 演示链（配合全链路演示）
+NO_PROXY="127.0.0.1,localhost,::1" anvil --chain-id 31337 --port 8545
+
+# 部署（需同时导出 PRIVATE_KEY，Deploy.s.sol 内部用 vm.envUint 读取）
+export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+NO_PROXY="127.0.0.1,localhost,::1" \
+  forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key "$PRIVATE_KEY"
 ```
 
-### Format
+部署脚本自动完成：Registry → Hub → Escrow → Voting 顺序部署、Hub 授权 Escrow/Voting 写入、Escrow 所有权移交 Voting（社区裁决可驱动 escrow）。
 
-```shell
-$ forge fmt
-```
+## 演示
 
-### Gas Snapshots
+全链路演示手册见 [`demo/DEMO.md`](./demo/DEMO.md)（注册 → 担保交易 → 交付 → 争议 → 社区投票 → 罚没 → 信誉更新）。
 
-```shell
-$ forge snapshot
-```
+## 更多
 
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+- 项目总览见根目录 [`README.md`](../README.md)
+- 设计规格见 [`docs/superpowers/specs/2026-08-08-agenttrust-design.md`](../docs/superpowers/specs/2026-08-08-agenttrust-design.md)
