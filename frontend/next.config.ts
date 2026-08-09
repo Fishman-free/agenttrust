@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
+// 静态导出：next build 生成 out/（GitHub Pages 等任意静态托管可部署）。
+// basePath：GitHub Pages 常见子路径部署（https://<user>.github.io/<repo>/），
+// 不设置会导致 /_next 静态资源 404。通过 NEXT_PUBLIC_BASE_PATH 注入（如 /multiagent），
+// 本地开发默认不设（空），不影响 http://localhost:3000。
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH;
+
 const nextConfig: NextConfig = {
-  /* config options here */
+  output: "export",
+  ...(basePath ? { basePath } : {}),
 };
 
 export default nextConfig;
