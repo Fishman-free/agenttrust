@@ -5,3 +5,7 @@ cache/
 *.log
 .DS_Store
 .claude/
+
+# 论文素材与工具目录
+基于区块链的智能体交互安全性研究_学术论文(1).pdf
+.spec-workflow/

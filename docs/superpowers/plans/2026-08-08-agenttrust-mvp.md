@@ -559,14 +559,14 @@ contract GuaranteeEscrowTest is Test {
         escrow.deliver(tradeId);
         assertEq(uint8(escrow.trades(tradeId).state), uint8(GuaranteeEscrow.State.DELIVERED));
 
-        // 买家确认 → 释放：卖家得 AMOUNT，担保人拿回本金+保费
+        // 买家确认 → 释放：卖家得 AMOUNT - 保费（保费由卖家承担），担保人拿回本金+保费
         uint256 sellerBefore = seller.balance;
         uint256 guarantorBefore = guarantor.balance;
         vm.prank(buyer);
         escrow.confirm(tradeId);
 
         assertEq(uint8(escrow.trades(tradeId).state), uint8(GuaranteeEscrow.State.RELEASED));
-        assertEq(seller.balance - sellerBefore, AMOUNT, "卖家应收到交易金额");
+        assertEq(seller.balance - sellerBefore, AMOUNT - 0.05 ether, "卖家应收到交易金额（扣保费）");
         assertEq(guarantor.balance - guarantorBefore, 1.05 ether, "担保人应拿回本金+保费");
     }
 
@@ -590,9 +590,9 @@ contract GuaranteeEscrowTest is Test {
 
         assertEq(escrow.trades(tradeId).state, GuaranteeEscrow.State.RESOLVED);
         assertEq(buyer.balance - buyerBefore, AMOUNT + AMOUNT, "买家拿回本金+全额罚没担保金");
-        // 信誉记录：卖家违约
-        (,, uint256 defaulted,) = hub.reputation(sellerAgentId);
-        assertEq(defaulted, 1);
+        // 信誉记录：卖家争议败诉（第四位 disputesLost）
+        (,,, uint256 lost) = hub.reputation(sellerAgentId);
+        assertEq(lost, 1);
     }
 
     function test_sellerTimeout_autoRelease() public {
@@ -609,7 +609,7 @@ contract GuaranteeEscrowTest is Test {
         escrow.timeoutAutoRelease(tradeId);
 
         assertEq(escrow.trades(tradeId).state, GuaranteeEscrow.State.RELEASED);
-        assertEq(seller.balance, AMOUNT);
+        assertEq(seller.balance, AMOUNT - 0.05 ether, "卖家得全额扣保费");
     }
 
     function test_fundDeadline_refund() public {
@@ -667,7 +667,7 @@ contract GuaranteeEscrowTest is Test {
         vm.prank(buyer);
         escrow.fund{value: AMOUNT}(tradeId);
         vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT + 0.05 ether}(tradeId, COVERAGE, 0.05 ether);
+        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
         vm.prank(seller);
         escrow.deliver(tradeId);
         vm.prank(buyer);
@@ -681,6 +681,29 @@ contract GuaranteeEscrowTest is Test {
 
         assertEq(buyer.balance - buyerBefore, (AMOUNT * 70) / 100 + AMOUNT, "70% 退款 + 全额罚没");
         assertEq(seller.balance - sellerBefore, (AMOUNT * 30) / 100, "卖家得 30%");
+    }
+
+    function test_sellerWinsVerdict() public {
+        vm.prank(buyer);
+        escrow.fund{value: AMOUNT}(tradeId);
+        vm.prank(guarantor);
+        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        vm.prank(seller);
+        escrow.dispute(tradeId);
+
+        // 卖家胜诉：卖家得 AMOUNT - 保费，担保人拿回本金+保费，信誉 WON
+        uint256 sellerBefore = seller.balance;
+        uint256 guarantorBefore = guarantor.balance;
+        vm.prank(escrow.owner());
+        escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.SELLER_WINS, 0);
+
+        assertEq(escrow.trades(tradeId).state, GuaranteeEscrow.State.RESOLVED);
+        assertEq(seller.balance - sellerBefore, AMOUNT - 0.05 ether, "卖家得全额扣保费");
+        assertEq(guarantor.balance - guarantorBefore, 1.05 ether, "担保人拿回本金+保费");
+        (,, uint256 won,) = hub.reputation(sellerAgentId); // 第三位 disputesWon
+        assertEq(won, 1, "卖家胜诉应记录 WON");
     }
 }
 ```
@@ -740,6 +763,8 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     event TradeGuaranteed(uint256 indexed tradeId, address guarantor, uint256 coverage, uint256 premium);
     event TradeDelivered(uint256 indexed tradeId);
     event TradeConfirmed(uint256 indexed tradeId);
+    event TradeAutoReleased(uint256 indexed tradeId);
+    event TradeRefunded(uint256 indexed tradeId);
     event TradeDisputed(uint256 indexed tradeId);
     event TradeResolved(uint256 indexed tradeId, Verdict verdict, uint256 buyerShareBps);
 
@@ -748,20 +773,23 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         hub = ReputationHub(hub_);
     }
 
-    /// 创建交易（买方发起）
+    /// 创建交易（买方发起；买卖 agent 必须已注册——ownerOf 不存在即 revert，防止资金锁死）
     function createTrade(uint256 buyerAgentId, uint256 sellerAgentId, uint256 amount)
         external returns (uint256 tradeId)
     {
         require(amount > 0, "GuaranteeEscrow: 金额必须大于零");
+        require(registry.ownerOf(buyerAgentId) != address(0) && registry.ownerOf(sellerAgentId) != address(0),
+            "GuaranteeEscrow: 智能体未注册");
         tradeId = nextTradeId++;
         trades[tradeId] = Trade(tradeId, buyerAgentId, sellerAgentId, amount, address(0), 0, 0, State.CREATED, block.timestamp, 0, 0, 0);
         emit TradeCreated(tradeId, buyerAgentId, sellerAgentId, amount);
     }
 
-    /// 买家付款进 escrow
+    /// 买家付款进 escrow（仅买家负责人；第三方垫付会使退款归 buyer owner，故禁止）
     function fund(uint256 tradeId) external payable nonReentrant {
         Trade storage t = trades[tradeId];
         require(t.state == State.CREATED, "GuaranteeEscrow: 状态错误");
+        require(registry.ownerOf(t.buyerAgentId) == msg.sender, "GuaranteeEscrow: 仅买家负责人可付款");
         require(msg.value == t.amount, "GuaranteeEscrow: 付款金额与交易金额不符");
         require(block.timestamp <= t.createdAt + FUND_WINDOW, "GuaranteeEscrow: 付款超时");
         t.state = State.FUNDED;
@@ -769,14 +797,14 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         emit TradeFunded(tradeId, msg.sender);
     }
 
-    /// 担保人质押：覆盖率×金额 + 报价保费
+    /// 担保人质押：只收覆盖率×金额本金；保费为报价记录，交易释放时由卖家承担支付
     function guarantee(uint256 tradeId, uint256 coverage, uint256 premium) external payable nonReentrant {
         Trade storage t = trades[tradeId];
         require(t.state == State.FUNDED, "GuaranteeEscrow: 状态错误");
         require(coverage > 0 && coverage <= 2e18, "GuaranteeEscrow: 覆盖率需在 0-200%");
         require(block.timestamp <= t.fundedAt + GUARANTEE_WINDOW, "GuaranteeEscrow: 担保超时");
         uint256 requiredStake = (t.amount * coverage) / 1e18;
-        require(msg.value == requiredStake + premium, "GuaranteeEscrow: 担保质押金额不符");
+        require(msg.value == requiredStake, "GuaranteeEscrow: 担保质押金额不符");
 
         t.guarantor = msg.sender;
         t.coverage = coverage;
@@ -804,7 +832,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         require(registry.ownerOf(t.buyerAgentId) == msg.sender, "GuaranteeEscrow: 仅买家负责人可确认");
         require(block.timestamp <= t.deliveredAt + CONFIRM_WINDOW, "GuaranteeEscrow: 确认超时，请走超时释放");
 
-        _release(t, Verdict.BUYER_WINS, 0); // verdict 仅作事件标记
+        _release(t);
         hub.recordOutcome(t.sellerAgentId, ReputationHub.Outcome.COMPLETED);
         emit TradeConfirmed(tradeId);
     }
@@ -828,16 +856,18 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
 
         if (verdict == Verdict.BUYER_WINS) {
             _resolveBuyerWins(t, 10000);
+            hub.recordOutcome(t.sellerAgentId, ReputationHub.Outcome.LOST); // 从卖家视角：败诉
         } else if (verdict == Verdict.PARTIAL_BUYER) {
             require(buyerShareBps <= 10000, "GuaranteeEscrow: 比例非法");
             _resolveBuyerWins(t, buyerShareBps);
+            hub.recordOutcome(t.sellerAgentId, ReputationHub.Outcome.LOST);
         } else {
-            // 卖家胜诉：全额放给卖家，担保人拿回本金+保费
+            // 卖家胜诉：卖家得 amount - premium，担保人拿回本金+保费
             uint256 stake = (t.amount * t.coverage) / 1e18;
             _pay(t.guarantor, stake + t.premium);
-            _pay(registry.ownerOf(t.sellerAgentId), t.amount);
+            _pay(registry.ownerOf(t.sellerAgentId), t.amount - t.premium);
             t.state = State.RESOLVED;
-            hub.recordOutcome(t.sellerAgentId, ReputationHub.Outcome.SELLER_WON_DISPUTE);
+            hub.recordOutcome(t.sellerAgentId, ReputationHub.Outcome.WON);
         }
         emit TradeResolved(tradeId, verdict, buyerShareBps);
     }
@@ -847,8 +877,9 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         Trade storage t = trades[tradeId];
         require(t.state == State.DELIVERED, "GuaranteeEscrow: 状态错误");
         require(block.timestamp > t.deliveredAt + CONFIRM_WINDOW, "GuaranteeEscrow: 未到超时时间");
-        _release(t, Verdict.BUYER_WINS, 0);
+        _release(t);
         hub.recordOutcome(t.sellerAgentId, ReputationHub.Outcome.COMPLETED);
+        emit TradeAutoReleased(tradeId);
     }
 
     /// 退款路径（任一超时/卖家未交付/担保未达成）→ 买家收回金额，违约时罚没担保金
@@ -860,33 +891,34 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
             require(block.timestamp > t.fundedAt + GUARANTEE_WINDOW, "GuaranteeEscrow: 未到担保截止");
             _pay(registry.ownerOf(t.buyerAgentId), t.amount);
             t.state = State.RESOLVED;
+            emit TradeRefunded(tradeId);
         } else {
             require(block.timestamp > t.guaranteedAt + DELIVER_WINDOW, "GuaranteeEscrow: 未到交付截止");
             _resolveBuyerWins(t, 10000); // 卖家违约：退款+罚没
-            hub.recordOutcome(t.sellerAgentId, ReputationHub.Outcome.SELLER_DEFAULTED);
+            hub.recordOutcome(t.sellerAgentId, ReputationHub.Outcome.DEFAULTED);
         }
     }
 
     // ---------- 内部 ----------
 
-    /// 买家胜诉结算：买家拿回本金 + 担保金罚没补偿；担保人失去质押、拿回保费
+    /// 买家胜诉结算：买家拿回本金 + 担保金罚没补偿；担保人质押全失（判断失误的代价），无保费补偿
     function _resolveBuyerWins(Trade storage t, uint256 buyerShareBps) private {
         uint256 stake = (t.amount * t.coverage) / 1e18;
         uint256 buyerRefund = (t.amount * buyerShareBps) / 10000;
         uint256 sellerShare = t.amount - buyerRefund;
         _pay(registry.ownerOf(t.buyerAgentId), buyerRefund + stake);
         if (sellerShare > 0) _pay(registry.ownerOf(t.sellerAgentId), sellerShare);
-        _pay(t.guarantor, t.premium); // 担保人只拿回保费（服务费），本金罚没
         t.state = State.RESOLVED;
+        emit TradeRefunded(t.id);
     }
 
-    /// 正常释放：卖家收款 + 担保人拿回本金和保费
-    function _release(Trade storage t, Verdict verdict, uint256 buyerShareBps) private {
+    /// 正常释放：卖家得 amount - premium（保费由卖家承担），担保人拿回本金+保费
+    /// 事件由调用方发（confirm → TradeConfirmed；timeoutAutoRelease → TradeAutoReleased），此处不发
+    function _release(Trade storage t) private {
         uint256 stake = (t.amount * t.coverage) / 1e18;
-        _pay(registry.ownerOf(t.sellerAgentId), t.amount);
+        _pay(registry.ownerOf(t.sellerAgentId), t.amount - t.premium);
         _pay(t.guarantor, stake + t.premium);
         t.state = State.RELEASED;
-        emit TradeResolved(t.id, verdict, buyerShareBps);
     }
 
     function _pay(address to, uint256 amount) private {
@@ -959,9 +991,8 @@ contract SchellingVotingTest is Test {
         registry = new AgentRegistry();
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
-        voting = new SchellingVoting(address(escrow), address(hub));
+        voting = new SchellingVoting(address(escrow)); // T6 修复后签名：仅 escrow
         hub.setAuthorizedCaller(address(escrow), true);
-        hub.setAuthorizedCaller(address(voting), true);
         escrow.transferOwnership(address(voting)); // 论文版：Voting 代平台行使裁决权
 
         vm.prank(buyer);
@@ -1279,12 +1310,9 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     function _applyVerdict(Case storage c, GuaranteeEscrow.Verdict verdict, uint256 share) private {
         // 论文版语义：Voting 拥有 escrow（部署脚本 transferOwnership），可驱动裁决；
         // 若未授权则 revert（部署脚本已保证授权，见 Task 13）
+        // 注意：不再在此处调用 hub.recordOutcome——T5 的 escrow.resolveDispute 已记录
+        // seller 的 WON/LOST（避免双计数），Voting 侧只驱动裁决
         escrow.resolveDispute(c.tradeId, verdict, share);
-        if (verdict == GuaranteeEscrow.Verdict.BUYER_WINS) {
-            hub.recordOutcome(c.sellerAgentId, ReputationHub.Outcome.BUYER_WON_DISPUTE);
-        } else {
-            hub.recordOutcome(c.sellerAgentId, ReputationHub.Outcome.SELLER_WON_DISPUTE);
-        }
     }
 
     function _pay(address to, uint256 amount) private {
@@ -1350,9 +1378,8 @@ contract E2ETest is Test {
         registry = new AgentRegistry();
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
-        voting = new SchellingVoting(address(escrow), address(hub));
+        voting = new SchellingVoting(address(escrow)); // T6 修复后签名：仅 escrow
         hub.setAuthorizedCaller(address(escrow), true);
-        hub.setAuthorizedCaller(address(voting), true);
         escrow.transferOwnership(address(voting));
     }
 
@@ -1403,13 +1430,15 @@ contract E2ETest is Test {
         assertEq(guarantor.balance, 0.1 ether);
         assertEq(escrow.trades(tradeId).state, GuaranteeEscrow.State.RESOLVED);
 
-        // 9. 信誉更新：卖家无超时违约（走争议路径），争议败诉 1 次 → 信誉分下降
+        // 9. 信誉更新：卖家无超时违约（走争议路径），争议败诉 1 次
+        // 注：reputationScore 公式下 1 次败诉（total=1）= 100 - 50 = 50，与新智能体默认值持平；
+        //     多次败诉或违约才会低于 50（ReputationHub 公式语义，T7 已核实）
         (uint256 completed, uint256 defaulted, uint256 won, uint256 lost) = hub.reputation(sellerId);
         assertEq(defaulted, 0);
         assertEq(lost, 1, "卖家争议败诉应 +1");
         assertEq(won, 0);
         uint256 score = hub.reputationScore(sellerId);
-        assertLt(score, 50, "败诉卖家信誉分应低于新智能体默认 50");
+        assertEq(score, 50, "1 次败诉信誉分 = 50（公式 100 - 50·lost/total）");
 
         // 10. 正常交易仍记录完成（对照组：另一笔无争议交易）
         vm.prank(bob);
@@ -1458,17 +1487,23 @@ cd "C:/Users/21560/Desktop/blockchain" && git add contracts/test/E2E.t.sol && gi
 cd contracts && forge build
 cd "C:/Users/21560/Desktop/blockchain" && node -e "
 const fs = require('fs');
-const names = ['AgentRegistry','ReputationHub','GuaranteeEscrow','SchellingVoting'];
-let out = '// 自动生成：contracts/out/*.sol/*.json —— 合约变更后重新生成\n';
-for (const n of names) {
-  const art = JSON.parse(fs.readFileSync('contracts/out/'+n+'.sol/'+n+'.json','utf8'));
-  out += 'export const '+n.toLowerCase()+'Abi = '+JSON.stringify(art.abi, null, 2)+' as const;\n\n';
+// camelCase 导出名（与前端页面 import 契约一致：agentRegistryAbi 等）
+const names = [
+  ['AgentRegistry', 'agentRegistry'],
+  ['ReputationHub', 'reputationHub'],
+  ['GuaranteeEscrow', 'guaranteeEscrow'],
+  ['SchellingVoting', 'schellingVoting'],
+];
+let out = '// 自动生成：contracts/out/*.sol/*.json —— 合约变更后重新生成：\n//   cd contracts && forge build && cd .. && node scripts/gen-abi.mjs\n';
+for (const [sol, camel] of names) {
+  const art = JSON.parse(fs.readFileSync('contracts/out/'+sol+'.sol/'+sol+'.json','utf8'));
+  out += 'export const '+camel+'Abi = '+JSON.stringify(art.abi, null, 2)+' as const;\n\n';
 }
 fs.writeFileSync('frontend/lib/abi.ts', out);
 "
 ```
 
-Expected: `frontend/lib/abi.ts` 生成，含四个合约 ABI。
+Expected: `frontend/lib/abi.ts` 生成，导出 `agentRegistryAbi`/`reputationHubAbi`/`guaranteeEscrowAbi`/`schellingVotingAbi`（camelCase，与 T9-T12 import 契约一致）。
 
 - [ ] **Step 2: wagmi 客户端**
 
@@ -1713,12 +1748,16 @@ export default function TradePage() {
     });
   }
   function guarantee() {
+    // T5 语义：担保人只质押本金（覆盖率×金额），保费仅报价记录、由卖家承担
+    // 注意单位：合约 coverage 用 1e18=100%（≤2e18），前端输入是百分比数字（如 100）
+    const covNum = Number(coverage) / 100;             // 100 → 1（1e18）
+    const stake = (Number(amount) * covNum);           // 质押额 = 金额 × 覆盖率
     writeContract({
       address: CONTRACT_ADDRESSES.guaranteeEscrow,
       abi: guaranteeEscrowAbi,
       functionName: "guarantee",
-      args: [BigInt(tradeId), parseEther(coverage), parseEther(premium)],
-      value: parseEther((Number(amount) * Number(coverage) / 100 + Number(premium)).toFixed(6)),
+      args: [BigInt(tradeId), parseEther(String(covNum)), parseEther(premium)],
+      value: parseEther(stake.toFixed(6)),
     });
   }
   function deliver() {
@@ -2026,7 +2065,7 @@ contract Deploy is Script {
         AgentRegistry registry = new AgentRegistry();
         ReputationHub hub = new ReputationHub();
         GuaranteeEscrow escrow = new GuaranteeEscrow(address(registry), address(hub));
-        SchellingVoting voting = new SchellingVoting(address(escrow), address(hub));
+        SchellingVoting voting = new SchellingVoting(address(escrow)); // T6 修复后签名：仅 escrow
 
         hub.setAuthorizedCaller(address(escrow), true);
         hub.setAuthorizedCaller(address(voting), true);
