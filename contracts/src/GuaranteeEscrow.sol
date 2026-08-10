@@ -8,8 +8,23 @@ import {AgentRegistry} from "./AgentRegistry.sol";
 import {ReputationHub} from "./ReputationHub.sol";
 
 contract GuaranteeEscrow is Ownable, ReentrancyGuard {
-    enum State { CREATED, ACCEPTED, FUNDED, GUARANTEE_OFFERED, GUARANTEED, DELIVERED, DISPUTED, RELEASED, RESOLVED, VOIDED }
-    enum Verdict { BUYER_WINS, SELLER_WINS, PARTIAL_BUYER }
+    enum State {
+        CREATED,
+        ACCEPTED,
+        FUNDED,
+        GUARANTEE_OFFERED,
+        GUARANTEED,
+        DELIVERED,
+        DISPUTED,
+        RELEASED,
+        RESOLVED,
+        VOIDED
+    }
+    enum Verdict {
+        BUYER_WINS,
+        SELLER_WINS,
+        PARTIAL_BUYER
+    }
 
     struct Trade {
         bool exists;
@@ -48,13 +63,16 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     AgentRegistry public immutable registry;
     ReputationHub public immutable hub;
     uint256 public nextTradeId;
+    uint256 public totalLiability;
     mapping(uint256 => Trade) private _trades;
     mapping(address => uint256) public pendingWithdrawals;
 
     event TradeCreated(uint256 indexed tradeId, uint256 buyerAgentId, uint256 sellerAgentId, uint256 amount);
     event TradeAccepted(uint256 indexed tradeId, address indexed sellerSubject);
     event TradeFunded(uint256 indexed tradeId, address funder);
-    event GuaranteeOffered(uint256 indexed tradeId, uint256 guarantorAgentId, address guarantor, uint256 coverage, uint256 premium);
+    event GuaranteeOffered(
+        uint256 indexed tradeId, uint256 guarantorAgentId, address guarantor, uint256 coverage, uint256 premium
+    );
     event GuaranteeAccepted(uint256 indexed tradeId, address indexed sellerSubject);
     event TradeDelivered(uint256 indexed tradeId);
     event TradeDisputed(uint256 indexed tradeId);
@@ -75,7 +93,10 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         _;
     }
 
-    function createTrade(uint256 buyerAgentId, uint256 sellerAgentId, uint256 amount) external returns (uint256 tradeId) {
+    function createTrade(uint256 buyerAgentId, uint256 sellerAgentId, uint256 amount)
+        external
+        returns (uint256 tradeId)
+    {
         require(amount != 0, unicode"GuaranteeEscrow: 金额必须大于零");
         address buyerSubject = registry.responsibleParty(buyerAgentId);
         address sellerSubject = registry.responsibleParty(sellerAgentId);
@@ -121,6 +142,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         require(block.timestamp <= t.acceptedAt + FUND_WINDOW, unicode"GuaranteeEscrow: 付款超时");
         t.state = State.FUNDED;
         t.fundedAt = block.timestamp;
+        totalLiability += msg.value;
         emit TradeFunded(tradeId, msg.sender);
     }
 
@@ -137,14 +159,20 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     }
 
     function guarantee(uint256 tradeId, uint256 guarantorAgentId, uint256 coverage, uint256 premium)
-        external payable nonReentrant existingTrade(tradeId)
+        external
+        payable
+        nonReentrant
+        existingTrade(tradeId)
     {
         Trade storage t = _trades[tradeId];
         require(t.state == State.FUNDED, unicode"GuaranteeEscrow: 状态错误");
         require(block.timestamp <= t.fundedAt + GUARANTEE_WINDOW, unicode"GuaranteeEscrow: 担保超时");
         address subject = registry.responsibleParty(guarantorAgentId);
         require(msg.sender == subject, unicode"GuaranteeEscrow: 仅担保主体可质押");
-        require(subject != t.buyerSubject && subject != t.sellerSubject, unicode"GuaranteeEscrow: 交易主体不得自担保");
+        require(
+            subject != t.buyerSubject && subject != t.sellerSubject,
+            unicode"GuaranteeEscrow: 交易主体不得自担保"
+        );
         require(coverage >= minimumCoverage(t.sellerAgentId), unicode"GuaranteeEscrow: 覆盖率低于信誉要求");
         require(coverage <= MAX_COVERAGE, unicode"GuaranteeEscrow: 覆盖率非法");
         require(premium <= Math.mulDiv(t.amount, MAX_PREMIUM_BPS, 10000), unicode"GuaranteeEscrow: 保费过高");
@@ -157,6 +185,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         t.premium = premium;
         t.state = State.GUARANTEE_OFFERED;
         t.guaranteeOfferedAt = block.timestamp;
+        totalLiability += msg.value;
         emit GuaranteeOffered(tradeId, guarantorAgentId, subject, coverage, premium);
     }
 
@@ -164,7 +193,10 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         Trade storage t = _trades[tradeId];
         require(t.state == State.GUARANTEE_OFFERED, unicode"GuaranteeEscrow: 状态错误");
         require(msg.sender == t.sellerSubject, unicode"GuaranteeEscrow: 仅卖方主体可接受担保");
-        require(block.timestamp <= t.guaranteeOfferedAt + GUARANTEE_ACCEPT_WINDOW, unicode"GuaranteeEscrow: 担保接受超时");
+        require(
+            block.timestamp <= t.guaranteeOfferedAt + GUARANTEE_ACCEPT_WINDOW,
+            unicode"GuaranteeEscrow: 担保接受超时"
+        );
         t.state = State.GUARANTEED;
         t.guaranteedAt = block.timestamp;
         emit GuaranteeAccepted(tradeId, msg.sender);
@@ -192,7 +224,10 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     function dispute(uint256 tradeId) external existingTrade(tradeId) {
         Trade storage t = _trades[tradeId];
         require(t.state == State.DELIVERED, unicode"GuaranteeEscrow: 状态错误");
-        require(msg.sender == t.buyerSubject || msg.sender == t.sellerSubject, unicode"GuaranteeEscrow: 仅交易主体可争议");
+        require(
+            msg.sender == t.buyerSubject || msg.sender == t.sellerSubject,
+            unicode"GuaranteeEscrow: 仅交易主体可争议"
+        );
         require(block.timestamp <= t.deliveredAt + CONFIRM_WINDOW, unicode"GuaranteeEscrow: 争议超时");
         t.state = State.DISPUTED;
         t.disputedAt = block.timestamp;
@@ -208,7 +243,10 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     }
 
     function resolveDispute(uint256 tradeId, Verdict verdict, uint256 buyerShareBps)
-        external onlyOwner nonReentrant existingTrade(tradeId)
+        external
+        onlyOwner
+        nonReentrant
+        existingTrade(tradeId)
     {
         Trade storage t = _trades[tradeId];
         require(t.state == State.DISPUTED && t.caseOpened, unicode"GuaranteeEscrow: 仅活动案件可裁决");
@@ -262,7 +300,9 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     function timeoutRejectGuarantee(uint256 tradeId) external nonReentrant existingTrade(tradeId) {
         Trade storage t = _trades[tradeId];
         require(t.state == State.GUARANTEE_OFFERED, unicode"GuaranteeEscrow: 状态错误");
-        require(block.timestamp > t.guaranteeOfferedAt + GUARANTEE_ACCEPT_WINDOW, unicode"GuaranteeEscrow: 未到超时");
+        require(
+            block.timestamp > t.guaranteeOfferedAt + GUARANTEE_ACCEPT_WINDOW, unicode"GuaranteeEscrow: 未到超时"
+        );
         _voidFundedTrade(t);
     }
 
@@ -295,6 +335,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         uint256 amount = pendingWithdrawals[msg.sender];
         require(amount != 0, unicode"GuaranteeEscrow: 无可提取余额");
         pendingWithdrawals[msg.sender] = 0;
+        totalLiability -= amount;
         (bool ok,) = recipient.call{value: amount}("");
         require(ok, unicode"GuaranteeEscrow: 提取失败");
         emit Withdrawal(msg.sender, recipient, amount);

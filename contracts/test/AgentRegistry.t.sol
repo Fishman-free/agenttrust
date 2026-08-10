@@ -6,7 +6,9 @@ import {AgentRegistry} from "../src/AgentRegistry.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 contract RejectEther is IERC721Receiver {
-    receive() external payable { revert("no ether"); }
+    receive() external payable {
+        revert("no ether");
+    }
 
     function register(AgentRegistry registry) external payable returns (uint256) {
         return registry.registerAgent{value: msg.value}("ContractAgent", "desc", "endpoint");

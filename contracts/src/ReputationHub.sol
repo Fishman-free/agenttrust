@@ -4,7 +4,12 @@ pragma solidity ^0.8.24;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract ReputationHub is Ownable {
-    enum Outcome { COMPLETED, DEFAULTED, WON, LOST }
+    enum Outcome {
+        COMPLETED,
+        DEFAULTED,
+        WON,
+        LOST
+    }
 
     struct AgentReputation {
         uint256 tradesCompleted;
