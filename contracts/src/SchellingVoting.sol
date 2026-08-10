@@ -11,7 +11,11 @@ import {AgentRegistry} from "./AgentRegistry.sol";
 /// one address/subject per case. Registration fees only raise Sybil cost; they do not prove
 /// real-world uniqueness, and linked addresses cannot be detected on chain.
 contract SchellingVoting is Ownable, ReentrancyGuard {
-    enum Side { BUYER, SELLER, ABSTAIN }
+    enum Side {
+        BUYER,
+        SELLER,
+        ABSTAIN
+    }
     uint256 public constant MIN_VOTERS = 3;
     uint256 public constant MAX_PHASE_WINDOW = 7 days;
 
@@ -39,11 +43,19 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     GuaranteeEscrow public immutable escrow;
     AgentRegistry public immutable registry;
     uint256 public nextCaseId;
+    uint256 public totalLiability;
     mapping(uint256 => Case) private _cases;
     mapping(uint256 => bool) public tradeHasCase;
     mapping(address => uint256) public pendingWithdrawals;
 
-    event CaseOpened(uint256 indexed caseId, uint256 indexed tradeId, uint256 stake, uint256 commitDeadline, uint256 revealDeadline, uint256 eligibilityAgentCount);
+    event CaseOpened(
+        uint256 indexed caseId,
+        uint256 indexed tradeId,
+        uint256 stake,
+        uint256 commitDeadline,
+        uint256 revealDeadline,
+        uint256 eligibilityAgentCount
+    );
     event VoteCommitted(uint256 indexed caseId, address indexed subject, bytes32 commitment);
     event VoteRevealed(uint256 indexed caseId, address indexed subject, Side side);
     event CaseSettled(uint256 indexed caseId, Side winner, uint256 validVotes, bool effective);
@@ -62,11 +74,16 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     }
 
     function openCase(uint256 tradeId, uint256 stake, uint256 commitSeconds, uint256 revealSeconds)
-        external onlyOwner returns (uint256 caseId)
+        external
+        onlyOwner
+        returns (uint256 caseId)
     {
         require(stake != 0, unicode"SchellingVoting: 质押必须大于零");
         require(commitSeconds != 0 && revealSeconds != 0, unicode"SchellingVoting: 窗口必须大于零");
-        require(commitSeconds <= MAX_PHASE_WINDOW && revealSeconds <= MAX_PHASE_WINDOW, unicode"SchellingVoting: 窗口过长");
+        require(
+            commitSeconds <= MAX_PHASE_WINDOW && revealSeconds <= MAX_PHASE_WINDOW,
+            unicode"SchellingVoting: 窗口过长"
+        );
         require(!tradeHasCase[tradeId], unicode"SchellingVoting: 该交易已有案件");
         escrow.openArbitration(tradeId);
         tradeHasCase[tradeId] = true;
@@ -93,24 +110,37 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     function commitVote(uint256 caseId, bytes32 commitment) external payable nonReentrant existingCase(caseId) {
         Case storage c = _cases[caseId];
         require(!c.settled && block.timestamp < c.commitDeadline, unicode"SchellingVoting: 提交窗口已结束");
-        require(registry.isRegisteredSubjectAtCount(msg.sender, c.eligibilityAgentCount), unicode"SchellingVoting: 不在资格快照中");
+        require(
+            registry.isRegisteredSubjectAtCount(msg.sender, c.eligibilityAgentCount),
+            unicode"SchellingVoting: 不在资格快照中"
+        );
         (address buyer, address seller, address guarantor) = escrow.tradeActors(c.tradeId);
-        require(msg.sender != buyer && msg.sender != seller && msg.sender != guarantor, unicode"SchellingVoting: 交易主体无投票资格");
+        require(
+            msg.sender != buyer && msg.sender != seller && msg.sender != guarantor,
+            unicode"SchellingVoting: 交易主体无投票资格"
+        );
         require(!c.hasCommitted[msg.sender], unicode"SchellingVoting: 主体已提交");
         require(commitment != bytes32(0), unicode"SchellingVoting: 空承诺");
         require(msg.value == c.stake, unicode"SchellingVoting: 质押金额不符");
         c.hasCommitted[msg.sender] = true;
         c.commitment[msg.sender] = commitment;
         c.committedCount++;
+        totalLiability += msg.value;
         emit VoteCommitted(caseId, msg.sender, commitment);
     }
 
     function revealVote(uint256 caseId, Side side, bytes32 salt) external existingCase(caseId) {
         Case storage c = _cases[caseId];
-        require(!c.settled && block.timestamp >= c.commitDeadline && block.timestamp < c.revealDeadline, unicode"SchellingVoting: 不在揭示窗口");
+        require(
+            !c.settled && block.timestamp >= c.commitDeadline && block.timestamp < c.revealDeadline,
+            unicode"SchellingVoting: 不在揭示窗口"
+        );
         require(c.hasCommitted[msg.sender], unicode"SchellingVoting: 未提交");
         require(!c.revealed[msg.sender], unicode"SchellingVoting: 已揭示");
-        require(c.commitment[msg.sender] == voteCommitment(caseId, msg.sender, side, salt), unicode"SchellingVoting: 承诺不匹配");
+        require(
+            c.commitment[msg.sender] == voteCommitment(caseId, msg.sender, side, salt),
+            unicode"SchellingVoting: 承诺不匹配"
+        );
         c.revealed[msg.sender] = true;
         c.side[msg.sender] = side;
         if (side == Side.BUYER) c.votesForBuyer++;
@@ -130,6 +160,9 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         if (validVotes >= MIN_VOTERS && (buyerTwoThirds || sellerTwoThirds)) {
             c.effective = true;
             c.winner = buyerTwoThirds ? Side.BUYER : Side.SELLER;
+            uint256 winners = c.winner == Side.BUYER ? c.votesForBuyer : c.votesForSeller;
+            uint256 slashed = c.committedCount - winners - c.abstentions;
+            totalLiability -= (c.stake * slashed) % winners;
             escrow.resolveDispute(
                 c.tradeId,
                 c.winner == Side.BUYER ? GuaranteeEscrow.Verdict.BUYER_WINS : GuaranteeEscrow.Verdict.SELLER_WINS,
@@ -170,6 +203,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         uint256 amount = pendingWithdrawals[msg.sender];
         require(amount != 0, unicode"SchellingVoting: 无可提取余额");
         pendingWithdrawals[msg.sender] = 0;
+        totalLiability -= amount;
         (bool ok,) = recipient.call{value: amount}("");
         require(ok, unicode"SchellingVoting: 提取失败");
         emit Withdrawal(msg.sender, recipient, amount);

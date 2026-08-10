@@ -39,6 +39,47 @@ contract ReputationHubTest is Test {
         assertEq(hub.reputationScore(7), 67);
     }
 
+    function testFuzz_reputationAccountingAndIntegerRounding(
+        uint8 rawCompleted,
+        uint8 rawDefaulted,
+        uint8 rawWon,
+        uint8 rawLost
+    ) public {
+        uint256 completed = bound(uint256(rawCompleted), 0, 4);
+        uint256 defaulted = bound(uint256(rawDefaulted), 0, 4);
+        uint256 won = bound(uint256(rawWon), 0, 4);
+        uint256 lost = bound(uint256(rawLost), 0, 4);
+
+        vm.startPrank(writer);
+        for (uint256 i; i < completed; ++i) {
+            hub.recordOutcome(keccak256(abi.encode("completed", i)), 7, ReputationHub.Outcome.COMPLETED);
+        }
+        for (uint256 i; i < defaulted; ++i) {
+            hub.recordOutcome(keccak256(abi.encode("defaulted", i)), 7, ReputationHub.Outcome.DEFAULTED);
+        }
+        for (uint256 i; i < won; ++i) {
+            hub.recordOutcome(keccak256(abi.encode("won", i)), 7, ReputationHub.Outcome.WON);
+        }
+        for (uint256 i; i < lost; ++i) {
+            hub.recordOutcome(keccak256(abi.encode("lost", i)), 7, ReputationHub.Outcome.LOST);
+        }
+        vm.stopPrank();
+
+        (uint256 actualCompleted, uint256 actualDefaulted, uint256 actualWon, uint256 actualLost) = hub.reputation(7);
+        assertEq(actualCompleted, completed);
+        assertEq(actualDefaulted, defaulted);
+        assertEq(actualWon, won);
+        assertEq(actualLost, lost);
+
+        uint256 total = completed + defaulted + won + lost;
+        uint256 expectedScore = 50;
+        if (total != 0) {
+            uint256 penalty = (100 * defaulted + 50 * lost) / total;
+            expectedScore = penalty >= 100 ? 0 : 100 - penalty;
+        }
+        assertEq(hub.reputationScore(7), expectedScore);
+    }
+
     function test_unauthorizedWriterRejected() public {
         vm.expectRevert(unicode"ReputationHub: 未授权调用方");
         hub.recordOutcome(keccak256("x"), 1, ReputationHub.Outcome.WON);

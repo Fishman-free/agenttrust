@@ -10,3 +10,8 @@ evm_version = "cancun"
 
 [profile.default.fuzz]
 runs = 256
+
+[profile.default.invariant]
+runs = 256
+depth = 128
+fail_on_revert = true

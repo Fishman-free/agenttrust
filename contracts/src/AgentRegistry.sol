@@ -38,7 +38,10 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
     }
 
     function registerAgent(string memory name, string memory description, string memory endpoint)
-        external payable nonReentrant returns (uint256 tokenId)
+        external
+        payable
+        nonReentrant
+        returns (uint256 tokenId)
     {
         require(msg.value >= registrationFee, unicode"AgentRegistry: 注册质押不足");
         tokenId = agentCount++;

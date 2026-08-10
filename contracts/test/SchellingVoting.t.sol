@@ -7,6 +7,12 @@ import {ReputationHub} from "../src/ReputationHub.sol";
 import {GuaranteeEscrow} from "../src/GuaranteeEscrow.sol";
 import {SchellingVoting} from "../src/SchellingVoting.sol";
 
+contract RejectingVotingReceiver {
+    receive() external payable {
+        revert("reject ether");
+    }
+}
+
 contract SchellingVotingTest is Test {
     AgentRegistry registry;
     ReputationHub hub;
@@ -33,21 +39,32 @@ contract SchellingVotingTest is Test {
         escrow.transferOwnership(address(voting));
         vm.deal(buyer, 2 ether);
         vm.deal(guarantor, 2 ether);
-        vm.prank(buyer); buyerId = registry.registerAgent("Buyer", "", "");
-        vm.prank(seller); sellerId = registry.registerAgent("Seller", "", "");
-        vm.prank(guarantor); guarantorId = registry.registerAgent("Guarantor", "", "");
+        vm.prank(buyer);
+        buyerId = registry.registerAgent("Buyer", "", "");
+        vm.prank(seller);
+        sellerId = registry.registerAgent("Seller", "", "");
+        vm.prank(guarantor);
+        guarantorId = registry.registerAgent("Guarantor", "", "");
         for (uint256 i; i < 5; ++i) {
             jurors[i] = makeAddr(string.concat("juror", vm.toString(i)));
             vm.deal(jurors[i], 1 ether);
-            vm.prank(jurors[i]); registry.registerAgent("Juror", "", "");
+            vm.prank(jurors[i]);
+            registry.registerAgent("Juror", "", "");
         }
-        vm.prank(buyer); tradeId = escrow.createTrade(buyerId, sellerId, 1 ether);
-        vm.prank(seller); escrow.acceptTrade(tradeId);
-        vm.prank(buyer); escrow.fund{value: 1 ether}(tradeId);
-        vm.prank(guarantor); escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.05 ether);
-        vm.prank(seller); escrow.acceptGuarantee(tradeId);
-        vm.prank(seller); escrow.deliver(tradeId);
-        vm.prank(buyer); escrow.dispute(tradeId);
+        vm.prank(buyer);
+        tradeId = escrow.createTrade(buyerId, sellerId, 1 ether);
+        vm.prank(seller);
+        escrow.acceptTrade(tradeId);
+        vm.prank(buyer);
+        escrow.fund{value: 1 ether}(tradeId);
+        vm.prank(guarantor);
+        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.05 ether);
+        vm.prank(seller);
+        escrow.acceptGuarantee(tradeId);
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        vm.prank(buyer);
+        escrow.dispute(tradeId);
         caseId = voting.openCase(tradeId, STAKE, 1 days, 1 days);
     }
 
@@ -69,6 +86,38 @@ contract SchellingVotingTest is Test {
         fresh.commitVote{value: STAKE}(0, bytes32(uint256(1)));
     }
 
+    function test_duplicateCaseRejected() public {
+        vm.expectRevert(unicode"SchellingVoting: 该交易已有案件");
+        voting.openCase(tradeId, STAKE, 1 days, 1 days);
+    }
+
+    function test_commitRevealDeadlinesAndWrongSalt() public {
+        _commit(jurors[0], SchellingVoting.Side.BUYER);
+        _commit(jurors[1], SchellingVoting.Side.BUYER);
+
+        vm.prank(jurors[0]);
+        vm.expectRevert(unicode"SchellingVoting: 不在揭示窗口");
+        voting.revealVote(caseId, SchellingVoting.Side.BUYER, SALT);
+
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(jurors[2]);
+        vm.expectRevert(unicode"SchellingVoting: 提交窗口已结束");
+        voting.commitVote{value: STAKE}(caseId, bytes32(uint256(1)));
+        vm.prank(jurors[0]);
+        vm.expectRevert(unicode"SchellingVoting: 承诺不匹配");
+        voting.revealVote(caseId, SchellingVoting.Side.BUYER, bytes32(uint256(SALT) + 1));
+        _reveal(jurors[0], SchellingVoting.Side.BUYER);
+
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(jurors[1]);
+        vm.expectRevert(unicode"SchellingVoting: 不在揭示窗口");
+        voting.revealVote(caseId, SchellingVoting.Side.BUYER, SALT);
+        voting.settle(caseId);
+        (bool effective, SchellingVoting.Side winner) = voting.caseResult(caseId);
+        assertFalse(effective);
+        assertEq(uint8(winner), uint8(SchellingVoting.Side.ABSTAIN));
+    }
+
     function test_commitRevealExactTwoThirdsIsEffective() public {
         _commit(jurors[0], SchellingVoting.Side.BUYER);
         _commit(jurors[1], SchellingVoting.Side.BUYER);
@@ -84,14 +133,39 @@ contract SchellingVotingTest is Test {
         assertTrue(effective);
         assertEq(uint8(winner), uint8(SchellingVoting.Side.BUYER));
         assertEq(escrow.pendingWithdrawals(buyer), 2 ether);
-        vm.prank(jurors[0]); voting.claim(caseId);
+
+        vm.expectRevert(unicode"SchellingVoting: 已结算");
+        voting.settle(caseId);
+        vm.prank(jurors[0]);
+        voting.claim(caseId);
         assertEq(voting.pendingWithdrawals(jurors[0]), STAKE + STAKE / 2);
+        vm.prank(jurors[0]);
+        vm.expectRevert(unicode"SchellingVoting: 已领取");
+        voting.claim(caseId);
+
+        RejectingVotingReceiver rejecting = new RejectingVotingReceiver();
+        vm.prank(jurors[0]);
+        vm.expectRevert(unicode"SchellingVoting: 提取失败");
+        voting.withdraw(payable(address(rejecting)));
+        assertEq(voting.pendingWithdrawals(jurors[0]), STAKE + STAKE / 2);
+
+        uint256 balanceBefore = jurors[0].balance;
+        vm.prank(jurors[0]);
+        voting.withdraw(payable(jurors[0]));
+        assertEq(jurors[0].balance - balanceBefore, STAKE + STAKE / 2);
+        vm.prank(jurors[0]);
+        vm.expectRevert(unicode"SchellingVoting: 无可提取余额");
+        voting.withdraw(payable(jurors[0]));
     }
 
     function test_threeOfFiveIsNotRoundedUpToTwoThirdsAndVoidsSafely() public {
-        for (uint256 i; i < 5; ++i) _commit(jurors[i], i < 3 ? SchellingVoting.Side.BUYER : SchellingVoting.Side.SELLER);
+        for (uint256 i; i < 5; ++i) {
+            _commit(jurors[i], i < 3 ? SchellingVoting.Side.BUYER : SchellingVoting.Side.SELLER);
+        }
         vm.warp(block.timestamp + 1 days);
-        for (uint256 i; i < 5; ++i) _reveal(jurors[i], i < 3 ? SchellingVoting.Side.BUYER : SchellingVoting.Side.SELLER);
+        for (uint256 i; i < 5; ++i) {
+            _reveal(jurors[i], i < 3 ? SchellingVoting.Side.BUYER : SchellingVoting.Side.SELLER);
+        }
         vm.warp(block.timestamp + 1 days);
         voting.settle(caseId);
 
@@ -107,24 +181,71 @@ contract SchellingVotingTest is Test {
         address late = makeAddr("late");
         vm.deal(late, 1 ether);
         // Even a registration later in the same block is outside the agent-count snapshot.
-        vm.prank(late); registry.registerAgent("Late", "", "");
+        vm.prank(late);
+        registry.registerAgent("Late", "", "");
         vm.prank(late);
         vm.expectRevert(unicode"SchellingVoting: 不在资格快照中");
         voting.commitVote{value: STAKE}(caseId, bytes32(uint256(1)));
 
-        vm.prank(jurors[0]); registry.registerAgent("SecondIdentity", "", "");
+        vm.prank(jurors[0]);
+        registry.registerAgent("SecondIdentity", "", "");
         _commit(jurors[0], SchellingVoting.Side.BUYER);
         vm.prank(jurors[0]);
         vm.expectRevert(unicode"SchellingVoting: 主体已提交");
         voting.commitVote{value: STAKE}(caseId, bytes32(uint256(2)));
     }
 
-    function test_unrevealedOrInsufficientCaseRemainsLiveAndRefundable() public {
+    function test_unrevealedVotesAreExcludedFromThresholdAndSlashed() public {
+        for (uint256 i; i < 5; ++i) {
+            _commit(jurors[i], SchellingVoting.Side.BUYER);
+        }
+        vm.warp(block.timestamp + 1 days);
+        for (uint256 i; i < 3; ++i) {
+            _reveal(jurors[i], SchellingVoting.Side.BUYER);
+        }
+        vm.warp(block.timestamp + 1 days);
+        voting.settle(caseId);
+
+        (bool effective, SchellingVoting.Side winner) = voting.caseResult(caseId);
+        assertTrue(effective);
+        assertEq(uint8(winner), uint8(SchellingVoting.Side.BUYER));
+        vm.prank(jurors[0]);
+        voting.claim(caseId);
+        assertEq(voting.pendingWithdrawals(jurors[0]), STAKE + (STAKE * 2) / 3);
+        vm.prank(jurors[3]);
+        vm.expectRevert(unicode"SchellingVoting: 质押已罚没");
+        voting.claim(caseId);
+    }
+
+    function test_unrevealedOrInsufficientCaseIsVoidedAndRefundable() public {
         _commit(jurors[0], SchellingVoting.Side.BUYER);
         _commit(jurors[1], SchellingVoting.Side.BUYER);
         vm.warp(block.timestamp + 2 days);
         voting.settle(caseId);
-        vm.prank(jurors[0]); voting.claim(caseId);
+        vm.prank(jurors[0]);
+        voting.claim(caseId);
         assertEq(voting.pendingWithdrawals(jurors[0]), STAKE);
+        assertEq(uint8(escrow.tradeState(tradeId)), uint8(GuaranteeEscrow.State.VOIDED));
+        assertEq(hub.reputationScore(sellerId), 50);
+    }
+
+    function testFuzz_nonexistentCaseRejectsEveryOperation(uint128 rawId, uint8 rawOperation) public {
+        uint256 missingId = bound(uint256(rawId), voting.nextCaseId(), type(uint128).max);
+        uint256 operation = bound(uint256(rawOperation), 0, 4);
+        bytes memory callData;
+        if (operation == 0) {
+            callData = abi.encodeCall(voting.commitVote, (missingId, bytes32(uint256(1))));
+        } else if (operation == 1) {
+            callData = abi.encodeCall(voting.revealVote, (missingId, SchellingVoting.Side.BUYER, SALT));
+        } else if (operation == 2) {
+            callData = abi.encodeCall(voting.settle, (missingId));
+        } else if (operation == 3) {
+            callData = abi.encodeCall(voting.claim, (missingId));
+        } else {
+            callData = abi.encodeCall(voting.caseResult, (missingId));
+        }
+
+        (bool ok,) = address(voting).call(callData);
+        assertFalse(ok);
     }
 }
