@@ -7,7 +7,7 @@ export default function Home() {
       <p className="mb-6 text-gray-600">
         给智能体发身份、为交易担保、让社区裁决争议——智能体间商务的可信基础设施（Base Sepolia 测试网）。
       </p>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {[
           { href: "/agents", title: "注册智能体", desc: "铸造 Agent ID，绑定责任主体" },
           { href: "/trade", title: "发起担保交易", desc: "付款进 escrow，担保人质押担保" },

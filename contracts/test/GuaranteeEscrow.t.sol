@@ -15,210 +15,153 @@ contract GuaranteeEscrowTest is Test {
     address seller = makeAddr("seller");
     address guarantor = makeAddr("guarantor");
     address stranger = makeAddr("stranger");
-
-    uint256 buyerAgentId;
-    uint256 sellerAgentId;
+    uint256 buyerId;
+    uint256 sellerId;
+    uint256 guarantorId;
     uint256 tradeId;
-
-    uint256 constant AMOUNT = 1 ether;
-    uint256 constant COVERAGE = 1e18; // 100%
 
     function setUp() public {
         registry = new AgentRegistry();
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
         hub.setAuthorizedCaller(address(escrow), true);
-
-        // makeAddr 地址初始余额为 0：买家需 ≥1 ETH 付款、担保人需 ≥1.05 ETH 质押
-        vm.deal(buyer, 1 ether);
-        vm.deal(guarantor, 1.05 ether);
-
+        vm.deal(buyer, 10 ether);
+        vm.deal(guarantor, 10 ether);
         vm.prank(buyer);
-        buyerAgentId = registry.registerAgent("BuyerAgent", unicode"买家", "x");
+        buyerId = registry.registerAgent("Buyer", "", "");
         vm.prank(seller);
-        sellerAgentId = registry.registerAgent("SellerAgent", unicode"卖家", "x");
-
-        vm.prank(buyer);
-        tradeId = escrow.createTrade(buyerAgentId, sellerAgentId, AMOUNT);
-    }
-
-    // 公开 mapping getter 返回 12 元组，需解构后读取 state
-    function stateOf(uint256 tradeId_) internal view returns (GuaranteeEscrow.State) {
-        (,,,,,,, GuaranteeEscrow.State st,,,,) = escrow.trades(tradeId_);
-        return st;
-    }
-
-    function test_fullHappyPath() public {
-        // 买家付款
-        vm.prank(buyer);
-        escrow.fund{value: AMOUNT}(tradeId);
-        assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.FUNDED));
-
-        // 担保人质押（100% 覆盖率 + 5% 保费）
+        sellerId = registry.registerAgent("Seller", "", "");
         vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
-        assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.GUARANTEED));
+        guarantorId = registry.registerAgent("Guarantor", "", "");
+        vm.prank(buyer);
+        tradeId = escrow.createTrade(buyerId, sellerId, 1 ether);
+    }
 
-        // 卖家交付声明
+    function _acceptFundGuarantee() internal {
+        vm.prank(seller);
+        escrow.acceptTrade(tradeId);
+        vm.prank(buyer);
+        escrow.fund{value: 1 ether}(tradeId);
+        vm.prank(guarantor);
+        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.05 ether);
+        vm.prank(seller);
+        escrow.acceptGuarantee(tradeId);
+    }
+
+    function test_sellerMustAcceptBeforeFundsOrDefaultExposure() public {
+        vm.prank(buyer);
+        vm.expectRevert(unicode"GuaranteeEscrow: 状态错误");
+        escrow.fund{value: 1 ether}(tradeId);
+
+        vm.warp(block.timestamp + escrow.ACCEPT_WINDOW() + 1);
+        escrow.timeoutCancelUnaccepted(tradeId);
+        assertEq(uint8(escrow.tradeState(tradeId)), uint8(GuaranteeEscrow.State.VOIDED));
+        assertEq(hub.reputationScore(sellerId), 50, "unaccepted proposal cannot accuse seller");
+    }
+
+    function test_principalSnapshotsSurviveIdentityTransfer() public {
+        vm.prank(seller);
+        escrow.acceptTrade(tradeId);
+        vm.prank(seller);
+        registry.transferFrom(seller, stranger, sellerId);
+        vm.prank(buyer);
+        escrow.fund{value: 1 ether}(tradeId);
+        vm.prank(guarantor);
+        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0);
+        vm.prank(seller);
+        escrow.acceptGuarantee(tradeId);
         vm.prank(seller);
         escrow.deliver(tradeId);
-        assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.DELIVERED));
+        assertEq(uint8(escrow.tradeState(tradeId)), uint8(GuaranteeEscrow.State.DELIVERED));
+    }
 
-        // 买家确认 → 释放：卖家得 AMOUNT，担保人拿回本金+保费
-        uint256 sellerBefore = seller.balance;
-        uint256 guarantorBefore = guarantor.balance;
+    function test_samePrincipalTradeAndSelfGuaranteeRejected() public {
+        vm.prank(buyer);
+        uint256 secondBuyerId = registry.registerAgent("AlsoBuyer", "", "");
+        vm.prank(buyer);
+        vm.expectRevert(unicode"GuaranteeEscrow: 买卖方主体必须不同");
+        escrow.createTrade(buyerId, secondBuyerId, 1 ether);
+
+        vm.prank(seller);
+        escrow.acceptTrade(tradeId);
+        vm.prank(buyer);
+        escrow.fund{value: 1 ether}(tradeId);
+        vm.prank(buyer);
+        vm.expectRevert(unicode"GuaranteeEscrow: 交易主体不得自担保");
+        escrow.guarantee{value: 1 ether}(tradeId, buyerId, 1e18, 0);
+    }
+
+    function test_reputationCoveragePremiumAndRoundingBounds() public {
+        vm.prank(seller);
+        escrow.acceptTrade(tradeId);
+        vm.prank(buyer);
+        escrow.fund{value: 1 ether}(tradeId);
+
+        vm.prank(guarantor);
+        vm.expectRevert(unicode"GuaranteeEscrow: 覆盖率低于信誉要求");
+        escrow.guarantee{value: 0.75 ether}(tradeId, guarantorId, 0.75e18, 0);
+        vm.prank(guarantor);
+        vm.expectRevert(unicode"GuaranteeEscrow: 保费过高");
+        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.21 ether);
+
+        vm.prank(buyer);
+        uint256 tiny = escrow.createTrade(buyerId, sellerId, 1);
+        vm.prank(seller);
+        escrow.acceptTrade(tiny);
+        vm.prank(buyer);
+        escrow.fund{value: 1}(tiny);
+        vm.prank(guarantor);
+        escrow.guarantee{value: 1}(tiny, guarantorId, 1e18, 0);
+        assertEq(escrow.requiredStake(tiny, 1e18), 1, "stake rounds up and never becomes zero");
+    }
+
+    function test_unacceptedGuaranteeOfferCannotCreateSellerDefault() public {
+        vm.prank(seller);
+        escrow.acceptTrade(tradeId);
+        vm.prank(buyer);
+        escrow.fund{value: 1 ether}(tradeId);
+        vm.prank(guarantor);
+        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.05 ether);
+        vm.warp(block.timestamp + escrow.GUARANTEE_ACCEPT_WINDOW() + 1);
+        escrow.timeoutRejectGuarantee(tradeId);
+        assertEq(escrow.pendingWithdrawals(buyer), 1 ether);
+        assertEq(escrow.pendingWithdrawals(guarantor), 1 ether);
+        assertEq(hub.reputationScore(sellerId), 50);
+    }
+
+    function test_pullPaymentsMakeSettlementNonBlockingAndUnique() public {
+        _acceptFundGuarantee();
+        vm.prank(seller);
+        escrow.deliver(tradeId);
         vm.prank(buyer);
         escrow.confirm(tradeId);
 
-        assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.RELEASED));
-        assertEq(seller.balance - sellerBefore, AMOUNT - 0.05 ether, unicode"卖家应收到交易金额（扣保费）");
-        assertEq(guarantor.balance - guarantorBefore, 1.05 ether, unicode"担保人应拿回本金+保费");
+        assertEq(escrow.pendingWithdrawals(seller), 0.95 ether);
+        assertEq(escrow.pendingWithdrawals(guarantor), 1.05 ether);
+        (uint256 completed,,,) = hub.reputation(sellerId);
+        assertEq(completed, 1);
+        vm.expectRevert(unicode"GuaranteeEscrow: 状态错误");
+        vm.prank(buyer);
+        escrow.confirm(tradeId);
     }
 
-    function test_buyerDispute_guarantorPenalty() public {
-        vm.prank(buyer);
-        escrow.fund{value: AMOUNT}(tradeId);
-        vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
-        vm.prank(seller);
-        escrow.deliver(tradeId);
-
-        // 买家发起争议
-        vm.prank(buyer);
-        escrow.dispute(tradeId);
-        assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.DISPUTED));
-
-        // 平台仲裁：买家胜诉 → 全额退款 + 担保金罚没补偿买家
-        uint256 buyerBefore = buyer.balance;
-        vm.prank(escrow.owner());
-        escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.BUYER_WINS, 10000);
-
-        assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.RESOLVED));
-        assertEq(buyer.balance - buyerBefore, AMOUNT + AMOUNT, unicode"买家拿回本金+全额罚没担保金");
-        // 信誉记录：卖家争议败诉（第四位 disputesLost）
-        (,,, uint256 lost) = hub.reputation(sellerAgentId);
-        assertEq(lost, 1);
-    }
-
-    function test_sellerTimeout_autoRelease() public {
-        vm.prank(buyer);
-        escrow.fund{value: AMOUNT}(tradeId);
-        vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
-        vm.prank(seller);
-        escrow.deliver(tradeId);
-
-        // 买家超时未确认 → 自动释放给卖家
-        vm.warp(block.timestamp + escrow.CONFIRM_WINDOW() + 1);
-        vm.prank(stranger); // 任何人可触发超时
-        escrow.timeoutAutoRelease(tradeId);
-
-        assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.RELEASED));
-        assertEq(seller.balance, AMOUNT - 0.05 ether, unicode"卖家得金额扣保费");
-    }
-
-    function test_fundDeadline_refund() public {
-        // 买家付款后不担保，fund 截止时间到 → 退款
-        vm.prank(buyer);
-        escrow.fund{value: AMOUNT}(tradeId);
-
-        vm.warp(block.timestamp + escrow.FUND_WINDOW() + 1);
-        uint256 buyerBefore = buyer.balance;
-        vm.prank(stranger);
-        escrow.timeoutRefund(tradeId);
-
-        assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.RESOLVED));
-        assertEq(buyer.balance - buyerBefore, AMOUNT, unicode"买家应收回付款");
-    }
-
-    function test_sellerDefault_timeoutRefund() public {
-        // 卖家 GUARANTEED 后不交付，交付超时 → 退款 + 担保金罚没 + 违约记录
-        vm.prank(buyer);
-        escrow.fund{value: AMOUNT}(tradeId);
-        vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
-
-        vm.warp(block.timestamp + escrow.DELIVER_WINDOW() + 1);
-        vm.prank(stranger);
-        escrow.timeoutRefund(tradeId);
-
-        assertEq(buyer.balance, AMOUNT + AMOUNT, unicode"退款+罚没担保金");
-        (, uint256 defaulted,,) = hub.reputation(sellerAgentId);
-        assertEq(defaulted, 1);
-    }
-
-    function test_permissions() public {
-        // 非卖家 owner 不能交付
-        vm.prank(buyer);
-        escrow.fund{value: AMOUNT}(tradeId);
-        vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
-
-        vm.prank(stranger);
-        vm.expectRevert(unicode"GuaranteeEscrow: 仅卖家负责人可交付");
-        escrow.deliver(tradeId);
-    }
-
-    function test_guarantee_requiresEnoughStake() public {
-        vm.prank(buyer);
-        escrow.fund{value: AMOUNT}(tradeId);
-
-        vm.prank(guarantor);
-        vm.expectRevert(unicode"GuaranteeEscrow: 担保质押金额不符");
-        escrow.guarantee{value: 0.5 ether}(tradeId, COVERAGE, 0.05 ether);
-    }
-
-    function test_partialVerdict() public {
-        vm.prank(buyer);
-        escrow.fund{value: AMOUNT}(tradeId);
-        vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
+    function test_disputeWithoutCaseCanBeSafelyVoided() public {
+        _acceptFundGuarantee();
         vm.prank(seller);
         escrow.deliver(tradeId);
         vm.prank(buyer);
         escrow.dispute(tradeId);
+        vm.warp(block.timestamp + escrow.CASE_OPEN_WINDOW() + 1);
+        escrow.timeoutVoidDispute(tradeId);
 
-        // 部分胜诉：买家拿 70%
-        uint256 buyerBefore = buyer.balance;
-        uint256 sellerBefore = seller.balance;
-        vm.prank(escrow.owner());
-        escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.PARTIAL_BUYER, 7000);
-
-        assertEq(buyer.balance - buyerBefore, (AMOUNT * 70) / 100 + AMOUNT, unicode"70% 退款 + 全额罚没");
-        assertEq(seller.balance - sellerBefore, (AMOUNT * 30) / 100, unicode"卖家得 30%");
+        assertEq(uint8(escrow.tradeState(tradeId)), uint8(GuaranteeEscrow.State.VOIDED));
+        assertEq(escrow.pendingWithdrawals(buyer), 1 ether);
+        assertEq(escrow.pendingWithdrawals(guarantor), 1 ether);
+        assertEq(hub.reputationScore(sellerId), 50);
     }
 
-    function test_guarantee_premiumBounded() public {
-        vm.prank(buyer);
-        escrow.fund{value: AMOUNT}(tradeId);
-
-        // premium > amount 会令释放路径 amount - premium 下溢，必须拒绝
-        vm.prank(guarantor);
-        vm.expectRevert(unicode"GuaranteeEscrow: 保费不能超过交易金额");
-        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 2 ether); // premium > amount
-    }
-
-    function test_sellerWins_resolution() public {
-        vm.prank(buyer);
-        escrow.fund{value: AMOUNT}(tradeId);
-        vm.prank(guarantor);
-        escrow.guarantee{value: AMOUNT}(tradeId, COVERAGE, 0.05 ether);
-        vm.prank(seller);
-        escrow.deliver(tradeId);
-        vm.prank(buyer);
-        escrow.dispute(tradeId);
-
-        // 卖家胜诉：金额放给卖家（扣保费），担保人拿回本金+保费
-        uint256 sellerBefore = seller.balance;
-        uint256 guarantorBefore = guarantor.balance;
-        vm.prank(escrow.owner());
-        escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.SELLER_WINS, 0);
-
-        assertEq(uint8(stateOf(tradeId)), uint8(GuaranteeEscrow.State.RESOLVED));
-        assertEq(seller.balance - sellerBefore, AMOUNT - 0.05 ether, unicode"卖家得金额扣保费");
-        assertEq(guarantor.balance - guarantorBefore, 1.05 ether, unicode"担保人拿回本金+保费");
-        // 信誉记录：卖家争议胜诉（第三位 disputesWon）
-        (, , uint256 won,) = hub.reputation(sellerAgentId);
-        assertEq(won, 1);
+    function test_nonexistentTradeCannotBeOperated() public {
+        vm.expectRevert(unicode"GuaranteeEscrow: 交易不存在");
+        escrow.tradeState(999);
     }
 }

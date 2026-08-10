@@ -13,17 +13,22 @@ export const localAnvil = defineChain({
   rpcUrls: { default: { http: ["http://127.0.0.1:8545"] } },
 });
 
-// 链选择：NEXT_PUBLIC_CHAIN = "anvil" | "base-sepolia"，默认 anvil（本地开发）
-const CHAIN_MODE = (process.env.NEXT_PUBLIC_CHAIN ?? "anvil") as
-  | "anvil"
-  | "base-sepolia";
+export type ChainMode = "anvil" | "base-sepolia";
 
+export function resolveChainMode(value: string | undefined): ChainMode {
+  if (value === undefined || value === "") return "anvil";
+  if (value === "anvil" || value === "base-sepolia") return value;
+  throw new Error(`不支持的 NEXT_PUBLIC_CHAIN: ${value}`);
+}
+
+// 链选择：NEXT_PUBLIC_CHAIN = "anvil" | "base-sepolia"，默认 anvil（本地开发）
+export const CHAIN_MODE = resolveChainMode(process.env.NEXT_PUBLIC_CHAIN);
 export const CHAIN_ID = CHAIN_MODE === "base-sepolia" ? baseSepolia.id : localAnvil.id;
 
 // 当前生效链：wagmi/viem 统一经此取用
 export const activeChain = CHAIN_MODE === "base-sepolia" ? baseSepolia : localAnvil;
 
-type AddressMap = {
+export type AddressMap = {
   agentRegistry: `0x${string}`;
   reputationHub: `0x${string}`;
   guaranteeEscrow: `0x${string}`;
@@ -47,3 +52,20 @@ export const CONTRACT_ADDRESSES: AddressMap =
         guaranteeEscrow: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
         schellingVoting: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
       };
+
+export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+
+export function isZeroAddress(address: `0x${string}`): boolean {
+  return address.toLowerCase() === ZERO_ADDRESS;
+}
+
+export function areContractAddressesConfigured(addresses: AddressMap): boolean {
+  return Object.values(addresses).every((address) => !isZeroAddress(address));
+}
+
+/** 可写操作的统一安全开关；任一部署地址为零时必须禁用交易。 */
+export const WRITES_ENABLED = areContractAddressesConfigured(CONTRACT_ADDRESSES);
+
+export const WRITE_BLOCK_REASON = WRITES_ENABLED
+  ? undefined
+  : `${activeChain.name} 的合约尚未部署，已禁用所有可写操作。`;

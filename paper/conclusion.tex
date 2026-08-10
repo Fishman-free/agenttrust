@@ -1,47 +1,24 @@
-% ============================================================================
-%  Chapter 6: Conclusion
-% ============================================================================
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented a decentralized guarantee and arbitration layer for agent-to-agent commerce built on
-the Schelling-point reputation community: registered agent identities, a guaranteed escrow,
-staked-voting adjudication, and reputation-driven guarantee pricing, closed into one on-chain loop.
-We proved that under a two-thirds supermajority rule honest voting is incentive compatible, that a
-coordinated malicious minority of at most $35\%$ of voters is strategically harmless, that Sybil
-attacks are unprofitable because adversarial voting power scales linearly in expenditure, and that
-the mechanism conserves funds exactly. We instantiated the protocol in Solidity with 38 passing
-tests and an end-to-end demo, and validated the theory by Monte-Carlo simulation built on
-\textsf{mesa}. To our knowledge this is the first protocol to tie adjudication, guarantees, and
-reputation into a single verifiable cycle, addressing the accountability vacuum of anonymous
-machine-to-machine commerce (Q2) with an economically self-sustaining governance mechanism (Q3).
+AgentTrust is a research prototype for studying how agent identifiers, collateralized escrow, staked
+dispute voting, and outcome counters might interact. The inspected legacy snapshot provides concrete
+state machines and payout rules, but it does not justify claims of production readiness, audit,
+formal verification, public deployment, strict truthful equilibrium, general collusion resistance,
+unprofitable Sybil attacks, or exact conservation.
 
-\paragraph{Limitations.}
-The current MVP makes several deliberate simplifications, each flagged on-chain and in the theory:
-(i) \emph{free abstention} --- abstainers are refunded rather than penalized, so the one-shot
-monetary payoff of honest voting is only marginally better than abstaining; the reputational
-tie-breaker of the closed loop is therefore load-bearing for participation (Section~\ref{sec:pricing});
-(ii) \emph{integer dust} --- the majority reward's division remainder is stranded in the contract;
-(iii) \emph{engineering threshold} --- $\texttt{MAJORITY\_BPS} = 6500$ approximates two-thirds with
-integer-safe arithmetic; (iv) \emph{demonstration chain} --- the deployment targets a local anvil
-chain and, as a next step, a public testnet (Section~\ref{sec:deploy}); and (v) \emph{no random jury
-selection} --- anyone can vote on any case, which the full design refines with ZK-augmented random
-selection.
+The corrections are substantive. The implemented threshold is $65\%$, not two thirds. A coalition
+that cannot select its preferred verdict may still induce a void, and void defaults to the buyer.
+Abstention returns principal and has zero net monetary payoff, while honest voting can have negative
+expected payoff; voter participation is not currently recorded in reputation. Vote stakes are
+refundable capital at risk except when forfeited, not automatically consumed attack expenditure.
+Voting claims can leave integer dust, and accounting identities require settlement, successful calls,
+and complete claims. The premium may equal the trade amount, leaving a zero seller payment. Finally,
+the proposed reputation--pricing loop is not yet enforced by the inspected contracts.
 
-\paragraph{Future work.}
-Short-term directions are: batch settlement to eliminate dust; the full identity barrier that binds
-every vote to a registered, fee-paid agent ID; ZK-augmented random jury selection with privacy
-adjustability; and a larger simulation study of threshold tuning, collusion dynamics, and
-reputation-strategy equilibria. Longer term, the mechanism is designed to operate on a public
-Ethereum L2 (Base) and to integrate with the ERC-8004 trustless-agent ecosystem; a production
-deployment will follow the testnet checklist of Section~\ref{sec:deploy}. Compliance-wise, the
-MVP uses testnet tokens with no real value; any tokenization would require an overseas-compliant
-issuance structure, while liability remains anchored to real principals via the registry.
-
-\paragraph{Concluding remark.}
-The core design bet of this paper is that in an economy of autonomous agents, trust should be
-\emph{earned, verified, and priced} --- not assumed. By making the community that arbitrates a
-dispute the same community whose reputational and financial stakes depend on the verdict, the
-Schelling-point reputation community turns truthful adjudication into the rational choice, and
-turns reputation into a storable, revenue-bearing asset that prices the very guarantees that make
-future agent-to-agent commerce safe.
+Future work should begin with a frozen, versioned release and differential contract/simulation tests.
+Only then should the project revisit equilibrium conditions, calibrated underwriting, voter identity,
+commit--reveal or jury sampling, appeal, evidence authentication, dust recovery, payout liveness,
+governance, and adversarial testing. The useful result at this stage is not a broad security guarantee
+but a transparent prototype, a set of conditional accounting and threshold facts, and a concrete list
+of hypotheses that can be falsified by code, simulation, and independent review.

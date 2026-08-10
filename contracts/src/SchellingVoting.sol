@@ -4,158 +4,174 @@ pragma solidity ^0.8.24;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {GuaranteeEscrow} from "./GuaranteeEscrow.sol";
+import {AgentRegistry} from "./AgentRegistry.sol";
 
-/// @title SchellingVoting —— 争议质押投票（Schelling 点收敛）
-/// @notice 争议案：成员质押投票 {BUYER/SELLER/ABSTAIN}；窗口结束后结算。
-///         多数方 ≥2/3 且有效票 ≥3 → 裁决成立：少数派质押罚没均分多数派；
-///         不足法定数/未达 2/3 → 作废退款，escrow 保守默认买家胜。
-///         MVP 简化：不做随机抽选陪审员（论文版补 ZK 抽选）；先到先得投票。
+/// @notice Commit-reveal dispute voting over a verifiable registration-count snapshot.
+/// This is not random jury selection: every eligible registered subject may participate,
+/// one address/subject per case. Registration fees only raise Sybil cost; they do not prove
+/// real-world uniqueness, and linked addresses cannot be detected on chain.
 contract SchellingVoting is Ownable, ReentrancyGuard {
     enum Side { BUYER, SELLER, ABSTAIN }
-    uint256 public constant MIN_VOTERS = 3;      // 最低有效票数
-    uint256 public constant MAJORITY_BPS = 6500; // ≥2/3 多数判定（工程近似 6500/10000，避免 2/3 边界整除误差；论文版精化）
+    uint256 public constant MIN_VOTERS = 3;
+    uint256 public constant MAX_PHASE_WINDOW = 7 days;
 
     struct Case {
+        bool exists;
         uint256 tradeId;
-        uint256 buyerAgentId;
-        uint256 sellerAgentId;
-        uint256 stake;      // 每票质押
-        uint256 deadline;   // 投票截止
+        uint256 stake;
+        uint256 commitDeadline;
+        uint256 revealDeadline;
+        uint256 eligibilityAgentCount;
+        uint256 committedCount;
         uint256 votesForBuyer;
         uint256 votesForSeller;
+        uint256 abstentions;
         bool settled;
-        bool effective;     // 是否达成有效裁决（≥2/3 多数且有效票 ≥3）
-        Side winner;        // 有效时：多数方；作废时：ABSTAIN
-        mapping(address => bool) hasVoted; // 独立投票标记（避免 enum 初始值冲突）
-        mapping(address => Side) side;     // 每人所投方
-        mapping(address => bool) claimed;  // 是否已领取（奖励/退款互斥）
+        bool effective;
+        Side winner;
+        mapping(address => bytes32) commitment;
+        mapping(address => bool) hasCommitted;
+        mapping(address => bool) revealed;
+        mapping(address => Side) side;
+        mapping(address => bool) claimed;
     }
 
     GuaranteeEscrow public immutable escrow;
+    AgentRegistry public immutable registry;
     uint256 public nextCaseId;
-    mapping(uint256 => Case) public cases;
-    mapping(uint256 => bool) private tradeHasCase; // 同一交易仅一个争议案
+    mapping(uint256 => Case) private _cases;
+    mapping(uint256 => bool) public tradeHasCase;
+    mapping(address => uint256) public pendingWithdrawals;
 
-    event CaseOpened(uint256 indexed caseId, uint256 tradeId, uint256 stake, uint256 deadline);
-    event CaseVoted(uint256 indexed caseId, address voter, Side side, uint256 stake);
-    event CaseSettled(uint256 indexed caseId, Side winningSide, uint256 voters, bool effective);
+    event CaseOpened(uint256 indexed caseId, uint256 indexed tradeId, uint256 stake, uint256 commitDeadline, uint256 revealDeadline, uint256 eligibilityAgentCount);
+    event VoteCommitted(uint256 indexed caseId, address indexed subject, bytes32 commitment);
+    event VoteRevealed(uint256 indexed caseId, address indexed subject, Side side);
+    event CaseSettled(uint256 indexed caseId, Side winner, uint256 validVotes, bool effective);
+    event WithdrawalCredited(address indexed account, uint256 amount);
+    event Withdrawal(address indexed account, address indexed recipient, uint256 amount);
 
-    constructor(address escrow_) Ownable(msg.sender) {
+    constructor(address escrow_, address registry_) Ownable(msg.sender) {
+        require(escrow_ != address(0) && registry_ != address(0), unicode"SchellingVoting: 依赖地址为零");
         escrow = GuaranteeEscrow(escrow_);
+        registry = AgentRegistry(registry_);
     }
 
-    /// 发起争议案（需交易处于 DISPUTED 状态；仅 owner 可开——论文版由 escrow 自动驱动）
-    function openCase(uint256 tradeId, uint256 buyerAgentId, uint256 sellerAgentId, uint256 stake, uint256 windowSeconds)
+    modifier existingCase(uint256 caseId) {
+        require(_cases[caseId].exists, unicode"SchellingVoting: 案件不存在");
+        _;
+    }
+
+    function openCase(uint256 tradeId, uint256 stake, uint256 commitSeconds, uint256 revealSeconds)
         external onlyOwner returns (uint256 caseId)
     {
-        require(stake > 0, unicode"SchellingVoting: 质押必须大于零");
-        require(!tradeHasCase[tradeId], unicode"SchellingVoting: 该交易已有争议案");
-        (,,,,,,, GuaranteeEscrow.State st,,,,) = escrow.trades(tradeId);
-        require(st == GuaranteeEscrow.State.DISPUTED, unicode"SchellingVoting: 交易不在争议中");
+        require(stake != 0, unicode"SchellingVoting: 质押必须大于零");
+        require(commitSeconds != 0 && revealSeconds != 0, unicode"SchellingVoting: 窗口必须大于零");
+        require(commitSeconds <= MAX_PHASE_WINDOW && revealSeconds <= MAX_PHASE_WINDOW, unicode"SchellingVoting: 窗口过长");
+        require(!tradeHasCase[tradeId], unicode"SchellingVoting: 该交易已有案件");
+        escrow.openArbitration(tradeId);
         tradeHasCase[tradeId] = true;
-
         caseId = nextCaseId++;
-        Case storage c = cases[caseId];
+        Case storage c = _cases[caseId];
+        c.exists = true;
         c.tradeId = tradeId;
-        c.buyerAgentId = buyerAgentId;
-        c.sellerAgentId = sellerAgentId;
         c.stake = stake;
-        c.deadline = block.timestamp + windowSeconds;
-
-        emit CaseOpened(caseId, tradeId, stake, c.deadline);
+        c.commitDeadline = block.timestamp + commitSeconds;
+        c.revealDeadline = c.commitDeadline + revealSeconds;
+        c.eligibilityAgentCount = registry.agentCount();
+        emit CaseOpened(caseId, tradeId, stake, c.commitDeadline, c.revealDeadline, c.eligibilityAgentCount);
     }
 
-    /// 投票：质押 stake 后投一方（窗口内、每地址一票）
-    function vote(uint256 caseId, Side side) external payable nonReentrant {
-        Case storage c = cases[caseId];
-        require(block.timestamp < c.deadline, unicode"SchellingVoting: 投票已截止");
-        require(!c.settled, unicode"SchellingVoting: 案件已结算");
-        require(!c.hasVoted[msg.sender], unicode"SchellingVoting: 已投票");
-        require(msg.value == c.stake, unicode"SchellingVoting: 质押金额不符");
+    function caseResult(uint256 caseId) external view existingCase(caseId) returns (bool effective, Side winner) {
+        Case storage c = _cases[caseId];
+        return (c.effective, c.winner);
+    }
 
-        c.hasVoted[msg.sender] = true;
+    function voteCommitment(uint256 caseId, address subject, Side side, bytes32 salt) public view returns (bytes32) {
+        return keccak256(abi.encode(address(this), block.chainid, caseId, subject, side, salt));
+    }
+
+    function commitVote(uint256 caseId, bytes32 commitment) external payable nonReentrant existingCase(caseId) {
+        Case storage c = _cases[caseId];
+        require(!c.settled && block.timestamp < c.commitDeadline, unicode"SchellingVoting: 提交窗口已结束");
+        require(registry.isRegisteredSubjectAtCount(msg.sender, c.eligibilityAgentCount), unicode"SchellingVoting: 不在资格快照中");
+        (address buyer, address seller, address guarantor) = escrow.tradeActors(c.tradeId);
+        require(msg.sender != buyer && msg.sender != seller && msg.sender != guarantor, unicode"SchellingVoting: 交易主体无投票资格");
+        require(!c.hasCommitted[msg.sender], unicode"SchellingVoting: 主体已提交");
+        require(commitment != bytes32(0), unicode"SchellingVoting: 空承诺");
+        require(msg.value == c.stake, unicode"SchellingVoting: 质押金额不符");
+        c.hasCommitted[msg.sender] = true;
+        c.commitment[msg.sender] = commitment;
+        c.committedCount++;
+        emit VoteCommitted(caseId, msg.sender, commitment);
+    }
+
+    function revealVote(uint256 caseId, Side side, bytes32 salt) external existingCase(caseId) {
+        Case storage c = _cases[caseId];
+        require(!c.settled && block.timestamp >= c.commitDeadline && block.timestamp < c.revealDeadline, unicode"SchellingVoting: 不在揭示窗口");
+        require(c.hasCommitted[msg.sender], unicode"SchellingVoting: 未提交");
+        require(!c.revealed[msg.sender], unicode"SchellingVoting: 已揭示");
+        require(c.commitment[msg.sender] == voteCommitment(caseId, msg.sender, side, salt), unicode"SchellingVoting: 承诺不匹配");
+        c.revealed[msg.sender] = true;
         c.side[msg.sender] = side;
         if (side == Side.BUYER) c.votesForBuyer++;
         else if (side == Side.SELLER) c.votesForSeller++;
-        // ABSTAIN 不参与多数判定（质押在结算时凭 claimRefund 退还）
-
-        emit CaseVoted(caseId, msg.sender, side, msg.value);
+        else c.abstentions++;
+        emit VoteRevealed(caseId, msg.sender, side);
     }
 
-    /// 结算（窗口结束后任何人可触发）
-    function settle(uint256 caseId) external nonReentrant {
-        Case storage c = cases[caseId];
+    function settle(uint256 caseId) external nonReentrant existingCase(caseId) {
+        Case storage c = _cases[caseId];
         require(!c.settled, unicode"SchellingVoting: 已结算");
-        require(block.timestamp >= c.deadline, unicode"SchellingVoting: 投票窗口未结束");
-
+        require(block.timestamp >= c.revealDeadline, unicode"SchellingVoting: 揭示窗口未结束");
         c.settled = true;
-        uint256 total = c.votesForBuyer + c.votesForSeller;
-        if (total == 0) {
-            // 无人投票：winner 显式置 ABSTAIN（0>=0 会使两侧多数判定恒真，需短路）
+        uint256 validVotes = c.votesForBuyer + c.votesForSeller;
+        bool buyerTwoThirds = validVotes != 0 && c.votesForBuyer * 3 >= validVotes * 2;
+        bool sellerTwoThirds = validVotes != 0 && c.votesForSeller * 3 >= validVotes * 2;
+        if (validVotes >= MIN_VOTERS && (buyerTwoThirds || sellerTwoThirds)) {
+            c.effective = true;
+            c.winner = buyerTwoThirds ? Side.BUYER : Side.SELLER;
+            escrow.resolveDispute(
+                c.tradeId,
+                c.winner == Side.BUYER ? GuaranteeEscrow.Verdict.BUYER_WINS : GuaranteeEscrow.Verdict.SELLER_WINS,
+                c.winner == Side.BUYER ? 10000 : 0
+            );
+        } else {
             c.winner = Side.ABSTAIN;
-        } else {
-            bool buyerMaj = c.votesForBuyer * 10000 >= total * MAJORITY_BPS;
-            bool sellerMaj = c.votesForSeller * 10000 >= total * MAJORITY_BPS;
-            c.winner = buyerMaj ? Side.BUYER : (sellerMaj ? Side.SELLER : Side.ABSTAIN);
+            escrow.voidDispute(c.tradeId);
         }
-        c.effective = total >= MIN_VOTERS && (c.winner != Side.ABSTAIN);
+        emit CaseSettled(caseId, c.winner, validVotes, c.effective);
+    }
 
+    /// @notice Credits a pull-payment. Effective-case losers and non-revealers are slashed.
+    function claim(uint256 caseId) external nonReentrant existingCase(caseId) {
+        Case storage c = _cases[caseId];
+        require(c.settled, unicode"SchellingVoting: 未结算");
+        require(c.hasCommitted[msg.sender], unicode"SchellingVoting: 未提交");
+        require(!c.claimed[msg.sender], unicode"SchellingVoting: 已领取");
+        c.claimed[msg.sender] = true;
+        uint256 amount;
         if (!c.effective) {
-            // 作废：所有投票者凭 claimRefund 领回质押；escrow 保守默认买家胜（退款+罚没担保金）
-            _applyVerdict(c, GuaranteeEscrow.Verdict.BUYER_WINS, 10000);
-        } else if (c.winner == Side.BUYER) {
-            _applyVerdict(c, GuaranteeEscrow.Verdict.BUYER_WINS, 10000);
+            amount = c.stake;
+        } else if (c.revealed[msg.sender] && c.side[msg.sender] == Side.ABSTAIN) {
+            amount = c.stake;
+        } else if (c.revealed[msg.sender] && c.side[msg.sender] == c.winner) {
+            uint256 winners = c.winner == Side.BUYER ? c.votesForBuyer : c.votesForSeller;
+            uint256 slashed = c.committedCount - winners - c.abstentions;
+            amount = c.stake + (c.stake * slashed) / winners;
         } else {
-            _applyVerdict(c, GuaranteeEscrow.Verdict.SELLER_WINS, 0);
+            revert(unicode"SchellingVoting: 质押已罚没");
         }
-
-        emit CaseSettled(caseId, c.winner, total, c.effective);
+        pendingWithdrawals[msg.sender] += amount;
+        emit WithdrawalCredited(msg.sender, amount);
     }
 
-    /// 领取奖励（有效案的多数派：拿回质押 + 均分少数派罚没）
-    function claimReward(uint256 caseId) external nonReentrant {
-        Case storage c = cases[caseId];
-        require(c.settled, unicode"SchellingVoting: 未结算");
-        require(c.hasVoted[msg.sender], unicode"SchellingVoting: 未投票");
-        require(c.effective, unicode"SchellingVoting: 案件作废，请领取退款");
-        require(c.side[msg.sender] == c.winner, unicode"SchellingVoting: 非多数派");
-        require(!c.claimed[msg.sender], unicode"SchellingVoting: 已领取");
-
-        uint256 winnerCount = c.winner == Side.BUYER ? c.votesForBuyer : c.votesForSeller;
-        uint256 loserCount = c.winner == Side.BUYER ? c.votesForSeller : c.votesForBuyer;
-        c.claimed[msg.sender] = true;
-        // 多数派每票：本金 + 罚没池均分（罚没池 = 少数派票数 × stake）
-        // 整除余数 dust wei 滞留合约（MVP 已知限制，论文版批量结算解决）
-        uint256 reward = c.stake + (c.stake * loserCount) / winnerCount;
-        _pay(msg.sender, reward);
-    }
-
-    /// 领取退款（作废案的全部投票者 / 有效案的弃权票）
-    function claimRefund(uint256 caseId) external nonReentrant {
-        Case storage c = cases[caseId];
-        require(c.settled, unicode"SchellingVoting: 未结算");
-        require(c.hasVoted[msg.sender], unicode"SchellingVoting: 未投票");
-        require(!c.claimed[msg.sender], unicode"SchellingVoting: 已领取");
-        require(!c.effective || c.side[msg.sender] == Side.ABSTAIN, unicode"SchellingVoting: 有效案仅弃权票可退款");
-
-        c.claimed[msg.sender] = true;
-        _pay(msg.sender, c.stake);
-    }
-
-    // ---------- 内部 ----------
-
-    function _applyVerdict(Case storage c, GuaranteeEscrow.Verdict verdict, uint256 share) private {
-        // 论文版语义：Voting 拥有 escrow（部署脚本 transferOwnership），可驱动裁决；
-        // 若未授权则 revert（部署脚本已保证授权，见 Task 13）
-        escrow.resolveDispute(c.tradeId, verdict, share);
-        // 注意：GuaranteeEscrow.resolveDispute 已按 T5 语义记录 seller 的 WON/LOST
-        //（BUYER_WINS→LOST、SELLER_WINS→WON），此处不再重复 recordOutcome，避免双计数。
-        // 论文版若需 Voting 侧补充存证，应引入独立事件/字段而非再记一次信誉。
-    }
-
-    function _pay(address to, uint256 amount) private {
-        if (amount == 0) return;
-        (bool ok,) = to.call{value: amount}("");
-        require(ok, unicode"SchellingVoting: 转账失败");
+    function withdraw(address payable recipient) external nonReentrant {
+        require(recipient != address(0), unicode"SchellingVoting: 收款地址为零");
+        uint256 amount = pendingWithdrawals[msg.sender];
+        require(amount != 0, unicode"SchellingVoting: 无可提取余额");
+        pendingWithdrawals[msg.sender] = 0;
+        (bool ok,) = recipient.call{value: amount}("");
+        require(ok, unicode"SchellingVoting: 提取失败");
+        emit Withdrawal(msg.sender, recipient, amount);
     }
 }

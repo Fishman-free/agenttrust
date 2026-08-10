@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useAccount, useConnect, useReadContract, useWriteContract } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { guaranteeEscrowAbi } from "@/lib/abi";
-import { CONTRACT_ADDRESSES } from "@/lib/config";
+import { CONTRACT_ADDRESSES, WRITES_ENABLED } from "@/lib/config";
 import { parseEther } from "viem";
 
 // 对应合约 GuaranteeEscrow.State 枚举（0-6）
@@ -32,7 +32,7 @@ export default function TradePage() {
   const [sellerId, setSellerId] = useState("1");
   const [amount, setAmount] = useState("0.1");
   const [tradeId, setTradeId] = useState("");
-  const [coverage, setCoverage] = useState("100");
+  const [coverage] = useState("100");
   const [premium, setPremium] = useState("0.005");
 
   // 读取当前交易状态：state 位于 trades(tradeId) 返回元组的下标 7；
@@ -150,13 +150,13 @@ export default function TradePage() {
         <div className="space-y-4">
           <section className="border rounded p-4">
             <h2 className="font-semibold mb-2">创建交易（买方发起）</h2>
-            <input placeholder="买家 Agent ID" value={buyerId} onChange={(e) => setBuyerId(e.target.value)}
+            <input aria-label="买家 Agent ID" placeholder="买家 Agent ID" value={buyerId} onChange={(e) => setBuyerId(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
-            <input placeholder="卖家 Agent ID" value={sellerId} onChange={(e) => setSellerId(e.target.value)}
+            <input aria-label="卖家 Agent ID" placeholder="卖家 Agent ID" value={sellerId} onChange={(e) => setSellerId(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
-            <input placeholder="交易金额（ETH）" value={amount} onChange={(e) => setAmount(e.target.value)}
+            <input aria-label="交易金额（ETH）" placeholder="交易金额（ETH）" value={amount} onChange={(e) => setAmount(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
-            <button onClick={create} disabled={isPending}
+            <button onClick={create} disabled={!WRITES_ENABLED || isPending}
               className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">
               {isPending ? "提交中…" : "创建交易"}
             </button>
@@ -164,7 +164,7 @@ export default function TradePage() {
 
           <section className="border rounded p-4">
             <h2 className="font-semibold mb-2">交易流程（按状态操作）</h2>
-            <input placeholder="Trade ID" value={tradeId} onChange={(e) => setTradeId(e.target.value)}
+            <input aria-label="Trade ID" placeholder="Trade ID" value={tradeId} onChange={(e) => setTradeId(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
             {tradeState !== undefined && (
               <p className="text-sm mb-2">
@@ -176,21 +176,21 @@ export default function TradePage() {
               </p>
             )}
             <div className="flex gap-2 flex-wrap items-center">
-              <button onClick={fund} disabled={isPending || !canAct(0)}
+              <button onClick={fund} disabled={!WRITES_ENABLED || isPending || !canAct(0)}
                 className="border px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed">
                 ① 付款（{amount} ETH）
               </button>
-              <button onClick={guarantee} disabled={isPending || !canAct(1)}
+              <button onClick={guarantee} disabled={!WRITES_ENABLED || isPending || !canAct(1)}
                 className="border px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed">
                 ② 担保（质押 {stakeDisplay.toFixed(4)} ETH）
               </button>
-              <input placeholder="保费 ETH" value={premium} onChange={(e) => setPremium(e.target.value)}
+              <input aria-label="保费 ETH" placeholder="保费 ETH" value={premium} onChange={(e) => setPremium(e.target.value)}
                 className="border rounded p-1.5 w-28" />
-              <button onClick={deliver} disabled={isPending || !canAct(2)}
+              <button onClick={deliver} disabled={!WRITES_ENABLED || isPending || !canAct(2)}
                 className="border px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed">
                 ③ 交付（卖家）
               </button>
-              <button onClick={confirm} disabled={isPending || !canAct(3)}
+              <button onClick={confirm} disabled={!WRITES_ENABLED || isPending || !canAct(3)}
                 className="border px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed">
                 ④ 确认（买家）
               </button>

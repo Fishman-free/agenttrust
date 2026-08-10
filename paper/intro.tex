@@ -1,77 +1,52 @@
-% ============================================================================
-%  Chapter 1: Introduction
-% ============================================================================
 \section{Introduction}
 \label{sec:intro}
 
-\paragraph{Background: from analysis tool to digital-twin counterparty.}
-Large language models (LLMs) and tool-use capabilities have made AI agents able to plan
-autonomously, call external tools, and execute multi-step tasks. The decisive shift is that an
-agent is no longer merely a system that \emph{answers questions}; it can make economically
-consequential commitments on behalf of its owner --- negotiating prices, signing terms, initiating
-transfers, and settling smart contracts. When an agent holds funds and can complete payments, it
-effectively constitutes a ``digital twin'' trading counterparty of its human owner.
+Large language models and tool-use systems can plan, call external services, and initiate
+economically consequential actions. Open agent-to-agent commerce therefore raises familiar but
+important questions about identity, escrow, evidence, dispute resolution, and liability
+\cite{a2a-finance,agent-rep}. Cheap pseudonyms complicate accountability, while opaque execution
+makes the merits of many disputes difficult to verify automatically.
 
-This trend has given rise to agentic commerce and agent-to-agent (A2A) finance as research
-categories \cite{a2a-finance, agent-rep}. Prior work observes that AI agents are transitioning from
-analysis tools into counterparties, generating a demand for financial-grade infrastructure for
-identity, authorization, payment, verification, reputation, and accountability. However,
-widespread adoption amplifies three systemic risks: \emph{identity fraud} --- anyone can cheaply
-mass-produce ``fake agents''; \emph{mutual-trust deficit} --- an anonymous counterparty cannot
-tell whether the other side is trustworthy; and \emph{accountability vacuum} --- after an agent
-misbehaves there is no clear path to attribute fault, present evidence, and impose sanctions.
+\paragraph{Problem and scope.}
+We study a narrow systems question: what can be learned from coupling principal-bound agent
+identifiers, collateralized escrow, a simple staked vote, and outcome counters in one prototype? The
+prototype does not establish the off-chain truth of a dispute, legal identity, or legal liability. It
+also does not solve secure evidence collection, voter selection, bribery, privacy, oracle failure, or
+contract governance. ``Principal-bound'' below means only that a token and stored metadata are
+associated with an on-chain address; it is not proof that the address corresponds to a unique human
+or legally responsible entity.
 
-\paragraph{Problem statement.}
-We focus on three interconnected questions:
+\paragraph{Prototype architecture.}
+The identity--trust--accountability (ITA) decomposition in Section~\ref{sec:ita} maps to four legacy
+Solidity contracts: \textsf{AgentRegistry}, \textsf{GuaranteeEscrow},
+\textsf{SchellingVoting}, and \textsf{ReputationHub}. The intended research design is a feedback
+cycle in which outcomes update reputation and reputation informs later guarantee quotes. In the
+inspected legacy snapshot, however, the contracts record outcomes and accept a caller-supplied
+premium; they do not compute or enforce a reputation-dependent premium. The closed loop is thus a
+proposed policy layer whose integration remains to be verified in the parallel implementation.
 
-\begin{itemize}[leftmargin=2em,itemsep=1pt]
-  \item \textbf{Q1 (Trust).} When agents transact on behalf of humans, how can mutual trust be
-  established so that ``scammer agents'' do not infiltrate?
-  \item \textbf{Q2 (Accountability).} When a scammer agent commits fraud, how are fault, evidence,
-  and sanctions determined?
-  \item \textbf{Q3 (Incentives).} Which economic and governance mechanisms make the trust
-  infrastructure self-sustaining and scalable?
-\end{itemize}
-
-These questions restate the classic trust problem in a machine-to-machine, anonymity-by-default
-setting: trust must come not from knowing a counterpart's history but from a verifiable, auditable,
-and traceable technical infrastructure.
-
-\paragraph{Our approach: a Schelling-point reputation community.}
-We design and implement a decentralized guarantee and arbitration layer for agent-to-agent
-commerce. The system is organized along the identity--trust--accountability (ITA) architecture
-(Section~\ref{sec:ita}): a registry issues ERC-721 agent identities bound to real principals; a
-guaranteed escrow escrows trade funds against guarantor stakes; disputes are adjudicated by a
-community of staked voters whose majority --- by a Schelling-point argument --- is incentivized to
-vote truthfully; and a reputation hub records outcomes on-chain and prices future guarantees. The
-central novelty is the \emph{closed loop}: verdicts update reputation, reputation prices the
-guarantee, and the guarantee determines whether low-reputation agents can transact at all
-(Section~\ref{sec:pricing}).
-
-The mechanism is instantiated by four production Solidity contracts (Section~\ref{sec:contracts})
-with 38 passing tests, and its game-theoretic claims are validated by Monte-Carlo simulation
-(Section~\ref{sec:eval}).
+\paragraph{Version statement.}
+Implementation descriptions in this paper refer to the repository state inspected on August 10,
+2026, before the concurrent contract and simulation revisions were frozen. They are descriptive, not
+a claim about the final code. Historical repository material reports four contracts and 38 Foundry
+tests, but this paper does not treat that count as an audit or as evidence about untested behaviors.
+No new implementation result from the in-progress revision is reported here.
 
 \paragraph{Contributions.}
-\begin{itemize}[leftmargin=2em,itemsep=1pt]
-  \item \textbf{A closed-loop mechanism} connecting adjudication, guarantees, and reputation --- the
-  first, to our knowledge, to tie all three into one on-chain cycle (Sections~\ref{sec:mech},
-  \ref{sec:pricing}).
-  \item \textbf{A formal game-theoretic analysis} of the staked-voting mechanism: honest voting is
-  an incentive-compatible equilibrium under a two-thirds supermajority rule; a coordinated
-  malicious minority of at most $35\%$ of voters is strategically harmless; Sybil attacks are
-  unprofitable because adversarial voting power scales linearly in expenditure; and the mechanism
-  conserves funds exactly (Section~\ref{sec:analysis}).
-  \item \textbf{A production implementation} --- four verified-style Solidity contracts, 38 tests,
-  an end-to-end demo flow, and Docker one-command bootstrapping --- together with a
-  \textsf{mesa}-based simulation that empirically validates the theory (Section~\ref{sec:impl}).
-  \item \textbf{An honest evaluation} of the MVP's limitations (free-abstention refunds, integer
-  dust, threshold approximation) and the deployment path to a public testnet
-  (Sections~\ref{sec:eval}, \ref{sec:deploy}).
+\begin{itemize}[leftmargin=2em,itemsep=2pt]
+  \item A research-prototype architecture connecting identity records, collateralized escrow,
+  staked dispute voting, and outcome counters.
+  \item A code-scoped description of the legacy $65\%$ rule, including quorum, void-case,
+  abstention-refund, capital-at-risk, and integer-dust behavior.
+  \item Conditional accounting and threshold propositions with explicit hypotheses, replacing
+  unsupported claims of strict Bayesian--Nash truthfulness, harmless minorities, unprofitable Sybils,
+  and exact conservation.
+  \item An exploratory evaluation report that distinguishes simulation observations from contract
+  verification and documents what must be rerun after a release is frozen.
 \end{itemize}
 
 \paragraph{Organization.}
-Section~\ref{sec:related-work} surveys related work. Section~\ref{sec:ita} presents the ITA
-architecture and its mapping to the four contracts. Section~\ref{sec:mech} formalizes the mechanism
-and proves its incentive properties. Section~\ref{sec:impl} describes the implementation and its
-empirical evaluation. Section~\ref{sec:conclusion} concludes.
+Section~\ref{sec:related-work} reviews related systems. Section~\ref{sec:ita} presents the ITA
+architecture and threat boundaries. Section~\ref{sec:mech} states the mechanism and limited analytical
+results. Section~\ref{sec:impl} describes the legacy implementation and exploratory evaluation.
+Section~\ref{sec:conclusion} concludes with limitations and a validation plan.

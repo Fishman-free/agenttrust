@@ -3,104 +3,77 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {AgentRegistry} from "../src/AgentRegistry.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+
+contract RejectEther is IERC721Receiver {
+    receive() external payable { revert("no ether"); }
+
+    function register(AgentRegistry registry) external payable returns (uint256) {
+        return registry.registerAgent{value: msg.value}("ContractAgent", "desc", "endpoint");
+    }
+
+    function withdraw(AgentRegistry registry, address payable recipient) external {
+        registry.withdraw(recipient);
+    }
+
+    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+        return IERC721Receiver.onERC721Received.selector;
+    }
+}
 
 contract AgentRegistryTest is Test {
     AgentRegistry registry;
     address alice = makeAddr("alice");
-    address bob = makeAddr("bob");
-
-    // forge 中部署者为测试合约自身，withdrawFees 需要 owner 能接收 ETH
-    receive() external payable {}
 
     function setUp() public {
         registry = new AgentRegistry();
-        vm.deal(alice, 100 ether);
-        vm.deal(bob, 100 ether);
-        // Foundry 默认给测试合约（= owner）2^96-1 wei，清零以对齐 withdraw 断言
-        vm.deal(address(this), 0);
+        vm.deal(alice, 10 ether);
     }
 
-    function test_registerAgent_mintsAndBindsOwner() public {
+    function test_registrationBindsImmutableResponsibleSubjectAndSnapshot() public {
         vm.prank(alice);
-        uint256 tokenId = registry.registerAgent("DataAgent", unicode"数据分析服务", "https://a.example/mcp");
+        uint256 id = registry.registerAgent("Agent", "desc", "endpoint");
+        uint256 registeredBlock = block.number;
 
-        assertEq(tokenId, 0);
-        assertEq(registry.ownerOf(tokenId), alice, unicode"责任主体应为注册人");
-        assertEq(registry.agentCount(), 1);
+        assertEq(registry.ownerOf(id), alice);
+        assertEq(registry.responsibleParty(id), alice);
+        assertTrue(registry.isRegisteredSubjectAt(alice, registeredBlock));
+        assertFalse(registry.isRegisteredSubjectAt(alice, registeredBlock - 1));
+
+        vm.prank(alice);
+        registry.transferFrom(alice, makeAddr("buyer"), id);
+        assertEq(registry.responsibleParty(id), alice, "NFT transfer must not rewrite legal subject");
     }
 
-    function test_registerAgent_paysRegistrationFee() public {
-        registry.setRegistrationFee(0.01 ether);
+    function test_overpaymentUsesPullPaymentAndCannotDosRegistration() public {
+        registry.setRegistrationFee(1 ether);
+        RejectEther rejector = new RejectEther();
+        vm.deal(address(rejector), 2 ether);
 
-        vm.prank(alice);
-        vm.expectRevert(unicode"AgentRegistry: 注册质押不足");
-        registry.registerAgent("A", "desc", "https://a.example/mcp");
+        rejector.register{value: 2 ether}(registry);
+        assertEq(registry.pendingWithdrawals(address(rejector)), 1 ether);
+        assertEq(registry.accruedFees(), 1 ether);
 
-        vm.prank(alice);
-        registry.registerAgent{value: 0.01 ether}("A", "desc", "https://a.example/mcp");
-        assertEq(address(registry).balance, 0.01 ether);
+        address recipient = makeAddr("recipient");
+        rejector.withdraw(registry, payable(recipient));
+        assertEq(recipient.balance, 1 ether);
     }
 
-    function test_agentInfo_returnsMetadata() public {
+    function test_ownerFeesAreCreditedBeforeWithdrawal() public {
+        registry.setRegistrationFee(1 ether);
         vm.prank(alice);
-        uint256 tokenId = registry.registerAgent("DataAgent", unicode"数据分析服务", "https://a.example/mcp");
+        registry.registerAgent{value: 1 ether}("Agent", "desc", "endpoint");
 
-        (string memory name, string memory desc, string memory endpoint, address owner, uint256 createdAt) =
-            registry.agents(tokenId);
-        assertEq(name, "DataAgent");
-        assertEq(desc, unicode"数据分析服务");
-        assertEq(endpoint, "https://a.example/mcp");
-        assertEq(owner, alice);
-        assertGt(createdAt, 0);
-    }
-
-    function test_onlyOwner_setsFee() public {
-        vm.prank(bob);
-        vm.expectRevert();
-        registry.setRegistrationFee(0.1 ether);
-
-        vm.prank(alice); // 非 owner 也失败（部署者为 owner）
-        vm.expectRevert();
-        registry.setRegistrationFee(0.1 ether);
-    }
-
-    function test_withdrawFees_onlyOwner() public {
-        registry.setRegistrationFee(0.01 ether);
-
-        vm.prank(alice);
-        registry.registerAgent{value: 0.01 ether}("A", "desc", "x");
-
-        vm.prank(bob);
-        vm.expectRevert();
         registry.withdrawFees();
+        assertEq(registry.accruedFees(), 0);
+        assertEq(registry.pendingWithdrawals(address(this)), 1 ether);
 
-        vm.prank(registry.owner());
-        registry.withdrawFees();
-        assertEq(registry.owner().balance, 0.01 ether);
+        registry.withdraw(payable(alice));
+        assertEq(alice.balance, 10 ether);
     }
 
-    function test_registerAgent_refundsOverpayment() public {
-        registry.setRegistrationFee(0.01 ether);
-
-        vm.prank(alice);
-        registry.registerAgent{value: 0.015 ether}("A", "desc", "https://a.example/mcp");
-
-        assertEq(address(registry).balance, 0.01 ether, unicode"合约应仅保留注册质押");
-        assertEq(alice.balance, 99.99 ether, unicode"多付部分应退回调用方");
-    }
-
-    function test_setRegistrationFee_positivePath() public {
-        vm.expectEmit();
-        emit AgentRegistry.RegistrationFeeUpdated(0.1 ether);
-        registry.setRegistrationFee(0.1 ether);
-
-        assertEq(registry.registrationFee(), 0.1 ether);
-    }
-
-    function test_registerAgent_emitsEvent() public {
-        vm.prank(alice);
-        vm.expectEmit();
-        emit AgentRegistry.AgentRegistered(0, alice, "DataAgent");
-        registry.registerAgent("DataAgent", unicode"数据分析服务", "https://a.example/mcp");
+    function test_nonexistentAgentRejected() public {
+        vm.expectRevert();
+        registry.responsibleParty(0);
     }
 }

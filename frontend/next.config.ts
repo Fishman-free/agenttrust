@@ -8,6 +8,8 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH;
 
 const nextConfig: NextConfig = {
   output: "export",
+  // 每个路由输出为 /route/index.html，静态服务器无需为深链配置 .html 重写。
+  trailingSlash: true,
   ...(basePath ? { basePath } : {}),
 };
 

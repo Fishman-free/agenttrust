@@ -1,118 +1,95 @@
-# Schelling 投票机制仿真验证（mesa）
+# Stake-voting simulation
 
-> **论文**：《Schelling-Point Reputation Communities: A Decentralized Guarantee and Arbitration Layer for Agent-to-Agent Commerce》第四章「Mechanism Design」的实证验证（Evaluation）。
-> **框架**：Python `mesa 3.5` + `numpy` + `matplotlib`。
-> **机制基准**：`contracts/src/SchellingVoting.sol` 结算逻辑**逐字复刻**（质押、2/3 多数、罚没均分、资金守恒）。
+This directory contains **model `stake-vote-econ-v2.0.0`**, a reproducible Monte Carlo characterization of a configurable stake-voting mechanism. It does not prove a theorem, an equilibrium, or security at a universal coalition threshold.
 
----
+## Corrections embodied in v2
 
-## 1. 目标
+- Refundable stake principal is reported but is **not automatically counted as attack cost**. Economic profit separately includes settlement gains/losses, benefit from a successful wrong verdict, failed slashing, non-refundable identity fees, capital opportunity cost, gas, and coordination costs.
+- Honest one-round monetary payoff can be below the zero payoff from abstaining. The paired experiment reports `alternative − honest` with a 95% confidence interval rather than assuming honesty is a best response.
+- `6500 bps` means **65%**, not two thirds. Exact two-thirds-style integer configuration is represented separately by `6667 bps`.
+- Every aggregate keeps `correct_rate`, `wrong_rate`, and `void_rate` separate. A void verdict is not counted as incorrect or correct.
+- Results are empirical scenario estimates only. No output is labelled as proof or theorem validation.
 
-验证第四章四组定理在随机行为下的稳健性，为论文提供实验证据：
+## Reproducible entry point
 
-| 实验 | 验证定理 | 问题 |
-|---|---|---|
-| Exp1 | 引理1 / 定理1 | 给定他人诚实，单方面偏离诚实是否更优？ |
-| Exp2 | 定理2 | 恶意联盟需多大才能翻转裁决？≤35% 是否无害？ |
-| Exp3 | 定理3 | 女巫攻击需多少身份与成本？成本是否压倒收益？ |
-| Exp4 | 引理2 | 结算后资金是否严格守恒（Σpayoff = −dust）？ |
-| Exp5 | 阈值论证 | 为何 MAJORITY_BPS=6500（2/3）而非 1/2？ |
-
-## 2. 模型与合约一致性
-
-`model.py` 的结算函数逐行对应 `SchellingVoting.sol::settle()`：
-
-- 质押以 **wei 整数**（`stake_wei = int(stake × 1e18)`），精确复刻 Solidity 整数除法；
-- 多数判定：`m_X × 10000 ≥ total × MAJORITY_BPS`（默认 6500），`total = m_B + m_S`（不含弃权）；
-- `total == 0 →` 作废；作废案全部投票者（含弃权）退款；
-- 有效案多数派净收益 = `floor(stake_wei × L / W)`，少数派 = `−stake_wei`，弃权 = `0`（退款）；
-- `effective = total ≥ 3 ∧ winner ≠ ABSTAIN`（`MIN_VOTERS = 3`）。
-
-## 3. 复现
+Python 3.11 is recommended. From this directory:
 
 ```bash
-cd simulation
-python experiments.py     # 全 5 组实验 → results/*.csv + plots/*.png
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt
+.venv/Scripts/python experiments.py --quick
 ```
 
-固定随机种子 `SEED = 20260810`，结果完全可复现。全部 5 组 < 2 分钟。
+The quick suite uses seed `20260810`, bounded repetitions, and runs all experiments. A full run uses the same entry point without `--quick`:
 
-## 4. 实验结果
+```bash
+.venv/Scripts/python experiments.py
+```
 
-### Exp1 — 诚实均衡（引理1 / 定理1）
+Each invocation creates a new directory under `results/` containing CSVs, plots, and `run_summary.json`; it never treats the legacy `exp1`–`exp5` files as fresh validation and does not overwrite them. Use `--output-dir PATH` for an explicit new destination (the command refuses to reuse it and adds a suffix).
 
-**设计**：n = 15，其中 14 个诚实投票者 + 1 个叛离者（策略 ∈ {honest, invert, always_buyer, always_seller, abstain}），扫描信号质量 q ∈ {0.51, 0.6, 0.7, 0.8, 0.9}，各 3000 复跑，测叛离者期望净收益。
+## Central mechanism configuration
 
-**结果**（deviator 平均净收益，ETH）：
+`MechanismConfig` in `model.py` is the single source of mechanism/economic defaults:
 
-| q | honest | invert | always_seller | abstain |
-|---|---|---|---|---|
-| 0.51 | **+0.005** | −0.015 | +0.002 | 0 |
-| 0.6 | **−0.006** | −0.088 | −0.046 | 0 |
-| 0.7 | **−0.011** | −0.329 | −0.176 | 0 |
-| 0.8 | — | −0.643 | −0.332 | 0 |
-| 0.9 | — | −0.875 | −0.446 | 0 |
+| Parameter | Default | Meaning |
+|---|---:|---|
+| `model_version` | `stake-vote-econ-v2.0.0` | Schema/semantics identifier |
+| `stake_eth` | 1.0 | Refundable principal unless slashed |
+| `majority_bps` | 6500 | 65% directional-vote threshold |
+| `min_directional_votes` | 3 | Minimum BUYER+SELLER votes |
+| `identity_fee_eth` | 0.10 | Non-refundable identity fee |
+| `capital_annual_rate` | 8% | Opportunity-cost assumption |
+| `lock_days` | 7 | Capital lock duration |
+| `gas_per_identity_eth` | 0.003 | Per-identity transaction cost |
+| `coordination_fixed_eth` | 0.05 | Fixed coalition coordination cost |
+| `coordination_per_identity_eth` | 0.002 | Variable coordination cost |
 
-**结论**：投真实信号的期望收益**严格优于**逆信号（invert）与固定方向策略，且差距随 q 增大单调扩大——验证引理1「与信号一致是最优响应」、定理1「诚实构成均衡」。invert 收益 ∝ −(2q−1)，与理论 `p_B − p_S ≥ (2q−1) − ε` 吻合。
+The attack profit identity is:
 
-**重要发现（MVP 简化，如实标注）**：弃权（abstain）净收益恒为 0——**弃权免费退出**使单期货币期望下诚实仅略优于弃权（q 高时趋于相等）。这是 MVP 合约的已知简化（弃权只退本金、不罚没、无参与激励）。它**实证支撑了论文 4.4 节**：必须引入「信誉→担保定价」闭环（参与治理者信誉增长、保费下降；搭便车者被排除），单期货币激励才闭环。仿真为这一设计必要性提供了定量证据。
+```text
+profit = I(wrong effective verdict) × success benefit
+       + coalition settlement net payoff
+       - non-refundable identity fees
+       - capital opportunity cost
+       - gas cost
+       - coordination cost
+```
 
-### Exp2 — 共谋稳健性（定理2）
+Failed slashing is exposed as a separate diagnostic and is already part of settlement net payoff, so it is not deducted twice. Stake principal is shown as `refundable_stake_principal_eth`, not called a sunk cost.
 
-**设计**：n = 21，真实状态 BUYER，q = 0.85。恶意联盟 c 人固定投 SELLER（反方向），其余诚实。扫描 c/n，2000 复跑，测「裁决被翻转」概率。
+## Experiments and outputs
 
-**结果**：
+1. **Paired strategy payoff differences** (`paired_strategy_payoffs.csv`): common random numbers compare a focal alternative to honest voting. It reports `alternative − honest`, its 95% normal CI, and correct/wrong/void rates.
+2. **Configurable factorial experiment** (`factorial_attack_economics.csv`): threshold × signal accuracy `q` × electorate size `n` × coalition fraction × honest turnout. Coordinated coalition identities always turn out; turnout applies to ordinary voters.
+3. **Fund accounting** (`fund_accounting.csv`): checks settlement net payoff against integer-division dust for random paths.
+4. **Repeated participation/reputation** (`repeated_reputation.csv`): a deliberately minimal, uncalibrated experiment. A focal honest voter gains one reputation unit only when it votes with a correct effective verdict; abstention gains none. Several assumed ETH values per reputation unit show when this added utility may offset weaker one-round monetary incentives.
 
-| 恶意比例 c/n | 6/21 | 8/21 | 10/21 | 12/21 | 14/21 |
-|---|---|---|---|---|---|
-| 翻转率 | 0.0005 | 0.0075 | 0.079 | 0.397 | 1.000 |
+The factorial dimensions are CLI-configurable:
 
-**结论**：**≤38% 恶意时翻转率 < 1%**（35% 处仅 0.75%），验证定理2「≤35% 恶意少数无害」。理论门槛 `⌈13h/7⌉ ≈ 1.86h` 与实测临界（翻转率突升至 100% 在 c = 14 = 2h）一致，且实测证明门槛是**保守充分条件**：真实裁决翻转是「概率平滑上升」而非阶跃，攻击者在门槛之前只能获得部分翻转率。
+```bash
+python experiments.py --quick \
+  --thresholds 5000,6500,6667 \
+  --qs 0.6,0.8 \
+  --ns 9,21 \
+  --coalitions 0,0.25,0.4 \
+  --turnouts 0.6,1.0 \
+  --success-benefit 5
+```
 
-### Exp3 — 女巫成本（定理3）
+Coalition fractions are converted to integer coalition sizes with `round(n × fraction)` and both requested and realized fractions are saved.
 
-**设计**：诚实者 h = 14，攻击者创建 k 个身份（各支付注册费 0.1 + 质押 1.0 ETH），固定投 SELLER。测翻转率与攻击总成本。
+## Model boundary and pending Solidity synchronization
 
-**结果**：
+The contract is being refactored in parallel, so this version intentionally does **not** claim byte-for-byte parity. After the new Solidity contract stabilizes, add differential fixtures for at least:
 
-| k | 0–8 | 14 | 20 | 22 | 24 | 26 |
-|---|---|---|---|---|---|---|
-| 翻转率 | ≈0 | 0.042 | 0.355 | 0.648 | 0.900 | 1.000 |
-| 成本(ETH) | ≤8.8 | 15.4 | 22.0 | 24.2 | 26.4 | 28.6 |
+- threshold rounding and tie/winner priority at 6500 and 6667 bps;
+- whether abstainers register/lock stake and how they are refunded;
+- the exact minimum-voter denominator (directional votes versus all participants);
+- void, correct effective, and wrong effective settlement paths;
+- winner reward integer division, residual dust, and claim timing;
+- identity-fee destination/refundability and stake lock duration;
+- turnout/eligibility representation and duplicate-identity constraints;
+- gas measurements and any on-chain reputation update rules.
 
-**结论**：达成高概率翻转需 **k ≥ 22** 个身份、成本 ≥ 24.2 ETH，而任意现实收益上限（交易额/赔偿额，图中示 5 ETH）远低于攻击成本——**女巫攻击在合理参数下无利可图**，验证定理3。理论充分门槛 `⌈13h/7⌉ = 26` 实测翻转率已达 100%，进一步确认它是保守上界；真实临界（k≈22）略低，源于诚实者的信号噪声（1−q = 15% 反向票助长攻击侧）。
-
-### Exp4 — 资金守恒（引理2）
-
-**设计**：4000 次随机案（n ∈ [5,30]，q ∈ [0.55,0.95]，随机策略），验证 `Σ net == −dust`（有效案）/ `0`（作废案）。
-
-**结果**：**`max |Σnet − 期望| = 0 wei`，守恒严格成立**（1993 有效案 + 2007 作废案，无一例外）。验证引理2：机制在任意路径下资金守恒，仅留 `dust = (stake × L) mod W`（wei 级，MVP 已知限制，论文版批量结算消除）。
-
-### Exp5 — 阈值扫描（2/3 论证）
-
-**设计**：n = 15，全员诚实，q = 0.7。扫描 MAJORITY_BPS ∈ {5000…7000}，3000 复跑，测「正确裁决率」与「作废率」。
-
-**结果**：
-
-| MAJORITY_BPS | 0.50 | 0.55 | 0.60 | 0.65 | 0.70 |
-|---|---|---|---|---|---|
-| 正确裁决率 | 0.947 | 0.856 | 0.856 | 0.721 | 0.512 |
-| 作废率 | 0.000 | 0.125 | 0.125 | 0.275 | 0.487 |
-
-**结论**：阈值越低正确率越高（易达成多数）、作废率越低，但**抗共谋性越差**（Exp2 已证 1/2 阈值下 1/3 恶意即可翻转）。AgentTrust 取 **6500** 是「正确率(0.72)」与「抗 1/3 规模恶意少数(定理2)」的工程权衡点——低于 5000 会被少数胁迫，高于 7000 半数以上交易作废。仿真同时给出权衡曲线，供论文版按业务参数调优（如提高 q 的领域可放宽至 6000）。
-
-## 5. 对论文的四点实证贡献
-
-1. **定理1 实证**：诚实严格优于逆信号/固定方向，gap 随 (2q−1) 单调——引用为 Theorem 1 的仿真验证。
-2. **定理2 实证**：≤35% 恶意翻转率 <1%；理论门槛为保守充分条件——引用为 Theorem 2 的边界验证。
-3. **定理3 实证**：女巫攻击成本压倒收益（成本≥24.2 ETH vs 收益上限 5 ETH）——引用为 Theorem 3 的可行性验证。
-4. **新发现（MVP 局限）**：弃权免费退出使单期诚实收益≈弃权——**实证论证论文 4.4 信誉闭环的必要性**（多期信誉激励是排除搭便车的关键），同时呼应 MVP 合约注释中的「论文版精化」清单。
-
-## 6. 文件
-
-| 文件 | 说明 |
-|---|---|
-| `model.py` | mesa Model/Agent，结算与 `SchellingVoting.sol` 逐字一致 |
-| `experiments.py` | 5 组实验 + 出图（固定种子，可复现） |
-| `results/exp1–exp5.*` | 原始数据（CSV / txt） |
-| `plots/exp1–exp5.png` | 300dpi 论文级图表 |
+Until those fixtures pass, `stake-vote-econ-v2.0.0` is an explicit economic reference model, not a claim about the final Solidity implementation.
