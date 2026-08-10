@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useAccount, useConnect, useWriteContract, useReadContract, useReadContracts } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { agentRegistryAbi } from "@/lib/abi";
-import { CONTRACT_ADDRESSES } from "@/lib/config";
+import { CONTRACT_ADDRESSES, WRITES_ENABLED } from "@/lib/config";
 import { parseEther, formatEther } from "viem";
 
 // agents(tokenId) 返回 [name, description, endpoint, owner, createdAt]
@@ -23,7 +23,6 @@ export default function AgentsPage() {
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [endpoint, setEndpoint] = useState("");
-  const [fee, setFee] = useState("0");
 
   const { data: feeData } = useReadContract({
     address: CONTRACT_ADDRESSES.agentRegistry,
@@ -31,10 +30,7 @@ export default function AgentsPage() {
     functionName: "registrationFee",
   });
 
-  // wagmi v3 / react-query v5 移除了查询 onSuccess 回调，改用 effect 同步
-  useEffect(() => {
-    if (feeData !== undefined) setFee(formatEther(feeData));
-  }, [feeData]);
+  const fee = feeData === undefined ? "0" : formatEther(feeData);
 
   const { data: agentCount, refetch: refetchCount } = useReadContract({
     address: CONTRACT_ADDRESSES.agentRegistry,
@@ -84,15 +80,15 @@ export default function AgentsPage() {
         <>
           <p className="text-sm text-gray-500 mb-4">当前责任主体：{address}</p>
           <div className="space-y-3">
-            <input placeholder="智能体名称（如 DataAgent）" value={name} onChange={(e) => setName(e.target.value)}
+            <input aria-label="智能体名称（如 DataAgent）" placeholder="智能体名称（如 DataAgent）" value={name} onChange={(e) => setName(e.target.value)}
               className="w-full border rounded p-2" />
-            <input placeholder="能力描述（如：链上数据分析服务）" value={desc} onChange={(e) => setDesc(e.target.value)}
+            <input aria-label="能力描述（如：链上数据分析服务）" placeholder="能力描述（如：链上数据分析服务）" value={desc} onChange={(e) => setDesc(e.target.value)}
               className="w-full border rounded p-2" />
-            <input placeholder="MCP/A2A 端点（https://…）" value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
+            <input aria-label="MCP/A2A 端点（https://…）" placeholder="MCP/A2A 端点（https://…）" value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
               className="w-full border rounded p-2" />
             <button
               onClick={register}
-              disabled={isPending || feeData === undefined}
+              disabled={!WRITES_ENABLED || isPending || feeData === undefined}
               className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isPending ? "注册中…" : feeData === undefined ? "加载中…" : `注册（注册费 ${fee} ETH）`}

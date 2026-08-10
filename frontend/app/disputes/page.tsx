@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useAccount, useConnect, useWriteContract } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { guaranteeEscrowAbi, schellingVotingAbi } from "@/lib/abi";
-import { CONTRACT_ADDRESSES } from "@/lib/config";
+import { CONTRACT_ADDRESSES, WRITES_ENABLED } from "@/lib/config";
 import { parseEther } from "viem";
 
 export default function DisputesPage() {
@@ -104,9 +104,9 @@ export default function DisputesPage() {
         <div className="space-y-4">
           <section className="border rounded p-4">
             <h2 className="font-semibold mb-2">发起争议（交易双方）</h2>
-            <input placeholder="Trade ID" value={tradeId} onChange={(e) => setTradeId(e.target.value)}
+            <input aria-label="Trade ID" placeholder="Trade ID" value={tradeId} onChange={(e) => setTradeId(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
-            <button onClick={openDispute} disabled={isPending}
+            <button onClick={openDispute} disabled={!WRITES_ENABLED || isPending}
               className="bg-orange-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">
               {isPending ? "提交中…" : "发起争议"}
             </button>
@@ -114,17 +114,17 @@ export default function DisputesPage() {
 
           <section className="border rounded p-4">
             <h2 className="font-semibold mb-2">开设投票案（平台）</h2>
-            <input placeholder="Trade ID" value={tradeId} onChange={(e) => setTradeId(e.target.value)}
+            <input aria-label="Trade ID" placeholder="Trade ID" value={tradeId} onChange={(e) => setTradeId(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
-            <input placeholder="买家 Agent ID" value={buyerId} onChange={(e) => setBuyerId(e.target.value)}
+            <input aria-label="买家 Agent ID" placeholder="买家 Agent ID" value={buyerId} onChange={(e) => setBuyerId(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
-            <input placeholder="卖家 Agent ID" value={sellerId} onChange={(e) => setSellerId(e.target.value)}
+            <input aria-label="卖家 Agent ID" placeholder="卖家 Agent ID" value={sellerId} onChange={(e) => setSellerId(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
             {/* 质押与投票区共享同一 stake state：同一案件的质押额必须一致
                 （T6 语义：vote 的 msg.value 必须 == case 的 stake） */}
-            <input placeholder="质押（ETH）" value={stake} onChange={(e) => setStake(e.target.value)}
+            <input aria-label="质押（ETH）" placeholder="质押（ETH）" value={stake} onChange={(e) => setStake(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
-            <button onClick={openCase} disabled={isPending}
+            <button onClick={openCase} disabled={!WRITES_ENABLED || isPending}
               className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">
               {isPending ? "提交中…" : "开设投票案（窗口 1 天）"}
             </button>
@@ -132,30 +132,30 @@ export default function DisputesPage() {
 
           <section className="border rounded p-4">
             <h2 className="font-semibold mb-2">社区投票（Schelling 收敛）</h2>
-            <input placeholder="Case ID" value={caseId} onChange={(e) => setCaseId(e.target.value)}
+            <input aria-label="Case ID" placeholder="Case ID" value={caseId} onChange={(e) => setCaseId(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
-            <input placeholder="质押（ETH）" value={stake} onChange={(e) => setStake(e.target.value)}
+            <input aria-label="质押（ETH）" placeholder="质押（ETH）" value={stake} onChange={(e) => setStake(e.target.value)}
               className="w-full border rounded p-2 mb-2" />
             <div className="flex gap-2">
-              <button onClick={() => vote(0)} disabled={isPending}
+              <button onClick={() => vote(0)} disabled={!WRITES_ENABLED || isPending}
                 className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">
                 支持买家
               </button>
-              <button onClick={() => vote(1)} disabled={isPending}
+              <button onClick={() => vote(1)} disabled={!WRITES_ENABLED || isPending}
                 className="bg-red-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">
                 支持卖家
               </button>
-              <button onClick={settle} disabled={isPending}
+              <button onClick={settle} disabled={!WRITES_ENABLED || isPending}
                 className="bg-gray-700 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">
                 结算（窗口结束后）
               </button>
             </div>
             <div className="flex gap-2 mt-2">
-              <button onClick={() => claim("reward")} disabled={isPending}
+              <button onClick={() => claim("reward")} disabled={!WRITES_ENABLED || isPending}
                 className="border px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">
                 领取奖励（多数派）
               </button>
-              <button onClick={() => claim("refund")} disabled={isPending}
+              <button onClick={() => claim("refund")} disabled={!WRITES_ENABLED || isPending}
                 className="border px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">
                 领取退款（作废/弃权）
               </button>

@@ -1,11 +1,5 @@
-% ============================================================================
-%  Schelling-Point Reputation Communities
-%  A Decentralized Guarantee and Arbitration Layer for Agent-to-Agent Commerce
-%
-%  Main file. Compile: pdflatex main && bibtex main && pdflatex main && pdflatex main
-%  Chapters: intro (1) / related-work (2) / ita-architecture (3) /
-%            mech-design (4) / implementation (5) / conclusion (6)
-% ============================================================================
+% AgentTrust research-prototype paper
+% Build with: latexmk -pdf main.tex
 \documentclass[11pt]{article}
 
 \usepackage[margin=1in]{geometry}
@@ -20,10 +14,10 @@
 
 \hypersetup{
   colorlinks=true, linkcolor=blue!60!black, citecolor=green!40!black,
-  urlcolor=blue!60!black, pdfauthor={}, pdftitle={Schelling-Point Reputation Communities}
+  urlcolor=blue!60!black, pdfauthor={}, pdfproducer={},
+  pdftitle={Schelling-Point Reputation Communities}
 }
 
-% ---------- theorem 环境（全局连续编号，供第 4/5 章复用） ----------
 \newtheorem{theorem}{Theorem}[section]
 \newtheorem{lemma}[theorem]{Lemma}
 \newtheorem{proposition}[theorem]{Proposition}
@@ -32,42 +26,35 @@
 \newtheorem{remark}[theorem]{Remark}
 \newtheorem{example}[theorem]{Example}
 
-% ---------- 图形路径：仿真图统一指向 simulation/plots/ ----------
 \graphicspath{{../simulation/plots/}}
 
-\title{\textbf{Schelling-Point Reputation Communities: A Decentralized Guarantee and Arbitration Layer for Agent-to-Agent Commerce}}
-\author{
-  AgentTrust Protocol Team\\[2pt]
-  \small \texttt{github.com/Fishman-free/multiagent}
-}
-\date{\today}
+\title{\textbf{Schelling-Point Reputation Communities:\\A Research Prototype for Agent-to-Agent Escrow and Arbitration}}
+\author{AgentTrust Protocol Team\\[2pt]
+  \small \texttt{github.com/Fishman-free/multiagent}}
+\date{August 10, 2026}
 
 \begin{document}
-
 \maketitle
 
 \begin{abstract}
-As large language models and tool-use capabilities mature, AI agents are evolving from
-analytical tools into counterparties capable of autonomously negotiating, signing, transferring
-funds, and settling. When agents hold funds and act as ``digital twins'' of humans, anonymous,
-machine-to-machine commerce raises a new class of trust problems: how can agents establish mutual
-trust, and how can malicious agents be held accountable after misbehavior? We present a
-decentralized guarantee and arbitration layer for agent-to-agent commerce built on four production
-Solidity contracts --- an agent registry, a guaranteed escrow, a staked-voting arbitration
-mechanism, and an on-chain reputation hub --- and formalize its core mechanism, the
-\emph{Schelling-point reputation community}: a set of staked voters who adjudicate trade disputes,
-whose verdicts drive the release of escrowed funds and the update of on-chain reputation, and whose
-reputation scores in turn price the guarantees that make future trades safe. We prove that honest
-voting is an incentive-compatible equilibrium under a two-thirds supermajority rule (an attack by a
-minority of at most $35\%$ of voters is strategically harmless), that Sybil attacks are
-unprofitable because adversarial voting power scales linearly in expenditure, and that the mechanism
-conserves funds exactly. We instantiate the protocol in Solidity (38 tests), validate the game-theoretic
-claims by Monte-Carlo simulation built on \textsf{mesa}, and discuss deployment to a public testnet.
+AI agents that can negotiate and transfer funds need identity, escrow, dispute resolution, and
+accountability mechanisms. We describe AgentTrust, a research prototype that combines an ERC-721
+agent registry, guaranteed escrow, staked voting, and an on-chain reputation counter. This paper
+separates three kinds of evidence: properties of a legacy Solidity snapshot, accounting identities
+under explicit assumptions, and exploratory Monte-Carlo results. It does not claim production
+readiness, a security audit, formal verification, public deployment, or a complete implementation of
+the proposed reputation--guarantee feedback loop. The legacy voting rule uses a $65\%$ threshold,
+not two thirds; abstention is refunded and can weakly or strictly outperform voting; a minority can
+cause a void outcome even when it cannot select its preferred verdict; vote deposits are refundable
+capital at risk rather than an unconditional attack expenditure; and integer division can leave dust.
+Because contracts and simulations are being revised in parallel, concrete implementation statements
+are scoped to the inspected legacy snapshot and must be revalidated against a frozen release. The
+result is an implementable research agenda and testable prototype, not a deployed trust guarantee.
 \end{abstract}
 
 {\small
 \noindent\textbf{Keywords:} AI agents; blockchain; decentralized arbitration; staked voting;
-Schelling points; reputation; guaranteed escrow; agentic commerce.
+reputation; guaranteed escrow; research prototype.
 }
 
 \input{intro}
@@ -79,5 +66,4 @@ Schelling points; reputation; guaranteed escrow; agentic commerce.
 
 \bibliographystyle{unsrt}
 \bibliography{references}
-
 \end{document}

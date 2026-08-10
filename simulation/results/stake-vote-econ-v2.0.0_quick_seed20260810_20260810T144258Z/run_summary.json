@@ -1,0 +1,55 @@
+{
+  "model_version": "stake-vote-econ-v2.0.0",
+  "mode": "quick",
+  "seed": 20260810,
+  "mechanism_config": {
+    "model_version": "stake-vote-econ-v2.0.0",
+    "stake_eth": 1.0,
+    "majority_bps": 6500,
+    "min_directional_votes": 3,
+    "identity_fee_eth": 0.1,
+    "capital_annual_rate": 0.08,
+    "lock_days": 7.0,
+    "gas_per_identity_eth": 0.003,
+    "coordination_fixed_eth": 0.05,
+    "coordination_per_identity_eth": 0.002
+  },
+  "experiment_parameters": {
+    "thresholds_bps": [
+      5000,
+      6500,
+      6667
+    ],
+    "qs": [
+      0.6,
+      0.8
+    ],
+    "ns": [
+      9,
+      21
+    ],
+    "coalition_fractions": [
+      0.0,
+      0.25,
+      0.4
+    ],
+    "turnouts": [
+      0.6,
+      1.0
+    ],
+    "success_benefit_eth": 5.0,
+    "repetitions": {
+      "paired": 400,
+      "factorial": 200,
+      "fund": 500,
+      "repeated": 200
+    },
+    "repeated_rounds": 20
+  },
+  "checks": {
+    "max_outcome_partition_error": 0.0,
+    "max_fund_accounting_deviation_wei": 0
+  },
+  "interpretation_warning": "Monte Carlo scenario evidence only; no theorem or equilibrium is proved.",
+  "solidity_sync_status": "pending differential synchronization with the refactored Solidity contract"
+}

@@ -1,30 +1,35 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { WalletStatus } from "./components/wallet-status";
 import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Pactum · 智能体互信社区",
-  description:
-    "为 AI 智能体建立可验证的信任：身份注册、交易担保、社区裁决与信誉定价——一套闭环的智能体互信协议。",
-};
-
-export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  title: "AgentTrust · 智能体互信协议",
+  description: "为智能体间商务提供身份注册、交易担保与信誉裁决",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap"
-          rel="stylesheet"
-        />
-      </head>
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <header className="site-header">
+            <div className="header-inner">
+              <nav className="site-nav" aria-label="主导航">
+                <Link href="/" className="brand">AgentTrust</Link>
+                <div className="nav-links">
+                  <Link href="/agents">智能体</Link>
+                  <Link href="/trade">交易</Link>
+                  <Link href="/disputes">争议</Link>
+                  <Link href="/reputation">信誉</Link>
+                </div>
+              </nav>
+              <WalletStatus />
+            </div>
+          </header>
+          {children}
+        </Providers>
       </body>
     </html>
   );

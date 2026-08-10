@@ -1,350 +1,152 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #ffffff;
-  --fg: #000000;
-  --font-serif: "Noto Serif SC", "Songti SC", STSong, serif;
-  --font-sans: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+  color-scheme: light dark;
+  --background: #f7f8fb;
+  --surface: #ffffff;
+  --surface-muted: #eef1f6;
+  --foreground: #172033;
+  --muted: #5d687b;
+  --border: #d9dee8;
+  --accent: #2859d8;
+  --accent-contrast: #ffffff;
+  --warning: #a64b00;
+  --danger: #b42318;
+  --success: #147a4b;
+  --focus: #6a8cff;
+  --radius: 0.75rem;
 }
 
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0d111b;
+    --surface: #151b28;
+    --surface-muted: #202838;
+    --foreground: #edf1f7;
+    --muted: #aab4c5;
+    --border: #323c4e;
+    --accent: #7395ff;
+    --accent-contrast: #0b1020;
+    --warning: #f6a85f;
+    --danger: #ff8b82;
+    --success: #62d49b;
+    --focus: #9bb2ff;
+  }
+}
+
+* { box-sizing: border-box; }
+html { background: var(--background); }
 body {
-  background: var(--bg);
-  color: var(--fg);
-  font-family: var(--font-sans);
-  font-weight: 300;
+  min-width: 320px;
   margin: 0;
-}
-
-/* ============================================================
-   Home hero 落地页
-   ============================================================ */
-.hero {
-  position: relative;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  overflow: hidden;
-}
-
-/* ---- 固定导航（z-50，自身 pointer-events none） ---- */
-.hero-nav {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
-  pointer-events: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
-}
-
-.hero-nav * {
-  pointer-events: auto;
-}
-
-.nav-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.nav-logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.nav-brand {
+  background: var(--background);
+  color: var(--foreground);
   font-family: var(--font-sans);
-  font-weight: 500;
-  font-size: 16px;
-  letter-spacing: 0.02em;
+  line-height: 1.5;
 }
 
-.nav-menu {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: #000;
-  color: #fff;
-  border: none;
-  border-radius: 999px;
-  padding: 3px 12px 3px 3px;
-  font-size: 11px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: transform 0.2s;
-}
+a { color: inherit; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.55; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
-.nav-menu:hover {
-  transform: scale(1.04);
+input {
+  min-height: 2.75rem;
+  background: var(--surface);
+  color: var(--foreground);
+  border-color: var(--border);
 }
+input::placeholder { color: var(--muted); opacity: 0.9; }
 
-.nav-menu-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  background: #fff;
-  color: #000;
-}
-
-.nav-tags {
-  display: none;
-  align-items: center;
-  gap: 10px;
-  background: #f4f4f6;
-  border-radius: 999px;
-  padding: 7px 16px;
-  font-size: 11px;
-  font-weight: 400;
-  color: #000;
-}
-
-.nav-tags span {
-  white-space: nowrap;
-}
-
-.nav-right {
-  display: flex;
-  align-items: center;
-}
-
-.nav-pill {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: #f4f4f6;
-  border-radius: 999px;
-  padding: 4px 4px 4px 12px;
-  font-size: 11px;
-  font-weight: 400;
-  color: #000;
-}
-
-.nav-grid-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  background: #000;
-  color: #fff;
-  border: none;
-  cursor: pointer;
-}
-
-.nav-grid-btn svg {
-  color: #fff;
-}
-
-/* ---- 全屏信任网络背景 ---- */
-.hero-network {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.hero-network svg {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-/* ---- 底部内容 ---- */
-.hero-footer {
-  position: relative;
-  z-index: 30;
-  padding: 48px 20px 24px;
-  background: linear-gradient(
-    to top,
-    #ffffff 0%,
-    rgba(255, 255, 255, 0.8) 50%,
-    transparent 100%
-  );
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-}
-
-.footer-subtitle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.55);
-}
-
-.footer-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #000;
-}
-
-.footer-heading {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  font-size: clamp(2rem, 8vw, 4.5rem);
-  letter-spacing: -0.03em;
-  line-height: 1;
-  margin: 0;
-}
-
-.footer-actions {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.btn-primary {
-  display: inline-block;
-  background: #000;
-  color: #fff;
-  border-radius: 999px;
-  padding: 12px 26px;
-  font-size: 13px;
-  font-family: inherit;
-  text-decoration: none;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-}
-
-.btn-ghost {
-  display: inline-block;
-  border: 1px solid rgba(0, 0, 0, 0.35);
-  color: #000;
-  border-radius: 999px;
-  padding: 12px 26px;
-  font-size: 13px;
-  font-family: inherit;
-  text-decoration: none;
-  transition: border-color 0.2s;
-}
-
-.btn-ghost:hover {
-  border-color: rgba(0, 0, 0, 0.7);
-}
-
-.footer-right {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: flex-end;
-}
-
-.footer-tag {
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background: #fff;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: 400;
-  color: #000;
-  white-space: nowrap;
-}
-
-/* ============================================================
-   (app) 功能子页面导航 + 容器
-   ============================================================ */
-.app-nav {
+.site-header {
   position: sticky;
   top: 0;
-  z-index: 40;
+  z-index: 20;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(14px);
+}
+.header-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 24px;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.app-nav-brand {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  font-size: 18px;
-  color: #000;
-  text-decoration: none;
-  letter-spacing: 0.02em;
-}
-
-.app-nav-links {
-  display: flex;
-  gap: 18px;
-  font-size: 14px;
-  font-weight: 400;
-}
-
-.app-nav-links a {
-  color: rgba(0, 0, 0, 0.7);
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.app-nav-links a:hover {
-  color: #000;
-}
-
-.app-body {
-  max-width: 960px;
+  gap: 1rem;
+  max-width: 72rem;
   margin: 0 auto;
-  padding: 32px 24px 64px;
+  padding: 0.75rem 1rem;
+}
+.site-nav, .nav-links { display: flex; align-items: center; gap: 1rem; }
+.site-nav { min-width: 0; }
+.site-nav a { text-decoration: none; }
+.site-nav a:hover { color: var(--accent); }
+.brand { font-weight: 800; letter-spacing: -0.02em; }
+
+.wallet-panel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.wallet-details {
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+.wallet-label { color: var(--muted); }
+.wallet-value { font-family: var(--font-mono); }
+.network-error { color: var(--danger); font-weight: 700; }
+.wallet-message { flex-basis: 100%; margin: 0; text-align: right; color: var(--warning); font-size: 0.75rem; }
+
+.button {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  font-weight: 650;
+}
+.button-primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.button-secondary { background: var(--surface); color: var(--foreground); }
+.button-warning { background: var(--warning); color: #fff; border-color: var(--warning); }
+
+.transaction-status {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  overflow-wrap: anywhere;
+}
+.transaction-status span { font-size: 0.8rem; color: var(--muted); }
+.transaction-success { border-color: var(--success); }
+.transaction-error { border-color: var(--danger); color: var(--danger); }
+
+main { width: 100%; }
+section, li, main > div.border { border-color: var(--border); background: var(--surface); }
+.text-gray-400, .text-gray-500, .text-gray-600 { color: var(--muted); }
+
+@media (max-width: 760px) {
+  .header-inner { align-items: stretch; flex-direction: column; }
+  .site-nav { justify-content: space-between; overflow-x: auto; }
+  .nav-links { gap: 0.8rem; white-space: nowrap; }
+  .wallet-panel { justify-content: flex-start; }
+  .wallet-message { text-align: left; }
 }
 
-/* ============================================================
-   响应式：移动端优先，768px 断点
-   ============================================================ */
-@media (min-width: 768px) {
-  .hero-nav {
-    padding: 24px 32px;
-  }
-
-  .nav-tags {
-    display: flex;
-  }
-
-  .nav-menu-icon {
-    width: 32px;
-    height: 32px;
-  }
-
-  .nav-grid-btn {
-    width: 32px;
-    height: 32px;
-  }
-
-  .hero-network {
-    width: 100%;
-    height: 100%;
-  }
-
-  .hero-footer {
-    padding: 56px 40px 32px;
-    flex-direction: row;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 40px;
-  }
-
-  .footer-heading {
-    font-size: clamp(2.5rem, 5.5vw, 4.5rem);
-  }
-
-  .footer-right {
-    justify-content: flex-end;
-  }
+@media (max-width: 440px) {
+  .site-nav { align-items: flex-start; flex-direction: column; }
+  .nav-links { width: 100%; overflow-x: auto; padding-bottom: 0.25rem; }
+  main { padding-inline: 1rem !important; }
 }

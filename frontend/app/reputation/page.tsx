@@ -55,7 +55,7 @@ export default function ReputationPage() {
   return (
     <main className="max-w-2xl mx-auto p-6">
       <h1 className="text-2xl font-bold mb-4">信誉档案</h1>
-      <input placeholder="Agent ID" value={agentId} onChange={(e) => setAgentId(e.target.value)}
+      <input aria-label="Agent ID" placeholder="Agent ID" value={agentId} onChange={(e) => setAgentId(e.target.value)}
         className="w-full border rounded p-2 mb-4" />
       {!valid && (
         <p className="text-sm text-gray-500 mb-2">
@@ -83,7 +83,7 @@ export default function ReputationPage() {
               <div className="text-5xl font-bold">{String(score ?? BigInt(0))}</div>
               <div className="text-gray-500 mt-1">信誉分（0-100，新智能体默认 50）</div>
             </div>
-            <div className="grid grid-cols-4 gap-3 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
               {[
                 ["完成交易", completed],
                 ["违约次数", defaulted],

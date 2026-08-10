@@ -1,277 +1,301 @@
-"""
-experiments.py — 5 组蒙特卡洛实验，验证 mech-design.tex 的博弈论定理。
+"""Reproducible empirical experiments for stake-vote-econ-v2.0.0.
 
-Exp1  诚实均衡      ：honest vs invert 期望净收益（Lemma1 / Theorem1）
-Exp2  共谋稳健性    ：恶意联盟比例 vs 裁决翻转率（Theorem2）
-Exp3  女巫成本      ：身份数与成本/收益权衡（Theorem3）
-Exp4  资金守恒      ：Σ net == -dust（Lemma2）
-Exp5  阈值扫描      ：majority_bps ∈ {0.5..0.7} 正确率/作废率权衡
-
-运行：cd <repo>/simulation && python experiments.py
-输出：simulation/results/*.csv 与 simulation/plots/*.png
+These Monte Carlo results characterize configured scenarios; they do not prove
+an equilibrium, a security threshold, or any theorem.
 """
-import os
-import numpy as np
+from __future__ import annotations
+
+import argparse
+import json
+from dataclasses import asdict, replace
+from datetime import datetime, timezone
+from itertools import product
+from pathlib import Path
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
-from model import (SchellingVotingModel, strategies_mixed, BUYER, SELLER, ABSTAIN, WEI)
+from model import (
+    ABSTAIN, BUYER, SELLER, MODEL_VERSION, WEI, MechanismConfig,
+    SchellingVotingModel, attack_economics, strategies_mixed,
+)
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-RES = os.path.join(HERE, "results")
-PLT = os.path.join(HERE, "plots")
-os.makedirs(RES, exist_ok=True)
-os.makedirs(PLT, exist_ok=True)
-
-SEED = 20260810
-plt.rcParams.update({
-    "font.family": "serif", "font.size": 11,
-    "axes.grid": True, "grid.alpha": 0.3, "figure.dpi": 300,
-})
+HERE = Path(__file__).resolve().parent
+DEFAULT_SEED = 20260810
 
 
-def mean_ci(x, z=1.96):
-    x = np.asarray(x, dtype=float)
-    m = x.mean()
-    sem = x.std(ddof=1) / np.sqrt(len(x)) if len(x) > 1 else 0.0
-    return m, z * sem
+def mean_ci(values, z=1.96):
+    x = np.asarray(values, dtype=float)
+    mean = float(x.mean()) if len(x) else float("nan")
+    half = float(z * x.std(ddof=1) / np.sqrt(len(x))) if len(x) > 1 else 0.0
+    return mean, mean - half, mean + half
 
 
-# =====================================================================
-# Exp1  诚实均衡（单方面偏离：n-1 诚实 + 1 叛离者）
-#        Lemma 1 的严格含义：给定其他人都诚实，偏离诚实不是更优。
-# =====================================================================
-def exp1(reps=3000):
-    qs = [0.51, 0.6, 0.7, 0.8, 0.9]
-    n = 15
-    deviators = ["honest", "invert", "always_buyer", "always_seller", "abstain"]
+def parse_csv(text, cast):
+    return [cast(item.strip()) for item in text.split(",") if item.strip()]
+
+
+def paired_strategy_payoffs(cfg, qs, n, reps, seed):
+    """Common-random-number comparison: alternative payoff minus honest payoff."""
+    alternatives = ["honest", "invert", "always_buyer", "always_seller", "abstain"]
     rows = []
-    for q in qs:
-        for dev in deviators:
-            dev_nets, hon_nets = [], []
-            for r in range(reps):
-                strategies = strategies_mixed(n, [("honest", n - 1), (dev, 1)])
-                m = SchellingVotingModel(n_voters=n, q=q, stake=1.0,
-                                         strategies=strategies, seed=SEED + r)
-                m.step()
-                agents = list(m.agents)
-                dev_agent = agents[-1]  # 创建顺序：n-1 诚实后 1 叛离者
-                dev_nets.append(dev_agent.net_wei / WEI)
-                hon_nets.append(np.mean([a.net_wei / WEI for a in agents[:-1]]))
-            dmu, dci = mean_ci(dev_nets)
-            hmu, hci = mean_ci(hon_nets)
-            rows.append({"q": q, "n": n, "deviator": dev,
-                         "deviator_net_eth": dmu, "deviator_ci": dci,
-                         "honest_net_eth": hmu, "honest_ci": hci})
-    df = pd.DataFrame(rows)
-    df.to_csv(os.path.join(RES, "exp1_honest_equilibrium.csv"), index=False)
-
-    # 每个 q 下：叛离者=诚实 的收益应 ≥ 其他所有叛离策略（诚实为最优响应）
-    fig, axes = plt.subplots(2, 3, figsize=(12, 7))
-    axes = axes.ravel()
-    for i, q in enumerate(qs):
-        ax = axes[i]
-        sub = df[df.q == q]
-        x = np.arange(len(deviators))
-        ax.bar(x, sub.deviator_net_eth, color="C0", label="deviator payoff")
-        ax.axhline(0, color="k", lw=0.8)
-        ax.set(xticks=x, xticklabels=sub.deviator, ylabel="net payoff (ETH)",
-               title=f"q = {q}")
-        ax.tick_params(axis="x", rotation=30)
-    axes[5].axis("off")
-    fig.suptitle("One-sided deviation: 14 honest voters + 1 deviator (Lemma 1 / Thm 1)",
-                 fontsize=12)
-    fig.tight_layout()
-    fig.savefig(os.path.join(PLT, "exp1_honest_equilibrium.png"))
-    plt.close(fig)
-    return df
-
-
-# =====================================================================
-# Exp2  共谋稳健性
-# =====================================================================
-def exp2(reps=2000):
-    n = 21
-    q = 0.85
-    cvals = list(range(0, n + 1, 2))
-    rows = []
-    for c in cvals:
-        flipped = 0
+    for q, alternative in product(qs, alternatives):
+        differences, honest_values, alternative_values = [], [], []
+        outcomes = {"correct": 0, "wrong": 0, "void": 0}
         for r in range(reps):
-            strategies = strategies_mixed(n, [("always_seller", c), ("honest", n - c)])
-            m = SchellingVotingModel(n_voters=n, q=q, stake=1.0, strategies=strategies,
-                                     true_state=BUYER, seed=SEED + r)
-            m.step()
-            if m.winner == SELLER:
-                flipped += 1
-        rate = flipped / reps
-        rows.append({"n": n, "colluders": c, "collusion_ratio": c / n,
-                     "flip_rate": rate})
-    df = pd.DataFrame(rows)
-    df.to_csv(os.path.join(RES, "exp2_collusion.csv"), index=False)
+            rng = np.random.default_rng(seed + 100_000 * int(q * 1000) + r)
+            true_state = int(rng.integers(0, 2))
+            correct = rng.random(n) < q
+            signals = np.where(correct, true_state, 1 - true_state)
+            active_draws = rng.random(n)
+            base = SchellingVotingModel(
+                n, q, cfg, strategies_mixed(n, [("honest", n)]), true_state,
+                signals=signals, active_draws=active_draws,
+            ).step()
+            alt = SchellingVotingModel(
+                n, q, cfg, strategies_mixed(n, [("honest", n - 1), (alternative, 1)]),
+                true_state, signals=signals, active_draws=active_draws,
+            ).step()
+            honest_payoff = base.voters[-1].net_wei / WEI
+            alternative_payoff = alt.voters[-1].net_wei / WEI
+            honest_values.append(honest_payoff)
+            alternative_values.append(alternative_payoff)
+            differences.append(alternative_payoff - honest_payoff)
+            outcomes[alt.outcome] += 1
+        diff, lo, hi = mean_ci(differences)
+        hmean, _, _ = mean_ci(honest_values)
+        amean, _, _ = mean_ci(alternative_values)
+        rows.append({
+            "model_version": MODEL_VERSION, "q": q, "n": n,
+            "alternative": alternative, "paired_difference_alt_minus_honest_eth": diff,
+            "ci95_low_eth": lo, "ci95_high_eth": hi,
+            "honest_mean_eth": hmean, "alternative_mean_eth": amean,
+            "correct_rate": outcomes["correct"] / reps,
+            "wrong_rate": outcomes["wrong"] / reps,
+            "void_rate": outcomes["void"] / reps, "reps": reps,
+        })
+    return pd.DataFrame(rows)
 
-    # 理论门槛 c* = ceil(13h/7), h = n - c
-    cstar = next(c for c in cvals if c >= 13 * (n - c) / 7)
 
-    fig, ax = plt.subplots(figsize=(6.5, 4))
-    ax.plot(df.collusion_ratio, df.flip_rate, marker="o", label="flip rate (empirical)")
-    ax.axvline(cstar / n, color="r", ls="--", label=f"theoretical threshold {cstar}/{n}")
-    ax.axvline(0.35, color="g", ls=":", label="35% malicious")
-    ax.axhline(0.05, color="gray", lw=0.8, alpha=0.6)
-    ax.set(xlabel="malicious fraction c/n", ylabel="P(verdict flipped)",
-           title="Collusion resistance (Thm 2), n=21, q=0.85")
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(os.path.join(PLT, "exp2_collusion.png"))
-    plt.close(fig)
-    return df, cstar
-
-
-# =====================================================================
-# Exp3  女巫成本
-# =====================================================================
-def exp3(reps=1500):
-    h = 14                      # 诚实人数
-    q = 0.85
-    fee, stake_eth = 0.1, 1.0   # 注册费 + 质押（ETH）
-    max_k = 40
+def factorial_experiment(base_cfg, thresholds, qs, ns, coalitions, turnouts, reps, seed, benefit):
+    """Configurable threshold × q × n × coalition × turnout design."""
     rows = []
-    for k in range(0, max_k + 1, 2):
-        flipped = 0
-        n = h + k
+    for combo_id, (threshold, q, n, coalition, turnout) in enumerate(
+        product(thresholds, qs, ns, coalitions, turnouts)
+    ):
+        cfg = replace(base_cfg, majority_bps=threshold)
+        k = min(n, max(0, int(round(n * coalition))))
+        coalition_idx = list(range(k))
+        strategies = strategies_mixed(n, [("always_seller", k), ("honest", n - k)])
+        outcome_counts = {"correct": 0, "wrong": 0, "void": 0}
+        profits, slashings = [], []
         for r in range(reps):
-            strategies = strategies_mixed(n, [("always_seller", k), ("honest", h)])
-            m = SchellingVotingModel(n_voters=n, q=q, stake=stake_eth,
-                                     strategies=strategies, true_state=BUYER,
-                                     registration_fee=fee, seed=SEED + r)
-            m.step()
-            if m.winner == SELLER:
-                flipped += 1
-        cost = k * (fee + stake_eth)
-        rows.append({"k": k, "h": h, "flip_rate": flipped / reps,
-                     "attack_cost_eth": cost})
-    df = pd.DataFrame(rows)
-    df.to_csv(os.path.join(RES, "exp3_sybil.csv"), index=False)
-
-    # 理论捕获门槛 k* = ceil(13h/7)
-    kstar = int(np.ceil(13 * h / 7))
-    # 攻击"收益上限"示例：翻转裁决帮卖家省下的赔偿 = 交易额（= 2*stake 的场景，用 stake_eth 的 3 倍作示
-    payoff_cap = 5.0
-
-    fig, ax1 = plt.subplots(figsize=(6.5, 4))
-    ax1.plot(df.k, df.flip_rate, marker="o", color="C0", label="flip rate")
-    ax1.axvline(kstar, color="r", ls="--", label=f"capture threshold k*={kstar}")
-    ax1.set(xlabel="# sybil identities k", ylabel="P(verdict flipped)")
-    ax2 = ax1.twinx()
-    ax2.plot(df.k, df.attack_cost_eth, color="C3", ls="--", marker="s", label="attack cost")
-    ax2.axhline(payoff_cap, color="C3", ls=":", label=f"payoff cap {payoff_cap}")
-    ax2.set(ylabel="attack cost (ETH)")
-    ax1.set(title="Sybil resistance (Thm 3): cost ≥ payoff => unattractive")
-    for a in (ax1, ax2):
-        a.legend(loc="upper left", fontsize=8)
-    fig.tight_layout()
-    fig.savefig(os.path.join(PLT, "exp3_sybil.png"))
-    plt.close(fig)
-    return df, kstar
+            model = SchellingVotingModel(
+                n, q, cfg, strategies, true_state=BUYER, turnout=turnout,
+                forced_active=coalition_idx, seed=seed + combo_id * 1_000_003 + r,
+            ).step()
+            outcome_counts[model.outcome] += 1
+            econ = attack_economics(model, coalition_idx, benefit)
+            profits.append(econ["profit_eth"])
+            slashings.append(econ["failed_slashing_eth"])
+        profit, profit_lo, profit_hi = mean_ci(profits)
+        rows.append({
+            "model_version": MODEL_VERSION, "majority_bps": threshold,
+            "threshold_fraction": threshold / 10000, "q": q, "n": n,
+            "coalition_fraction_requested": coalition, "coalition_size": k,
+            "coalition_fraction_realized": k / n, "honest_turnout": turnout,
+            "correct_rate": outcome_counts["correct"] / reps,
+            "wrong_rate": outcome_counts["wrong"] / reps,
+            "void_rate": outcome_counts["void"] / reps,
+            "expected_attack_profit_eth": profit,
+            "attack_profit_ci95_low_eth": profit_lo,
+            "attack_profit_ci95_high_eth": profit_hi,
+            "expected_failed_slashing_eth": float(np.mean(slashings)),
+            "success_benefit_if_wrong_eth": benefit,
+            "refundable_stake_principal_eth": k * cfg.stake_eth,
+            "nonref_identity_fee_eth": k * cfg.identity_fee_eth,
+            "capital_opportunity_cost_eth": k * cfg.opportunity_cost_per_identity_eth,
+            "gas_cost_eth": k * cfg.gas_per_identity_eth,
+            "coordination_cost_eth": (cfg.coordination_fixed_eth if k else 0) + k * cfg.coordination_per_identity_eth,
+            "reps": reps,
+        })
+    return pd.DataFrame(rows)
 
 
-# =====================================================================
-# Exp4  资金守恒
-# =====================================================================
-def exp4(reps=4000):
-    rng = np.random.RandomState(SEED)
-    max_dev = 0.0
-    n_effective = n_void = 0
-    dust_ok = True
+def fund_accounting(base_cfg, reps, seed):
+    rng = np.random.default_rng(seed)
+    rows = []
+    strategies = ["honest", "invert", "always_buyer", "always_seller", "abstain"]
     for r in range(reps):
-        n = rng.randint(5, 30)
-        q = rng.uniform(0.55, 0.95)
-        strat = rng.choice(["honest", "invert", "abstain"])
-        m = SchellingVotingModel(n_voters=n, q=q, stake=1.0, strategies=strat,
-                                 true_state=int(rng.rand() < 0.5), seed=SEED + r)
-        m.step()
-        total_in = m.n * m.stake_wei
-        sum_net = m.sum_net()
-        if not m.effective:
-            n_void += 1
-            expect = 0
-        else:
-            n_effective += 1
-            expect = -m.dust_wei()
-        dev = abs(sum_net - expect)
-        max_dev = max(max_dev, dev)
-        if dev != 0:
-            dust_ok = False
-    with open(os.path.join(RES, "exp4_fund_conservation.txt"), "w") as f:
-        f.write(f"reps={reps}\n")
-        f.write(f"effective_cases={n_effective}, void_cases={n_void}\n")
-        f.write(f"max |sum_net - expected| (wei) = {int(max_dev)}\n")
-        f.write(f"conservation_holds_exactly = {dust_ok}\n")
-    return n_effective, n_void, max_dev, dust_ok
+        n = int(rng.integers(3, 31))
+        cfg = replace(base_cfg, majority_bps=int(rng.choice([5000, 6000, 6500, 6667, 7000])))
+        model = SchellingVotingModel(
+            n, float(rng.uniform(0.5, 0.95)), cfg,
+            strategies=str(rng.choice(strategies)), turnout=float(rng.uniform(0.4, 1.0)),
+            seed=seed + r,
+        ).step()
+        expected = -model.dust_wei() if model.effective else 0
+        rows.append({
+            "model_version": MODEL_VERSION, "case": r, "outcome": model.outcome,
+            "sum_net_wei": model.sum_net_wei(), "expected_sum_net_wei": expected,
+            "deviation_wei": model.sum_net_wei() - expected,
+        })
+    return pd.DataFrame(rows)
 
 
-# =====================================================================
-# Exp5  阈值扫描
-# =====================================================================
-def exp5(reps=3000):
-    bps = [5000, 5500, 6000, 6500, 7000]
-    n, q = 15, 0.7
+def repeated_reputation_experiment(cfg, q, n, rounds, reps, seed, reputation_values):
+    """Minimal repeated-participation scenario, not a calibrated reputation system.
+
+    A focal voter earns one reputation unit when it votes with a correct effective
+    verdict. Utility is monetary settlement payoff plus the configured value per
+    reputation unit. Abstention earns neither settlement payoff nor reputation.
+    """
     rows = []
-    for b in bps:
-        correct = void = 0
-        for r in range(reps):
-            m = SchellingVotingModel(n_voters=n, q=q, stake=1.0, strategies="honest",
-                                     majority_bps=b, seed=SEED + r)
-            m.step()
-            correct += int(m.correct_verdict())
-            void += int(not m.effective)
-        rows.append({"majority_bps": b, "correct_rate": correct / reps,
-                     "void_rate": void / reps})
-    df = pd.DataFrame(rows)
-    df.to_csv(os.path.join(RES, "exp5_threshold_scan.csv"), index=False)
+    for reputation_value in reputation_values:
+        utility_diffs, money_diffs, reputation_diffs = [], [], []
+        for rep in range(reps):
+            honest_money = abstain_money = 0.0
+            honest_rep = abstain_rep = 0.0
+            for t in range(rounds):
+                rng = np.random.default_rng(seed + rep * 100_003 + t)
+                true_state = int(rng.integers(0, 2))
+                correct = rng.random(n) < q
+                signals = np.where(correct, true_state, 1 - true_state)
+                active = np.zeros(n)
+                honest = SchellingVotingModel(
+                    n, q, cfg, strategies_mixed(n, [("honest", n)]), true_state,
+                    signals=signals, active_draws=active,
+                ).step()
+                abstain = SchellingVotingModel(
+                    n, q, cfg, strategies_mixed(n, [("honest", n - 1), ("abstain", 1)]),
+                    true_state, signals=signals, active_draws=active,
+                ).step()
+                honest_money += honest.voters[-1].net_wei / WEI
+                abstain_money += abstain.voters[-1].net_wei / WEI
+                honest_rep += float(honest.outcome == "correct" and honest.voters[-1].vote == honest.winner)
+                abstain_rep += float(abstain.outcome == "correct" and abstain.voters[-1].vote == abstain.winner)
+            money_diff = honest_money - abstain_money
+            rep_diff = honest_rep - abstain_rep
+            money_diffs.append(money_diff)
+            reputation_diffs.append(rep_diff)
+            utility_diffs.append(money_diff + reputation_value * rep_diff)
+        util, lo, hi = mean_ci(utility_diffs)
+        rows.append({
+            "model_version": MODEL_VERSION, "q": q, "n": n, "rounds": rounds,
+            "reputation_value_eth_per_unit": reputation_value,
+            "mean_money_honest_minus_abstain_eth": float(np.mean(money_diffs)),
+            "mean_reputation_honest_minus_abstain": float(np.mean(reputation_diffs)),
+            "mean_utility_honest_minus_abstain_eth": util,
+            "utility_ci95_low_eth": lo, "utility_ci95_high_eth": hi, "reps": reps,
+        })
+    return pd.DataFrame(rows)
 
-    fig, ax = plt.subplots(figsize=(6.5, 4))
-    ax.plot(df.majority_bps / 100, df.correct_rate, marker="o", color="C0", label="correct verdict rate")
-    ax.plot(df.majority_bps / 100, df.void_rate, marker="s", color="C2", label="void rate (no 2/3)")
-    ax.axvline(0.65, color="r", ls="--", label="AgentTrust 6500 bps")
-    ax.set(xlabel="majority threshold", ylabel="rate", title="Threshold trade-off (honest voters, n=15, q=0.7)")
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(os.path.join(PLT, "exp5_threshold_scan.png"))
-    plt.close(fig)
-    return df
+
+def save_plots(output, paired, factorial, repeated):
+    plot_dir = output / "plots"
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    for strategy, group in paired.groupby("alternative"):
+        ax.plot(group.q, group.paired_difference_alt_minus_honest_eth, marker="o", label=strategy)
+    ax.axhline(0, color="black", lw=0.8)
+    ax.set(xlabel="signal accuracy q", ylabel="alternative − honest payoff (ETH)", title="Paired one-round payoff differences")
+    ax.legend(ncol=2)
+    fig.tight_layout(); fig.savefig(plot_dir / "paired_payoffs.png", dpi=180); plt.close(fig)
+
+    grouped = factorial.groupby("threshold_fraction")[["correct_rate", "wrong_rate", "void_rate"]].mean()
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    grouped.plot(ax=ax, marker="o")
+    ax.axvline(0.65, color="gray", ls="--", label="65%")
+    ax.set(xlabel="threshold", ylabel="mean rate across factorial cells", title="Correct / wrong / void remain distinct")
+    fig.tight_layout(); fig.savefig(plot_dir / "factorial_outcomes.png", dpi=180); plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    ax.errorbar(repeated.reputation_value_eth_per_unit, repeated.mean_utility_honest_minus_abstain_eth,
+                yerr=[repeated.mean_utility_honest_minus_abstain_eth - repeated.utility_ci95_low_eth,
+                      repeated.utility_ci95_high_eth - repeated.mean_utility_honest_minus_abstain_eth], marker="o")
+    ax.axhline(0, color="black", lw=0.8)
+    ax.set(xlabel="reputation value (ETH/unit)", ylabel="honest − abstain utility (ETH)", title="Minimal repeated-participation incentive scenario")
+    fig.tight_layout(); fig.savefig(plot_dir / "repeated_reputation.png", dpi=180); plt.close(fig)
 
 
-# =====================================================================
+def unique_output_dir(mode, seed, requested=None):
+    if requested:
+        path = Path(requested).resolve()
+    else:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        path = HERE / "results" / f"{MODEL_VERSION}_{mode}_seed{seed}_{stamp}"
+    candidate, suffix = path, 1
+    while candidate.exists():
+        candidate = Path(f"{path}_{suffix}")
+        suffix += 1
+    candidate.mkdir(parents=True)
+    return candidate
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--quick", action="store_true", help="run the bounded quick suite")
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument("--thresholds", default="5000,6500,6667")
+    parser.add_argument("--qs", default="0.6,0.8")
+    parser.add_argument("--ns", default="9,21")
+    parser.add_argument("--coalitions", default="0,0.25,0.4")
+    parser.add_argument("--turnouts", default="0.6,1.0")
+    parser.add_argument("--success-benefit", type=float, default=5.0)
+    parser.add_argument("--output-dir")
+    args = parser.parse_args()
+
+    mode = "quick" if args.quick else "full"
+    reps = {"paired": 400, "factorial": 200, "fund": 500, "repeated": 200} if args.quick else {"paired": 3000, "factorial": 1500, "fund": 4000, "repeated": 1500}
+    rounds = 20 if args.quick else 50
+    cfg = MechanismConfig()
+    output = unique_output_dir(mode, args.seed, args.output_dir)
+
+    thresholds = parse_csv(args.thresholds, int)
+    qs = parse_csv(args.qs, float)
+    ns = parse_csv(args.ns, int)
+    coalitions = parse_csv(args.coalitions, float)
+    turnouts = parse_csv(args.turnouts, float)
+    paired_qs = sorted(set(qs + [0.51, 0.7, 0.9]))
+
+    print(f"[{mode}] model={MODEL_VERSION} output={output}")
+    paired = paired_strategy_payoffs(cfg, paired_qs, 15, reps["paired"], args.seed)
+    factorial = factorial_experiment(cfg, thresholds, qs, ns, coalitions, turnouts, reps["factorial"], args.seed, args.success_benefit)
+    accounting = fund_accounting(cfg, reps["fund"], args.seed + 7_000_000)
+    repeated = repeated_reputation_experiment(cfg, 0.7, 15, rounds, reps["repeated"], args.seed + 8_000_000, [0.0, 0.01, 0.05, 0.1])
+
+    paired.to_csv(output / "paired_strategy_payoffs.csv", index=False)
+    factorial.to_csv(output / "factorial_attack_economics.csv", index=False)
+    accounting.to_csv(output / "fund_accounting.csv", index=False)
+    repeated.to_csv(output / "repeated_reputation.csv", index=False)
+    save_plots(output, paired, factorial, repeated)
+
+    outcome_error = float((factorial[["correct_rate", "wrong_rate", "void_rate"]].sum(axis=1) - 1).abs().max())
+    summary = {
+        "model_version": MODEL_VERSION,
+        "mode": mode,
+        "seed": args.seed,
+        "mechanism_config": asdict(cfg),
+        "experiment_parameters": {
+            "thresholds_bps": thresholds, "qs": qs, "ns": ns,
+            "coalition_fractions": coalitions, "turnouts": turnouts,
+            "success_benefit_eth": args.success_benefit, "repetitions": reps,
+            "repeated_rounds": rounds,
+        },
+        "checks": {
+            "max_outcome_partition_error": outcome_error,
+            "max_fund_accounting_deviation_wei": int(accounting.deviation_wei.abs().max()),
+        },
+        "interpretation_warning": "Monte Carlo scenario evidence only; no theorem or equilibrium is proved.",
+        "solidity_sync_status": "pending differential synchronization with the refactored Solidity contract",
+    }
+    (output / "run_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    print(json.dumps(summary["checks"], indent=2))
+    print("Quick/full suite complete. Old result files were not used or overwritten.")
+
+
 if __name__ == "__main__":
-    print("[Exp1] honest equilibrium ...")
-    d1 = exp1()
-    # 每个 q 下验证：叛离者=诚实 收益为所有策略最大
-    for q in d1.q.unique():
-        sub = d1[d1.q == q].sort_values("deviator_net_eth", ascending=False)
-        best = sub.iloc[0]
-        print(f"  q={q}: best deviator = {best.deviator}({best.deviator_net_eth:+.3f} ETH), "
-              f"invert={sub[sub.deviator=='invert'].deviator_net_eth.values[0]:+.3f}, "
-              f"always_seller={sub[sub.deviator=='always_seller'].deviator_net_eth.values[0]:+.3f}")
-
-    print("[Exp2] collusion resistance ...")
-    d2, cstar = exp2()
-    at35 = d2.iloc[(d2.collusion_ratio - 0.35).abs().argmin()]
-    print(f"  done. flip rate @35% malicious = {at35.flip_rate:.4f}, threshold k*={cstar}")
-
-    print("[Exp3] sybil cost ...")
-    d3, kstar = exp3()
-    atk = d3[d3.k == kstar]
-    print(f"  done. flip rate @k*={kstar} = {atk.flip_rate.values[0]:.4f}, cost={atk.attack_cost_eth.values[0]:.2f} ETH")
-
-    print("[Exp4] fund conservation ...")
-    ne, nv, mdev, ok = exp4()
-    print(f"  done. effective={ne}, void={nv}, max_dev={int(mdev)} wei, holds={ok}")
-
-    print("[Exp5] threshold scan ...")
-    d5 = exp5()
-    print("  done.")
-    print(d5.round(4).to_string(index=False))
-    print("\nAll outputs written to simulation/results/ and simulation/plots/")
+    main()

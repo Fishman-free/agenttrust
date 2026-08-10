@@ -5,57 +5,88 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-/// @title AgentRegistry —— 智能体身份注册表
-/// @notice 对齐 ERC-8004 身份注册表语义：可移植 Agent ID（ERC-721）+ 责任主体绑定 + anti-Sybil 注册质押。
-///         铸造者即法律责任人（智能体无民事主体资格，责任归属真实主体）。
+/// @notice Transferable agent token plus an immutable legal/responsible subject.
+/// NFT transfers change control of the token, not responsibility for already registered activity.
 contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
     struct AgentInfo {
-        string name;        // 智能体名称
-        string description; // 能力描述
-        string endpoint;    // MCP/A2A 接入端点
-        address owner;      // 责任主体（= 铸造者）
-        uint256 createdAt;  // 注册时间
+        string name;
+        string description;
+        string endpoint;
+        address owner;
+        uint256 createdAt;
     }
 
-    uint256 public registrationFee;   // 注册质押（anti-Sybil）
+    uint256 public registrationFee;
+    uint256 public accruedFees;
     uint256 public agentCount;
     mapping(uint256 => AgentInfo) public agents;
+    mapping(address => bool) public registeredSubjects;
+    mapping(address => uint256) public registeredAtBlock;
+    mapping(address => uint256) public firstAgentIdPlusOne;
+    mapping(address => uint256) public pendingWithdrawals;
 
     event AgentRegistered(uint256 indexed tokenId, address indexed owner, string name);
     event RegistrationFeeUpdated(uint256 fee);
+    event WithdrawalCredited(address indexed account, uint256 amount);
+    event Withdrawal(address indexed account, address indexed recipient, uint256 amount);
 
     constructor() ERC721("AgentTrust Agent ID", "ATID") Ownable(msg.sender) {}
 
-    /// 设置注册质押金额（仅 owner）
     function setRegistrationFee(uint256 fee) external onlyOwner {
         registrationFee = fee;
         emit RegistrationFeeUpdated(fee);
     }
 
-    /// 注册智能体：支付注册质押，铸造 Agent ID，绑定责任主体
     function registerAgent(string memory name, string memory description, string memory endpoint)
         external payable nonReentrant returns (uint256 tokenId)
     {
         require(msg.value >= registrationFee, unicode"AgentRegistry: 注册质押不足");
-
         tokenId = agentCount++;
-        _safeMint(msg.sender, tokenId);
         agents[tokenId] = AgentInfo(name, description, endpoint, msg.sender, block.timestamp);
-
-        emit AgentRegistered(tokenId, msg.sender, name);
-
-        // 超额支付显式退款（CEI：外部调用置于状态变更之后，nonReentrant 已防护）
-        if (msg.value > registrationFee) {
-            (bool ok,) = msg.sender.call{value: msg.value - registrationFee}("");
-            require(ok, unicode"AgentRegistry: 退款失败");
+        if (!registeredSubjects[msg.sender]) {
+            registeredSubjects[msg.sender] = true;
+            registeredAtBlock[msg.sender] = block.number;
+            firstAgentIdPlusOne[msg.sender] = tokenId + 1;
         }
+        accruedFees += registrationFee;
+        uint256 excess = msg.value - registrationFee;
+        if (excess != 0) {
+            pendingWithdrawals[msg.sender] += excess;
+            emit WithdrawalCredited(msg.sender, excess);
+        }
+        _safeMint(msg.sender, tokenId);
+        emit AgentRegistered(tokenId, msg.sender, name);
     }
 
-    /// 提取注册质押（仅 owner）
+    function responsibleParty(uint256 agentId) public view returns (address) {
+        require(_ownerOf(agentId) != address(0), unicode"AgentRegistry: 智能体不存在");
+        return agents[agentId].owner;
+    }
+
+    function isRegisteredSubjectAt(address subject, uint256 snapshotBlock) external view returns (bool) {
+        return registeredSubjects[subject] && registeredAtBlock[subject] <= snapshotBlock;
+    }
+
+    function isRegisteredSubjectAtCount(address subject, uint256 snapshotAgentCount) external view returns (bool) {
+        uint256 first = firstAgentIdPlusOne[subject];
+        return first != 0 && first <= snapshotAgentCount;
+    }
+
     function withdrawFees() external onlyOwner {
-        uint256 balance = address(this).balance;
-        require(balance > 0, unicode"AgentRegistry: 余额为零");
-        (bool ok,) = owner().call{value: balance}("");
-        require(ok, unicode"AgentRegistry: 转账失败");
+        uint256 amount = accruedFees;
+        require(amount != 0, unicode"AgentRegistry: 余额为零");
+        accruedFees = 0;
+        pendingWithdrawals[msg.sender] += amount;
+        emit WithdrawalCredited(msg.sender, amount);
+    }
+
+    function withdraw(address payable recipient) external nonReentrant {
+        require(recipient != address(0), unicode"AgentRegistry: 收款地址为零");
+        uint256 amount = pendingWithdrawals[msg.sender];
+        require(amount != 0, unicode"AgentRegistry: 无可提取余额");
+        pendingWithdrawals[msg.sender] = 0;
+        (bool ok,) = recipient.call{value: amount}("");
+        require(ok, unicode"AgentRegistry: 提取失败");
+        emit Withdrawal(msg.sender, recipient, amount);
     }
 }
