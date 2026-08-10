@@ -101,6 +101,15 @@ anvil 链 id 为 31337（Chain ID 31337 / 网络名 "Local Anvil"）。建议使
 **Q：想用生产测试网（Base Sepolia）？**
 该场景为静态部署（如 GitHub Pages），非本 compose 覆盖范围；参考根目录 `README.md` 与 `frontend/lib/config.ts`。
 
+**Q：`docker compose up` 报端口占用 / anvil 容器起不来（8545 冲突）？**
+宿主机上若已有进程占用 8545（例如手动启动的本地 `anvil` 或旧版演示进程），会与 Docker 的 anvil 容器端口映射冲突。解决：
+1. 先停掉占用 8545 的进程：`tasklist | grep anvil` 找到 PID，`taskkill //PID <PID> //F`
+2. 或改 docker-compose.yml 的端口映射（`8545:8545` 改 `8546:8545`），但此时前端 `config.ts` 的 RPC 也要同步改
+3. 确认释放后重新 `docker compose up -d`
+
+**Q：首次构建很慢 / 拉镜像失败？**
+Foundry 与 Node/nginx 镜像合计较大（约 500MB+），首次 `--build` 需几分钟。若拉取超时，可先手动预热：`docker pull ghcr.io/foundry-rs/foundry:stable`、`docker pull nginx:stable-alpine`。
+
 ## 相关文件
 
 - `docker-compose.yml` —— 三服务编排

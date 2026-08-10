@@ -35,13 +35,29 @@ AgentTrust 用区块链智能合约实现一套完整闭环：
 
 ## 🚀 快速开始
 
-### 环境要求
+> **最简单的方式：Docker 一键启动**（无需装 Node/Foundry，浏览器打开即用）⬇️
+
+### 方式一：Docker 一键启动（推荐）
+
+```bash
+docker compose up -d --build     # 一条命令启动 anvil 链 + 部署合约 + 前端
+```
+
+启动完成后浏览器打开 **http://localhost:3000** 即可使用。
+
+- 详见 [`DOCKER.md`](DOCKER.md)（含前置要求、验证、常见问题）
+- 三个服务：`anvil`（本地链）→ `setup`（自动部署四合约）→ `frontend`（Web 门户）
+- 停止：`docker compose down`
+
+### 方式二：手动启动（无 Docker 时）
+
+#### 环境要求
 
 - **Node.js ≥ 20**（前端）
 - **Foundry**（合约；[安装教程](https://book.getfoundry.sh/getting-started/installation)，含 `forge`/`cast`/`anvil`）
 - **MetaMask** 或其他钱包（演示需要，可导入 anvil 测试账户）
 
-### 第一步：跑合约测试
+#### 第一步：跑合约测试
 
 ```bash
 cd contracts
@@ -51,7 +67,7 @@ NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 
 ✅ 预期：**38 tests passed, 0 failed**（5 个测试套件）
 
-### 第二步：启动本地演示链 + 部署合约
+#### 第二步：启动本地演示链 + 部署合约
 
 ```bash
 # 终端 1：启动本地链（保持运行）
@@ -74,7 +90,7 @@ NO_PROXY="127.0.0.1,localhost,::1" \
 | GuaranteeEscrow | `0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0` |
 | SchellingVoting | `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9` |
 
-### 第三步：启动前端门户
+#### 第三步：启动前端门户
 
 ```bash
 cd frontend
@@ -160,6 +176,7 @@ MVP 使用本地链/测试网代币模拟质押/罚没（**无真实价值**）�
 
 | 文档 | 路径 |
 |---|---|
+| Docker 一键启动 | [`DOCKER.md`](DOCKER.md) |
 | 设计规格 | `docs/superpowers/specs/2026-08-08-agenttrust-design.md` |
 | 实现计划 | `docs/superpowers/plans/2026-08-08-agenttrust-mvp.md` |
 | 演示手册 | `contracts/demo/DEMO.md` |
