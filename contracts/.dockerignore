@@ -1,0 +1,14 @@
+# Foundry 产物（镜像内重新编译）
+out
+cache
+broadcast
+
+# 演示 / 环境
+demo
+.env
+.env.*
+!.env.example
+
+# git 元数据
+.git
+.gitmodules
