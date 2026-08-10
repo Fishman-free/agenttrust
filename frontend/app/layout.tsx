@@ -1,6 +1,4 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import { WalletStatus } from "./components/wallet-status";
+import type { Metadata, Viewport } from "next";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -9,27 +7,23 @@ export const metadata: Metadata = {
   description: "为智能体间商务提供身份注册、交易担保与信誉裁决",
 };
 
+export const viewport: Viewport = {
+  themeColor: "#ffffff",
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body>
-        <Providers>
-          <header className="site-header">
-            <div className="header-inner">
-              <nav className="site-nav" aria-label="主导航">
-                <Link href="/" className="brand">AgentTrust</Link>
-                <div className="nav-links">
-                  <Link href="/agents">智能体</Link>
-                  <Link href="/trade">交易</Link>
-                  <Link href="/disputes">争议</Link>
-                  <Link href="/reputation">信誉</Link>
-                </div>
-              </nav>
-              <WalletStatus />
-            </div>
-          </header>
-          {children}
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
