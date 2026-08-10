@@ -1,0 +1,62 @@
+% ============================================================================
+%  Chapter 2: Related Work
+% ============================================================================
+\section{Related Work}
+\label{sec:related-work}
+
+\subsection{Decentralized identity and verifiable credentials}
+The W3C has standardized Decentralized Identifiers (DIDs) \cite{w3c-did} and Verifiable
+Credentials (VCs) \cite{w3c-vc} as mutually independent, composable primitives: a DID is a
+URI that resolves to a DID document carrying control and verification methods, and a VC is a
+cryptographically verifiable data model for claims such as qualifications, authorization, and
+reputation. Implementation layers such as ION \cite{ion} anchor DID operations on Bitcoin without
+a new token. These standards provide the skeleton for issuing identities to agents, but they do not
+by themselves determine how identities are trusted in commerce, how disputes are adjudicated, or
+how reputation is priced --- the concerns of this paper.
+
+\subsection{Soulbound tokens and bound NFTs}
+Soulbound tokens (EIP-5192 \cite{eip-5192}) and account-bound NFTs (EIP-4973 \cite{eip-4973})
+generalize non-transferability, letting an address hold verifiable, non-tradeable attestations of
+membership, achievement, or commitment. In our architecture the agent identity (an ERC-721 in
+\textsf{AgentRegistry}) is bound to a real principal at registration and cannot be detached from the
+responsibility it carries --- the accountability analogue of the soulbound idea.
+
+\subsection{Autonomous accounts and payments}
+Account abstraction (ERC-4337 \cite{eip-4337}) separates the signing key from the account logic,
+enabling agents to sponsor gas, batch operations, and authorize delegated execution. The
+agent-to-agent finance literature \cite{a2a-finance} surveys blockchain payment and trust
+infrastructure for autonomous agents. Our work assumes such an account layer as the substrate and
+focuses on the higher-level question of how two accounts that have never met reach trust: guarantee,
+adjudicate, and build reputation.
+
+\subsection{On-chain reputation and attestation}
+The Ethereum Attestation Service (EAS) \cite{eas} provides a general on-chain attestation
+registry. AgentReputation \cite{agent-rep} proposes a decentralized reputation framework for
+agentic AI. Recent datasets of blockchain-registered AI agents \cite{agent-dataset} indicate early
+adoption of agent identity standards. These works establish that reputation \emph{can} be recorded
+on-chain, but leave open who is authorized to write, how truthful attestations are incentivized, and
+how reputation is priced into risk. Our reputation hub (Section~\ref{sec:contracts}) closes the
+write-incentive gap by restricting writers to audited escrow/voting contracts (no self-rating) and
+by coupling scores to guarantee pricing.
+
+\subsection{Decentralized arbitration and guarantees}
+Decentralized dispute resolution has been explored by Kleros \cite{kleros} (a jury selected from a
+set of paid, random jurors), Aragon Court \cite{aragon} (aragon.org/dish), and UMA's optimistic
+oracle \cite{uma} (price oracle with a challenge period). Kleros and Aragon Court select jurors by
+\emph{lottery} and reward coherent majorities; UMA incentivizes truthful price reporting through
+disputes and forfeits. These mechanisms share the Schelling-point insight --- that truthful
+majorities are self-enforcing --- but none of them \emph{closes the loop} with reputation and
+guarantee pricing: a Kleros verdict is final and does not update a merchant's future cost of doing
+business. On the insurance side, Nexus Mutual \cite{nexus-mutual} runs a mutual cover pool with a
+claims-assessment community. Our contribution is to make the guarantee itself (escrow plus
+guarantor stake) the stake that voters price, and to make every verdict feed a reputation score that
+prices the next guarantee --- a three-way closed loop (Section~\ref{sec:pricing}).
+
+\subsection{Trust research specific to agents}
+Recent work on trustworthy LLM agents \cite{agent-networks, zero-trust, insured-agents} and on
+binding agent identities \cite{binding-id} converge on the need for attestation, insurance, and
+verifiable accountability. ERC-8004 (trustless agents) \cite{erc8004} sketches an interoperability
+standard. We position this paper as the first to combine, end-to-end and with a formal
+incentive analysis, (i) a registered identity, (ii) a guaranteed escrow, (iii) staked-voting
+arbitration, and (iv) reputation-driven guarantee pricing in a single protocol whose contracts and
+empirical validation are public.

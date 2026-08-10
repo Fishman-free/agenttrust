@@ -5,7 +5,15 @@ cache/
 *.log
 .DS_Store
 .claude/
+__pycache__/
+*.pyc
 
 # 论文素材与工具目录
 基于区块链的智能体交互安全性研究_学术论文(1).pdf
 .spec-workflow/
+
+# LaTeX 编译辅助文件（保留 main.pdf 源码产物）
+*.aux
+*.bbl
+*.blg
+*.out

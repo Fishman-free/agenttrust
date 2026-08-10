@@ -1,0 +1,4 @@
+reps=4000
+effective_cases=1993, void_cases=2007
+max |sum_net - expected| (wei) = 0
+conservation_holds_exactly = True

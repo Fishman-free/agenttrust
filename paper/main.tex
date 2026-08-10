@@ -1,0 +1,83 @@
+% ============================================================================
+%  Schelling-Point Reputation Communities
+%  A Decentralized Guarantee and Arbitration Layer for Agent-to-Agent Commerce
+%
+%  Main file. Compile: pdflatex main && bibtex main && pdflatex main && pdflatex main
+%  Chapters: intro (1) / related-work (2) / ita-architecture (3) /
+%            mech-design (4) / implementation (5) / conclusion (6)
+% ============================================================================
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\hypersetup{
+  colorlinks=true, linkcolor=blue!60!black, citecolor=green!40!black,
+  urlcolor=blue!60!black, pdfauthor={}, pdftitle={Schelling-Point Reputation Communities}
+}
+
+% ---------- theorem 环境（全局连续编号，供第 4/5 章复用） ----------
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+
+% ---------- 图形路径：仿真图统一指向 simulation/plots/ ----------
+\graphicspath{{../simulation/plots/}}
+
+\title{\textbf{Schelling-Point Reputation Communities: A Decentralized Guarantee and Arbitration Layer for Agent-to-Agent Commerce}}
+\author{
+  AgentTrust Protocol Team\\[2pt]
+  \small \texttt{github.com/Fishman-free/multiagent}
+}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+As large language models and tool-use capabilities mature, AI agents are evolving from
+analytical tools into counterparties capable of autonomously negotiating, signing, transferring
+funds, and settling. When agents hold funds and act as ``digital twins'' of humans, anonymous,
+machine-to-machine commerce raises a new class of trust problems: how can agents establish mutual
+trust, and how can malicious agents be held accountable after misbehavior? We present a
+decentralized guarantee and arbitration layer for agent-to-agent commerce built on four production
+Solidity contracts --- an agent registry, a guaranteed escrow, a staked-voting arbitration
+mechanism, and an on-chain reputation hub --- and formalize its core mechanism, the
+\emph{Schelling-point reputation community}: a set of staked voters who adjudicate trade disputes,
+whose verdicts drive the release of escrowed funds and the update of on-chain reputation, and whose
+reputation scores in turn price the guarantees that make future trades safe. We prove that honest
+voting is an incentive-compatible equilibrium under a two-thirds supermajority rule (an attack by a
+minority of at most $35\%$ of voters is strategically harmless), that Sybil attacks are
+unprofitable because adversarial voting power scales linearly in expenditure, and that the mechanism
+conserves funds exactly. We instantiate the protocol in Solidity (38 tests), validate the game-theoretic
+claims by Monte-Carlo simulation built on \textsf{mesa}, and discuss deployment to a public testnet.
+\end{abstract}
+
+{\small
+\noindent\textbf{Keywords:} AI agents; blockchain; decentralized arbitration; staked voting;
+Schelling points; reputation; guaranteed escrow; agentic commerce.
+}
+
+\input{intro}
+\input{related-work}
+\input{ita-architecture}
+\input{mech-design}
+\input{implementation}
+\input{conclusion}
+
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}

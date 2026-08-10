@@ -1,0 +1,895 @@
+% ============================================================================
+%  Chapter 4: Mechanism Design
+%  AgentTrust: Schelling-Point Reputation Communities
+%
+%  This file is a chapter of the main paper. It must be \input (or
+%  \include)d from the main document; it contains no preamble and relies on
+%  the environments (definition, theorem, lemma, proposition, proof, remark,
+%  example, corollary) configured by the main document (e.g., via amsthm).
+%  All \cite keys are placeholders; the bibliography is merged by a later
+%  task.
+% ============================================================================
+
+\section{Mechanism Design}
+\label{sec:mech}
+
+This chapter formalizes the incentive layer of AgentTrust. Whereas the
+identity--trust--accountability (ITA) architecture of the preceding chapter
+describes \emph{what} the protocol records and \emph{how} it holds agents
+accountable, here we make precise \emph{why} rational agents choose to behave
+honestly. The core object of study is the \emph{Schelling-point reputation
+community}: a set of staked voters who adjudicate trade disputes, whose verdicts
+drive both the release of escrowed funds and the updating of on-chain
+reputation, and whose reputation scores in turn price the very guarantees that
+make future trades safe. The mechanism is instantiated by four production
+Solidity contracts -- \textsf{AgentRegistry},
+\textsf{GuaranteeEscrow}, \textsf{SchellingVoting}, and
+\textsf{ReputationHub} -- and every parameter cited below matches the deployed
+bytecode exactly.
+
+We proceed as follows. Section~\ref{sec:goals} states the design goals and the
+adversarial model, and fixes the participants, strategy space, and utility
+functions used throughout. Section~\ref{sec:mechanism} gives the formal
+definition of the mechanism. Section~\ref{sec:analysis} presents the
+game-theoretic analysis: honest voting as a best response (Lemma~\ref{lem:best-response}),
+incentive compatibility (Theorem~\ref{thm:incentive}), collusion resistance
+(Theorem~\ref{thm:collusion}), Sybil resistance (Theorem~\ref{thm:sybil}), and
+deterministic fund safety (Lemma~\ref{lem:conservation}), together with a
+quantitative justification of the two-thirds supermajority rule. Section
+\ref{sec:pricing} closes the reputation--guarantee pricing loop, and
+Section~\ref{sec:related} contrasts the design with existing decentralized
+adjudication and attestation systems.
+
+% ============================================================================
+\subsection{Design Goals and Threat Model}
+\label{sec:goals}
+% ============================================================================
+
+\subsubsection*{Participants.}
+Let $\mathcal{I} = \{1, \dots, n\}$ be the set of registered \emph{agents}.
+Each agent $i \in \mathcal{I}$ holds a non-fungible identity issued by
+\textsf{AgentRegistry}; the registry binds $i$ to a unique on-chain principal
+$o(i) \in \mathbb{A}$ (the entity legally responsible for $i$'s actions), so
+every act by an agent is attributable to a real-world principal
+\cite{erc8004}. Three roles interact within the mechanism:
+\begin{enumerate}
+  \item \emph{Traders} -- a buyer agent $b$ and a seller agent $s$ who enter
+        into a guaranteed commerce transaction of value $x$ (in wei).
+  \item \emph{Guarantors} -- principals who post capital to insure the buyer
+        against seller default, in exchange for a premium.
+  \item \emph{Voters} -- community members who stake capital and vote on
+        disputed outcomes; their collective verdict settles the case.
+\end{enumerate}
+The trader and guarantor roles are exercised through
+\textsf{GuaranteeEscrow}; the voter role through \textsf{SchellingVoting}. All
+write access to reputation is mediated by \textsf{ReputationHub}, which
+maintains an access-control list of authorized callers (the escrow and voting
+contracts), thereby precluding self-attestation by construction.
+
+\subsubsection*{Design goals.}
+We seek a mechanism satisfying five properties.
+
+\begin{enumerate}
+  \item[\textbf{G1}]\textbf{(Decentralized adjudication).} No single authority
+        determines the winner of a dispute; outcomes are decided by a staked
+        community supermajority. The platform operator retains no privileged
+        arbitration role beyond bootstrapping (opening cases in the MVP).
+  \item[\textbf{G2}]\textbf{(Incentive compatibility).} Truthful voting is a
+        (strict) Bayesian--Nash equilibrium: given that the community converges
+        on the true state, no voter can profit by misreporting her private
+        information.
+  \item[\textbf{G3}]\textbf{(Sybil resistance).} Neither identities nor votes
+        can be multiplied for free: identity creation is gated by a
+        registration stake, and every vote requires capital lock-up.
+  \item[\textbf{G4}]\textbf{(Collusion resistance).} A coordinated minority
+        cannot overturn the honest majority's verdict; forcing an outcome
+        requires a strict two-thirds supermajority of capital-weighted votes.
+  \item[\textbf{G5}]\textbf{(Deterministic fund safety).} At every state of the
+        lifecycle, funds are conserved: the sum of deposits equals the sum of
+        distributable value up to a bounded integer-division dust term, and no
+        state transition can lock or leak value.
+\end{enumerate}
+
+\subsubsection*{Threat model.}
+We assume a fully rational adversary who controls a bounded fraction of
+registered agents and/or of staked voting capital, and who may deviate
+arbitrarily (computationally unbounded in strategy, economically budgeted in
+capital). The protocol must remain secure against the following attack classes,
+which specialize the abstract ITA threat catalogue of the preceding chapter.
+
+\begin{enumerate}
+  \item[\textbf{T1}]\textbf{(Sybil).} An adversary creates many fake agent
+        identities and/or voting addresses to dominate adjudication or to
+        inflate reputation. This is the classic Sybil attack
+        \cite{douceur}; we bound it with registration stakes, per-vote capital
+        lock-up, and a minimum quorum.
+  \item[\textbf{T2}]\textbf{(Reputation manipulation).} An adversary rates
+        herself (self-rating), colludes to rate conspirators, or otherwise
+        inflates a reputation profile. We exclude self-rating by ACL-gated
+        writes, and make ratings costly by routing all writes through the
+        escrow/voting contracts where the write is driven by a staked verdict
+        or an escrowed outcome.
+  \item[\textbf{T3}]\textbf{(Delinquency and exit).} An agent earns a series of
+        high-value trades, defaults once, and abandons the identity to relaunch
+        under a fresh one (\emph{reputation laundering}). We bound this by the
+        non-recoverable registration stake, by the permanence of the on-chain
+        record, and by reputation-gated guarantee pricing that prices a fresh
+        identity at the uninsurable default rate (Section~\ref{sec:pricing}).
+  \item[\textbf{T4}]\textbf{(Single-point authority abuse).} Any participant
+        who holds exclusive arbitration or write authority can extract rent or
+        mis-route funds. The design minimizes such points: in the full
+        protocol, the arbitration authority is exercised by
+        \textsf{SchellingVoting} (community supermajority), not by a
+        privileged key.
+\end{enumerate}
+
+\subsubsection*{Strategy space and utility.}
+Fix a disputed case $C$. Each voter $i$ chooses an action
+$a_i \in \mathcal{A} = \{B, S, \bot\}$, where $B$ (BUYER), $S$ (SELLER), and
+$\bot$ (ABSTAIN) denote the sides of the dispute she supports; choosing $a_i$
+requires depositing a stake $v > 0$ wei (\textsf{SchellingVoting.vote} enforces
+$\texttt{msg.value} = v$ exactly). Voter utility is quasi-linear,
+$u_i(a) = P_i(a) - v$, where $P_i$ is the settlement payment defined in
+Section~\ref{sec:mechanism}. We model information with a two-point state space
+$\theta \in \{B, S\}$ (the true party at fault); each voter receives a private
+signal $\sigma_i \in \{B,S\}$ with accuracy
+$q = \Pr[\sigma_i = \theta \mid \theta] > 1/2$, conditionally independent across
+voters. This is the standard Condorcet jury information structure
+\cite{condorcet}, which we instantiate under a staked-payment payoff in place of
+the classical "correct decision" utility.
+
+% ============================================================================
+\subsection{Formal Mechanism Definition}
+\label{sec:mechanism}
+% ============================================================================
+
+We now define the mechanism formally. Throughout, monetary quantities are
+denominated in wei; ``$\lfloor \cdot \rfloor$'' is integer floor; all divisions
+are integer divisions exactly as performed by the EVM.
+
+\begin{definition}[Dispute case]
+\label{def:case}
+A \emph{dispute case} is a tuple
+\[
+C \;=\; (\tau,\ b,\ s,\ v,\ t_{d},\ m_{B},\ m_{S},\ m_{\bot},\ w,\ e),
+\]
+where $\tau$ is the trade identifier (\texttt{tradeId}), $b, s$ are the buyer
+and seller agent identifiers, $v > 0$ is the per-vote stake (\texttt{stake}),
+$t_{d}$ is the voting deadline (a block timestamp), $(m_{B}, m_{S}, m_{\bot})$
+are the numbers of votes cast for BUYER, SELLER, and ABSTAIN respectively,
+$w \in \{B, S, \bot\}$ is the winner (with $w = \bot$ denoting a void case),
+and $e \in \{0,1\}$ is the effectiveness flag. The protocol constrains a case
+by: (i) one vote per address (\texttt{hasVoted} is a per-case flag); (ii) votes
+accepted only during the open window $(\cdot,\ t_{d})$; and (iii) at most one
+case per trade (\texttt{tradeHasCase} prevents duplicate litigation), opened
+only while the underlying trade is in the \texttt{DISPUTED} escrow state.
+\end{definition}
+
+\begin{definition}[Voting game]
+\label{def:game}
+Given a case $C$, the induced \emph{voting game} is
+\[
+\Gamma_{C} = \big(\mathcal{N},\ \mathcal{A},\ S,\ P,\ u\big),
+\]
+where $\mathcal{N}$ is the set of eligible voters, $\mathcal{A} = \{B,S,\bot\}$
+is the pure-action space, $S$ is the deposit schedule requiring exactly $v$ wei
+per vote, $P$ is the settlement payment function of
+Definition~\ref{def:settlement}, and $u_{i}(a) = P_{i}(a) - v$ is the
+quasi-linear utility of voter $i$. A mixed strategy of voter $i$ is a
+distribution over $\mathcal{A}$; the Bayesian game extends $\Gamma_{C}$ with
+the type space of signals $(\sigma_{i})$ and the common prior over
+$(\theta, \sigma_{1}, \dots, \sigma_{|\mathcal{N}|})$.
+\end{definition}
+
+\begin{definition}[Adjudication rule]
+\label{def:rule}
+Let $T = m_{B} + m_{S}$ be the number of \emph{effective} votes (abstentions are
+excluded). The adjudication rule $R$ maps the vote profile to
+$(w, e)$ as follows, with $\kappa = \texttt{MAJORITY\_BPS}/10000 = 0.65$ and
+$\nu = \texttt{MIN\_VOTERS} = 3$:
+\begin{enumerate}
+  \item If $T = 0$, set $w = \bot$ and $e = 0$ (no votes cast; the contract
+        short-circuits the majority test, which would otherwise vacuously hold
+        because $0 \ge 0$).
+  \item Otherwise, for each side $X \in \{B, S\}$ define the supermajority
+        predicate
+        \[
+        \mathsf{maj}(X) \;\Longleftrightarrow\;
+        m_{X} \cdot 10000 \;\ge\; T \cdot \texttt{MAJORITY\_BPS},
+        \]
+        and set
+        $w = B$ if $\mathsf{maj}(B)$, else $w = S$ if $\mathsf{maj}(S)$, else
+        $w = \bot$.
+  \item Finally,
+        $e = 1 \Longleftrightarrow \big(T \ge \nu \ \wedge\ w \neq \bot\big)$;
+        otherwise $e = 0$ and the case is \emph{void}.
+\end{enumerate}
+Because $\kappa = 0.65 > 1/2$, the two predicates $\mathsf{maj}(B)$ and
+$\mathsf{maj}(S)$ cannot both hold for any $T \ge 1$; the rule is therefore
+well-defined. Note that $\kappa = 0.65$ is an integer-safe engineering
+approximation of the exact two-thirds threshold $\tfrac{2}{3} \approx 0.6667$
+(Section~\ref{sec:threshold}); the contract's comment documents this choice as
+avoiding boundary integer-division ambiguity.
+\end{definition}
+
+\begin{definition}[Settlement payments]
+\label{def:settlement}
+Let $w$ be the winner and $e$ the effectiveness of a settled case. Let
+$m_{w} = m_{B}$ if $w = B$, else $m_{w} = m_{S}$; let $m_{\ell} = T - m_{w}$.
+The settlement payment function $P$ is:
+\begin{enumerate}
+  \item \textbf{Effective case} ($e = 1$). Each majority voter receives
+        \[
+        P_{i} = v + \left\lfloor \frac{v \cdot m_{\ell}}{m_{w}} \right\rfloor,
+        \]
+        i.e., her principal plus a pro-rata share of the forfeited minority
+        pool ($\texttt{claimReward}$, $T \ge \nu$ guaranteed). Each minority
+        voter receives $P_{i} = 0$ (her stake is forfeited). Each ABSTAIN
+        voter receives $P_{i} = v$ ($\texttt{claimRefund}$).
+  \item \textbf{Void case} ($e = 0$). Every voter -- majority, minority, or
+        abstainer -- receives $P_{i} = v$; no rewards are distributed.
+\end{enumerate}
+The integer-division remainder $\delta = (v \cdot m_{\ell}) \bmod m_{w}$
+remains in the contract; it is bounded by $\delta < m_{w}$ wei and is a known,
+documented limitation of the MVP (a batched-settlement refinement in the full
+design removes it).
+\end{definition}
+
+\begin{definition}[Escrow linkage]
+\label{def:escrow}
+On settlement, the voting contract invokes the escrow's dispute-resolution
+entry point,
+\[
+\texttt{escrow.resolveDispute}(\tau,\ \texttt{verdict},\ \texttt{share}),
+\]
+on the underlying trade $\tau$, which releases escrowed value and updates
+reputation as follows. The escrow enforces the state machine
+$\text{CREATED} \to \text{FUNDED} \to \text{GUARANTEED} \to \text{DELIVERED}
+\to \text{DISPUTED} \to \text{RELEASED}/\text{RESOLVED}$, with four
+one-day windows (funding, guarantee, delivery, and confirmation); a case can
+be opened only while the trade is in the \texttt{DISPUTED} state
+(Definition~\ref{def:case}).
+\begin{enumerate}
+  \item If $w = B$ (including the conservative default of a void case), the
+        verdict is \texttt{BUYER\_WINS} with $\texttt{share} = 10000$. The
+        buyer receives $\texttt{buyerRefund} + \texttt{stake}$, where
+        $\texttt{buyerRefund} = \lfloor x \cdot \texttt{share}/10000 \rfloor$
+        and $\texttt{stake} = \lfloor x \cdot \gamma / 10^{18} \rfloor$ is the
+        guarantor's posted collateral; the seller receives the residual
+        $x - \texttt{buyerRefund}$ if positive. The seller is recorded as
+        \texttt{LOST}.
+  \item If $w = S$, the verdict is \texttt{SELLER\_WINS} with
+        $\texttt{share} = 0$. The seller receives $x - \pi$ (amount less the
+        premium) and the guarantor receives $\texttt{stake} + \pi$; the seller
+        is recorded as \texttt{WON}.
+\end{enumerate}
+The verdict thereby \emph{releases} escrowed value, and simultaneously feeds
+the reputation record (Definition~\ref{def:rep}); neither can occur without the
+other. All amounts are verified to sum to the escrow's holding $x + \texttt{stake}$
+in every branch (Lemma~\ref{lem:conservation}).
+\end{definition}
+
+\begin{definition}[Reputation update rule]
+\label{def:rep}
+\textsf{ReputationHub} maintains, per agent, a four-dimensional behavior
+profile $\rho = (c, d, w, l)$ counting \texttt{COMPLETED}, \texttt{DEFAULTED},
+\texttt{WON}, and \texttt{LOST} outcomes, written exclusively by authorized
+callers (the escrow and voting contracts). From the seller's perspective: a
+trade confirmed or auto-released records \texttt{COMPLETED}; a seller default
+on the delivery window records \texttt{DEFAULTED}; a dispute won or lost
+records \texttt{WON} or \texttt{LOST}. The scalar score is
+\[
+\mathsf{score}(\rho) \;=\;
+100 \;-\; 100 \cdot \frac{d}{\theta} \;-\; 50 \cdot \frac{l}{\theta},
+\qquad \theta = c + d + w + l,
+\]
+clipped to $[0, 100]$, and $\mathsf{score} = 50$ for a new agent with
+$\theta = 0$. A default reduces the score by up to $100$; a lost dispute by up
+to $50$; completed trades and won disputes never reduce it.
+\end{definition}
+
+% ============================================================================
+\subsection{Game-Theoretic Analysis}
+\label{sec:analysis}
+% ============================================================================
+
+We analyze the mechanism in three parts: the per-voter incentive to tell the
+truth, the system-level barriers to coalition and Sybil attacks, and the
+fund-safety invariant. Throughout, we fix a case $C$ with stake $v$, and let
+$h$ (resp.\ $c$) denote the number of votes cast by honest (resp.\ adversarial)
+voters.
+
+\paragraph{Signal structure.}
+Each honest voter $i$ receives signal $\sigma_{i}$ with
+$\Pr[\sigma_{i} = \theta \mid \theta] = q > 1/2$, conditionally independent
+across voters. Honest voters are assumed to be rational and to coordinate on
+the \emph{truthful} Schelling point: they vote the side they believe is at
+fault, because the majority side collects the minority's forfeited stakes
+\cite{schelling,truthful-eq}. We first show that this behavior is indeed a best
+response to honest others.
+
+\begin{lemma}[Honest voting is a best response]
+\label{lem:best-response}
+Fix a voter $i$ holding signal $\sigma_{i}$ with accuracy $q > 1/2$, and
+suppose every other voter votes her own signal. Then voting $\sigma_{i}$
+strictly maximizes $i$'s expected settlement payoff among $\{B, S\}$, and
+strictly dominates abstention whenever the other voters carry the correct side
+to a supermajority. Concretely,
+\[
+\mathbb{E}[u_{i} \mid a_{i} = \sigma_{i}]
+\;-\; \mathbb{E}[u_{i} \mid a_{i} = \bar\sigma_{i}]
+\;=\;
+v \left(1 + \frac{m_{\ell}}{m_{w}}\right) \big(p_{\sigma_{i}} - p_{\bar\sigma_{i}}\big)
+\;>\; 0,
+\]
+where $p_{X}$ is the probability that voter $i$ is in the majority when voting
+$X$, and $p_{\sigma_{i}} - p_{\bar\sigma_{i}} \ge (2q - 1) - \varepsilon_{n}$,
+with $\varepsilon_{n} \to 0$ as the number of voters grows.
+\end{lemma}
+
+\begin{proof}
+The deposit $v$ is sunk at the time of the vote, so $i$ maximizes her expected
+settlement payoff. Let $m_{B}, m_{S}$ denote the counts of the \emph{other}
+voters' votes, $m_{B} + m_{S} = n - 1$. If $i$ votes $B$, the effective totals
+become $(m_{B} + 1, m_{S})$; by rule $R$ she is in the majority iff
+$m_{B} + 1 \ge \kappa\,(m_{B} + m_{S} + 1)$. If she votes $S$, she is in the
+majority iff $m_{S} + 1 \ge \kappa\,(m_{B} + m_{S} + 1)$. Except on the
+one-vote-wide pivotal region where these two inequalities differ, the winner is
+independent of $i$'s vote and $p_{B} = p_{S}$; the entire payoff gap is
+concentrated on the pivot event.
+
+Conditional on the true state, the other honest votes are conditionally i.i.d.\
+with success probability $q$, hence
+$m_{B} \mid \theta \! = \! B \sim \mathsf{Bin}(n-1, q)$
+first-order stochastically dominates
+$m_{B} \mid \theta \! = \! S \sim \mathsf{Bin}(n-1, 1-q)$.
+Because $i$'s own signal satisfies $\Pr[\theta = \sigma_{i}] = q > 1/2$, she
+weights the correct-state branch more heavily, giving
+$p_{B} > p_{S}$ when $\sigma_{i} = B$ (and symmetrically). Concretely, the
+probability that her vote is pivotal and decisive for the truthful side exceeds
+the analogous probability for the untruthful side by at least $2q - 1$, up to
+the vanishing slack $\varepsilon_{n}$ from the law of large numbers. By
+Definition~\ref{def:settlement}, her expected net payoff under vote $X$ is
+$v\big(p_{X}(1 + m_{\ell}/m_{w}) - 1\big)$, so the gap above equals
+$v(1 + m_{\ell}/m_{w})(p_{B} - p_{S}) > 0$. For abstention: if the other voters
+already carry the correct side to a supermajority, voting one's signal yields a
+strictly positive expected net payoff (the pivot bonus), whereas abstention
+yields exactly $0$; abstention is therefore strictly dominated.\end{proof}
+
+\begin{theorem}[Incentive compatibility: truthful voting is an equilibrium]
+\label{thm:incentive}
+Let every voter's signal accuracy satisfy $q > 1/2$, and suppose the honest
+community commands at least a fraction $\kappa = 0.65$ of the effective votes
+in expectation. Then the profile in which every voter votes her signal is a
+strict Bayesian--Nash equilibrium: no voter can strictly improve by any
+unilateral deviation. Moreover, the resulting verdict coincides with the true
+state with probability converging to $1$ as the number of voters grows, and the
+truthful profile is the unique \emph{signal-sustained} Schelling point among
+the coordination equilibria of $\Gamma_{C}$.
+\end{theorem}
+
+\begin{proof}
+\textbf{(Equilibrium.)} Take any voter $i$. By Lemma~\ref{lem:best-response},
+given that all other voters vote their signals, every $a_{i} \in \{B,S,\bot\}$
+with $a_{i} \neq \sigma_{i}$ yields strictly lower expected utility than
+$a_{i} = \sigma_{i}$ (abstention being dominated whenever the honest
+supermajority materializes, which occurs with probability $1 - \varepsilon$ by
+the assumption that the honest block commands a $\ge \kappa$ fraction). Hence
+no unilateral deviation is profitable and the inequality is strict, so the
+truthful profile is a strict Bayesian--Nash equilibrium.
+
+\textbf{(Correctness.)} Conditional on $\theta = B$, the honest votes are i.i.d.\
+with success probability $q > 1/2$, so by the law of large numbers the fraction
+of B votes among honest voters tends to $q$. Since the honest block commands at
+least $\kappa = 0.65$ of all effective votes and $q > \kappa$ is not required
+for this step -- the block simply needs its own supermajority to exceed
+$\kappa$ -- the B share of total effective votes exceeds $\kappa$ with
+probability tending to $1$; hence $R$ returns $w = B$ with probability tending
+to $1$. The argument for $\theta = S$ is symmetric.
+
+\textbf{(Schelling point.)} Other coordination profiles (e.g., all voters
+choosing $B$ irrespective of signals) are Nash equilibria as well, since no
+single voter can change the outcome if the rest coordinate. But any such
+coordination equilibrium is uncorrelated with the true state: it rewards the
+majority regardless of the merits. The truthful profile is the unique
+equilibrium in which (i) each voter's action is a best response to a signal,
+(ii) the outcome is statistically correct, and (iii) expected payoffs are
+strictly higher conditional on any realization where the coordinated and
+truthful winners differ (the truthful majority collects a forfeiture bonus,
+whereas the mis-coordinated majority gains nothing real -- the escrow still
+releases value to the wrong party only for a single case). Following
+Schelling's focal-point theory, self-interested voters with a common prior
+converge on the signal-sustained profile because it is the unique one
+justifiable to the community \cite{schelling,truthcoin,truthful-eq}.\end{proof}
+
+\begin{remark}[Scope of the dominance claim]
+\label{rem:scope}
+Lemma~\ref{lem:best-response} establishes honesty as a strict best response to
+honest others, not as a dominant strategy against a fully adversarial electorate
+(a lone honest voter against $n-1$ adversarial votes cannot force the truth).
+This is the standard truthful-equilibrium property of Schelling-style staked
+voting \cite{truthcoin,truthful-eq}; the \emph{system-level} protection against
+adversarial electorates is exactly the quantitative barrier of
+Theorem~\ref{thm:collusion} and Theorem~\ref{thm:sybil}.
+\end{remark}
+
+\begin{theorem}[Collusion resistance]
+\label{thm:collusion}
+Let $h$ honest and $c$ adversarial voters participate in a case, with
+$n_{e} = h + c$ effective votes. To force a verdict contrary to the will of the
+$h$ honest voters, the coalition must command
+\[
+c \;\ge\; \left\lceil \frac{13}{7}\, h \right\rceil
+\;\approx\; 1.857\, h
+\qquad(\text{i.e., } c \ge 2h \text{ under the ideal threshold } \tfrac{2}{3}),
+\]
+effective votes, i.e., a strict supermajority of at least $0.65\, n_{e}$.
+Consequently: (i) any coalition of at most $35\%$ of the effective voters is
+strategically harmless -- it can neither determine nor veto an outcome, and its
+stakes are forfeited; and (ii) the minimum capital an attacker must lock is
+$c \cdot v \ge \lceil 13h/7 \rceil \cdot v$, and a rational attacker will not
+mount an attack when this exceeds the recoverable dispute value
+($c \cdot v > x + \pi$).
+\end{theorem}
+
+\begin{proof}
+For the coalition's preferred side $X$ to win, rule $R$ (Definition~\ref{def:rule})
+requires $m_{X} \ge \kappa\, T$. In the best case for the coalition, every
+honest voter opposes it, so $m_{X} = c$ and $T = c + h$; the binding inequality
+is $c \ge 0.65\,(c + h)$, which rearranges to $c \ge \tfrac{13}{7}h$. If the
+coalition fails this bound, the honest side either carries the case (when
+$h \ge \tfrac{13}{7}c$) or the case is void (when neither side reaches $0.65$);
+in the latter event the conservative default releases the escrow to the buyer
+(Section~\ref{sec:default}), never to the coalition's preferred verdict against
+an honest block. Hence the coalition's \emph{only} path to a dictated verdict
+requires the supermajority of $0.65\,n_{e}$, i.e., $c \ge \lceil 13h/7 \rceil$.
+Claim (i) follows because any $c \le 0.35\,n_{e}$ fails the bound; such votes
+join a losing minority and are forfeited by Definition~\ref{def:settlement}.
+Claim (ii) follows from the capital lock: the attacker risks $c \cdot v$ wei
+(plus the registration cost of Theorem~\ref{thm:sybil}), and the total value
+extractable from a captured verdict is at most the trade value plus premium,
+$x + \pi$. When $c \cdot v > x + \pi$, expected attack profit is strictly
+negative for any win probability bounded away from $1$ -- and by the barrier
+above it is not $1$ unless $c$ meets the supermajority, at which point the cost
+dominates.\end{proof}
+
+\begin{remark}[Void-case vetoing]
+\label{rem:veto}
+A coalition that cannot reach $0.65$ can still \emph{veto} an honest verdict by
+preventing the honest side from reaching $\kappa$; but this requires diluting
+the effective total with abstentions or adversarial votes to force a void. Since
+void cases default to the buyer and refund every stake, the veto yields the
+coalition at most the conservative buyer-wins outcome, never a seller-favorable
+verdict against an honest block. Moreover, inducing honest voters to abstain
+requires compensating them for the positive expected bonus of
+Lemma~\ref{lem:best-response}, adding a bribe cost to the attack. The veto
+therefore cannot subvert the buyer-insurance guarantee that motivates the
+escrow.
+\end{remark}
+
+\begin{theorem}[Sybil resistance]
+\label{thm:sybil}
+Let an adversary create $k$ Sybil identities. Each identity costs
+$\texttt{registrationFee}$ wei to register in \textsf{AgentRegistry} and is
+permanently bound to a real principal; each effective vote additionally
+requires a capital lock of $v$ wei in \textsf{SchellingVoting}; and no case can
+be decided by fewer than $\texttt{MIN\_VOTERS} = 3$ effective votes. By
+Theorem~\ref{thm:collusion}, capturing a case against $h \ge 1$ honest voters
+requires
+\[
+k \;\ge\; \left\lceil \frac{13}{7}\,h \right\rceil,
+\]
+so the minimum attack expenditure is at least
+$\lceil 13h/7 \rceil \cdot (v + \texttt{registrationFee})$ wei. Because
+identity creation and voting both demand real capital that is non-reusable while
+locked, adversarial voting power scales \emph{linearly} in expenditure, and the
+quorum $\nu = 3$ rules out one- or two-identity Sybils deciding a case.
+\end{theorem}
+
+\begin{proof}
+Three protocol constraints jointly bound Sybil power. First,
+\textsf{AgentRegistry.registerAgent} requires a payment of at least
+$\texttt{registrationFee}$ and binds the new identity to the caller, so each
+Sybil identity is a paid, attributable liability rather than a free vote.
+Second, \textsf{SchellingVoting.vote} requires the exact per-vote deposit
+$\texttt{msg.value} = v$ and permits one vote per address, so each effective
+Sybil vote locks a full unit of capital that cannot be reused until the case
+settles. Third, rule $R$ requires $T \ge \nu = 3$ effective votes for a case to
+be effective, so a Sybil of size one or two cannot manufacture a verdict at all.
+Combining these with Theorem~\ref{thm:collusion}, which mandates
+$c \ge \lceil 13h/7 \rceil$ to capture a case, yields the stated expenditure
+bound. Linearity follows because neither the identity cost nor the vote deposit
+can be amortized across identities while locked.\end{proof}
+
+\begin{remark}[MVP vs.\ full design]
+\label{rem:sybil-mvp}
+The MVP's \textsf{SchellingVoting} enforces the \emph{capital} Sybil barrier
+(exact per-vote stake, one vote per address, $\nu = 3$); the identity barrier
+(the requirement that voters hold registered agent IDs) is enforced by the
+escrow/trading path and is a stated refinement of the full protocol, which
+binds every vote to a registered, fee-paid identity. Both barriers are needed
+for the full bound; the capital barrier alone already prevents cost-free
+vote multiplication.
+\end{remark}
+
+\begin{remark}[Sufficiency, not exactness, of the Sybil bound]
+\label{rem:sybil-sim}
+The bound $k \ge \lceil 13h/7 \rceil$ of Theorem~\ref{thm:sybil} is a
+\emph{sufficient} condition: it guarantees the coalition captures the case
+(its preferred side reaches $\kappa$ with certainty). It is not the smallest
+coalition that yields a \emph{high-probability} capture, because honest voters
+err with probability $1 - q$ (Definition~\ref{def:case}), leaking a share of
+honest votes to the adversary's side. Our Monte-Carlo evaluation
+(Section~\ref{sec:eval}) confirms this: at $h = 14$ honest voters and
+$q = 0.85$, the flip probability reaches $0.65$ already at $k = 22$, below
+$\lceil 13h/7 \rceil = 26$, and certainty only at $k = 26$. The bound therefore
+overstates the necessary adversarial expenditure in noisy electorates; the
+exact capture set is the threshold boundary $m_{X} \ge \kappa\,T$ of
+Definition~\ref{def:rule}, which the protocol enforces regardless of coalition
+size. For the security claim this direction is the safe one: the mechanism
+never needs \emph{more} adversarial capital to resist an attack than the bound
+indicates.
+\end{remark}
+
+\begin{lemma}[Deterministic fund safety]
+\label{lem:conservation}
+For any case $C$, the total staked pool is $(m_{B} + m_{S} + m_{\bot}) \cdot v$
+wei. The settlement payments of Definition~\ref{def:settlement} satisfy
+\[
+\sum_{i \in \mathcal{N}} P_{i}
+\;=\;
+\begin{cases}
+(m_{B} + m_{S} + m_{\bot}) \cdot v - \delta, & e = 1,\ \delta = (v\, m_{\ell}) \bmod m_{w}, \\[2pt]
+(m_{B} + m_{S} + m_{\bot}) \cdot v,          & e = 0,
+\end{cases}
+\]
+with $0 \le \delta < m_{w}$. In every effective settlement the majority
+reclaims its principal and divides the minority's forfeited stakes; in every
+void settlement all stakes are refunded. Hence the voting contract never
+over-disburses and never accumulates unaccounted value beyond the bounded dust
+term $\delta$. At the escrow layer, the same invariant holds: the escrow holds
+$x + \texttt{stake}$ wei and disburses exactly $x + \texttt{stake}$ across every
+outcome (Table~\ref{tab:escrow-conservation}).
+\end{lemma}
+
+\begin{proof}
+In an effective case ($e = 1$), $m_{w}$ majority voters each receive
+$v + \lfloor v m_{\ell}/m_{w} \rfloor$, $m_{\ell}$ minority voters receive $0$,
+and $m_{\bot}$ abstainers receive $v$. The total is
+\[
+m_{w}\left(v + \left\lfloor \tfrac{v m_{\ell}}{m_{w}} \right\rfloor\right)
++ m_{\bot} v
+\;=\; m_{w} v + (v m_{\ell} - \delta) + m_{\bot} v
+\;=\; (m_{B} + m_{S} + m_{\bot})v - \delta,
+\]
+since $m_{w} + m_{\ell} = m_{B} + m_{S}$. In a void case ($e = 0$), every voter
+claims $v$, summing to the full pool with $\delta = 0$. The dust bound
+$\delta = (v m_{\ell}) \bmod m_{w} < m_{w}$ follows from the integer remainder.
+For the escrow: enumerating the outcome classes (success, seller wins, buyer
+wins in full/partial, and the two refund paths) shows each distributes
+$x + \texttt{stake}$ or, in the pre-guarantee refund, the full $x$ held at that
+state; the premium $\pi$ is never deposited and is netted from the seller's
+share, so it cannot be lost.\end{proof}
+
+\begin{table}[t]
+\centering
+\caption{Conservation of the escrow's holding $x + \texttt{stake}$ (stake
+$= \lfloor x \gamma / 10^{18} \rfloor$, premium $\pi$, buyer share $\beta/10000$).
+Across every outcome the sum of payouts equals the holding exactly.}
+\label{tab:escrow-conservation}
+\begin{tabular}{lll}
+\hline
+Outcome & Payout to seller & Payout to guarantor / buyer \\
+\hline
+Success (confirm / auto-release)      & $x - \pi$                    & guarantor: $\texttt{stake} + \pi$ \\
+Seller wins dispute                    & $x - \pi$                    & guarantor: $\texttt{stake} + \pi$ \\
+Buyer wins dispute (full, $\beta=10000$) & $0$                       & buyer: $x + \texttt{stake}$ \\
+Buyer wins dispute (partial, $\beta<10000$) & $x - \beta x/10000$    & buyer: $\beta x/10000 + \texttt{stake}$ \\
+Refund before guarantee               & ---                          & buyer: $x$ \\
+Seller default (delivery timeout)      & $0$                          & buyer: $x + \texttt{stake}$ \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{The conservative default on void cases.}
+\label{sec:default}
+When a case is void -- no votes, fewer than $\nu$ effective votes, or no side
+reaching the supermajority -- rule $R$ returns $w = \bot$ and the escrow
+\emph{conservatively defaults to the buyer}: verdict \texttt{BUYER\_WINS},
+$\texttt{share} = 10000$ (Definition~\ref{def:escrow}). The buyer is refunded
+her principal plus the guarantor's forfeited stake; the seller's claim to
+payment is denied. This asymmetry is economically deliberate and not an
+artifact:
+\begin{enumerate}
+  \item \textbf{Insurance semantics.} The guarantor has voluntarily accepted
+        the role of insuring the buyer against seller default. When the
+        community cannot establish the seller's claim to a supermajority, the
+        seller's delivery claim is treated as unsubstantiated, and the
+        insurance settlement is exercised in the buyer's favor -- the standard
+        burden-of-proof allocation in which the party seeking payment must
+        establish entitlement.
+  \item \textbf{No value lock.} Funds are released deterministically rather
+        than frozen; G5 holds unconditionally, including on void paths.
+  \item \textbf{Guarantor discipline.} The default-buyer outcome makes a
+        guarantor who underpriced a risky seller absorb the loss, aligning
+        guarantee pricing (Section~\ref{sec:pricing}) with the community's
+        future verdicts and deterring adverse selection into the guarantee
+        market.
+\end{enumerate}
+Two caveats are documented. First, a void case still records a \texttt{LOST}
+outcome for the seller through the default path, which is a deliberate MVP
+simplification; the full protocol distinguishes \emph{void} from
+\emph{adjudicated loss} so that a seller who merely faced an abandoned dispute
+is not penalized. Second, the default gives a buyer who files a frivolous
+dispute a ``win by default'' if the community fails to respond; this is bounded
+because the honest community needs only $\nu = 3$ votes and a supermajority to
+rule \texttt{SELLER\_WINS} (Lemma~\ref{lem:best-response} makes truthful
+response a best response), and because repeated frivolous disputes are
+themselves on-chain-visible and subject to the community's reputational
+scrutiny.
+
+\paragraph{Why a two-thirds supermajority?}
+\label{sec:threshold}
+The threshold $\kappa = \texttt{MAJORITY\_BPS}/10000 = 0.65$ is chosen for three
+quantitative reasons, none of which hold at the bare-majority rule
+$\kappa = 1/2$.
+
+\emph{(a) Resisting a one-third malicious minority.} For any contested case, the
+honest block wins iff its vote share exceeds $\kappa$. With $\kappa = 1/2$, an
+adversary holding just over half of the votes wins every case it contests, and
+the honest block must exceed half to survive. With $\kappa = 0.65$, an
+adversary controlling up to $35\%$ of the effective votes can \emph{never}
+determine an outcome (Theorem~\ref{thm:collusion}); the mechanism tolerates a
+coordinated malicious minority of roughly one third while still producing the
+correct verdict whenever honest voters command a $\ge 0.65$ share.
+
+\emph{(b) Capping the required honest supermajority.} A threshold close to $1$
+(unanimity) would render the mechanism fragile: a small honest abstention or a
+little signal noise would void legitimate cases. At $\kappa = 0.65$, the honest
+block needs only two thirds of the votes, so up to one third of the electorate
+may abstain, err, or collude without voiding a valid verdict -- keeping the
+truthful equilibrium of Theorem~\ref{thm:incentive} sustainable without
+near-unanimity.
+
+\emph{(c) Optimizing the voting incentive at the boundary.} The per-winner bonus
+is $v \cdot m_{\ell}/m_{w}$, which at the decision boundary equals
+$v \cdot (1-\kappa)/\kappa$: a $50\%$ return at $\kappa = 2/3$, $100\%$ at
+$\kappa = 1/2$, and $33\%$ at $\kappa = 3/4$. The supermajority rule thus
+preserves a strong participation bonus at the exact margin where a verdict is
+contested, while the bare-majority rule's larger bonus buys no collusion
+resistance at all.
+
+The engineering constant $\texttt{MAJORITY\_BPS} = 6500$ is the integer-safe
+approximation of $\tfrac{2}{3} \approx 6667/10000$; it lowers the adversarial
+requirement marginally (factor $\tfrac{13}{7} \approx 1.857$ instead of $2$) at
+negligible security cost, in exchange for exact integer arithmetic and a
+slightly smaller void region near the threshold boundary.
+
+The choice is borne out quantitatively by the Monte-Carlo evaluation of
+Section~\ref{sec:eval}: scanning the threshold with $n = 15$ honest voters and
+$q = 0.7$ yields a correct-verdict rate of $0.947$ at $\kappa = 0.5$, $0.721$
+at $\kappa = 0.65$, and $0.512$ at $\kappa = 0.7$, while the void rate climbs
+from $0$ to $0.275$ to $0.487$. The supermajority rule thus trades at most
+$0.23$ of correctness for immunity to a one-third malicious minority, and
+raising $\kappa$ beyond $0.65$ buys no further safety while voiding nearly half
+of all cases. The same evaluation confirms the $35\%$ tolerance of reason (a)
+directly: with $n = 21$ and $q = 0.85$, a coalition controlling $38\%$ of the
+effective votes flips the verdict with probability below $1\%$, and certainty
+is reached only at the $0.65$ supermajority boundary.
+
+% ============================================================================
+\subsection{The Reputation--Guarantee Pricing Loop}
+\label{sec:pricing}
+% ============================================================================
+
+The design's central novelty is not adjudication per se but the \emph{closed
+loop} that connects verdicts to future commerce: each settlement updates a
+reputation profile, reputation prices the guarantee that makes the next trade
+safe, and the guarantee determines whether low-reputation agents can transact
+at all.
+
+\begin{definition}[Guarantee contract and pricing]
+\label{def:pricing}
+A guarantee is a pair $(\gamma, \pi)$ with coverage $\gamma \in (0, 2]$ (fraction
+of $x$, up to $200\%$) and premium $\pi \ge 0$ wei, subject to
+$\pi \le x$ (\texttt{premium} $\le$ \texttt{amount}, enforced to prevent
+underflow of the seller's share $x - \pi$). The guarantor deposits
+$\texttt{stake} = \lfloor x \gamma / 10^{18} \rfloor$ wei into
+\textsf{GuaranteeEscrow}. Let $p_{D}(\rho)$ be the probability that a seller with
+profile $\rho$ defaults. A rational guarantor participates only if its expected
+net payoff is non-negative:
+\[
+(1 - p_{D})\,\pi \;-\; p_{D}\,\texttt{stake} \;\ge\; 0
+\;\Longleftrightarrow\;
+\pi \;\ge\; \frac{p_{D}}{1 - p_{D}} \cdot \texttt{stake}.
+\]
+We call $\pi^{*}(\rho, \gamma) = \dfrac{p_{D}}{1 - p_{D}} \cdot \texttt{stake}$
+the \emph{competitive premium floor}.
+\end{definition}
+
+To instantiate the floor we need an estimator of the default probability from
+the on-chain profile. The natural choice is the empirical default rate
+$\hat p_{D}(\rho) = d/\theta$, which is exactly the quantity the reputation
+score is built on. Substituting and using the identity
+$d/\theta = (100 - \mathsf{score}(\rho))/100 - l/(2\theta)$, a first-order,
+monotone estimator is $\hat p_{D}(s) = (100 - s)/100$ for a score
+$s = \mathsf{score}(\rho) \in [0, 100]$; it is a valid probability, equals $0$
+at the maximal score, and equals $1$ at the minimal score.
+
+\begin{proposition}[Monotone guarantee pricing]
+\label{prop:pricing}
+Fix a trade value $x$ and coverage $\gamma > 0$, and set
+$\hat p_{D}(s) = (100 - s)/100$. The competitive premium floor
+\[
+\pi^{*}(s) \;=\; \frac{\hat p_{D}(s)}{1 - \hat p_{D}(s)} \cdot \texttt{stake}
+\;=\; \texttt{stake} \cdot \frac{100 - s}{s}
+\]
+is strictly decreasing in the reputation score $s$ on $(0, 100]$:
+$\dfrac{\partial \pi^{*}}{\partial s} = -\,100\,\texttt{stake}/s^{2} < 0$.
+Consequently the seller's net proceeds $x - \pi^{*}(s)$ are strictly increasing
+in $s$, and a guarantor who quotes $\pi < \pi^{*}(s)$ is strictly loss-making in
+expectation, while any $\pi \ge \pi^{*}(s)$ yields non-negative expected payoff.
+\end{proposition}
+
+\begin{proof}
+The estimator $\hat p_{D}(s)$ is strictly decreasing in $s$, and the floor
+$\pi^{*} = \texttt{stake} \cdot \hat p_{D}/(1 - \hat p_{D})$ is strictly
+increasing in $\hat p_{D}$ on $[0,1)$ (its derivative w.r.t.\ $\hat p_{D}$ is
+$\texttt{stake}/(1-\hat p_{D})^{2} > 0$). The composition is therefore strictly
+decreasing in $s$; explicitly,
+$\tfrac{\partial \pi^{*}}{\partial s} = \texttt{stake} \cdot \tfrac{d}{ds}
+\tfrac{100-s}{s} = -\tfrac{100 \,\texttt{stake}}{s^{2}} < 0$. The monotonicity
+of $x - \pi^{*}(s)$ is immediate. The zero-profit condition
+$\pi = \pi^{*}(s)$ makes the guarantor's expected payoff exactly $0$; any lower
+premium yields negative expectation by Definition~\ref{def:pricing}.\end{proof}
+
+\begin{corollary}[Pricing penalizes delinquency; honors reliability]
+\label{cor:pricing}
+Under Proposition~\ref{prop:pricing}, a seller whose score falls from $s_{1}$ to
+$s_{2} < s_{1}$ (e.g., by a recorded \texttt{DEFAULTED} or \texttt{LOST}) faces
+a strictly higher competitive premium, $\pi^{*}(s_{2}) > \pi^{*}(s_{1})$, and
+hence strictly lower net revenue on every subsequent trade. At
+$s \to 0$ the floor diverges, meaning a maximally bad seller cannot obtain
+actuarially fair insurance at all; at the new-agent score $s = 50$
+(\textsf{ReputationHub} default), the floor is exactly one stake per trade,
+which is why the protocol requires a guarantor's endorsement for new agents to
+trade.
+\end{corollary}
+
+\begin{proof}
+Immediate from the strict monotonicity of Proposition~\ref{prop:pricing} and the
+evaluation $\pi^{*}(50) = \texttt{stake}$, $\pi^{*}(0) \to \infty$,
+$\pi^{*}(100) = 0$.\end{proof}
+
+The closed loop is summarized by the cycle
+\[
+\begin{aligned}
+\text{trade outcome} &\;\to\; \text{reputation record} \;\to\; \text{score } s \\
+&\;\to\; \text{guarantee price } \pi^{*}(s),\ \text{coverage requirement} \\
+&\;\to\; \text{admission and next-trade cost} \;\to\; \text{incentive to perform}.
+\end{aligned}
+\]
+Each arrow is a deterministic, on-chain-verifiable step: outcomes are recorded
+by the escrow/voting contracts (Definition~\ref{def:rep}); the score is computed
+on-chain by \textsf{ReputationHub}; the floor is a closed-form function of $s$
+(Proposition~\ref{prop:pricing}); and the admission decision is enforced by the
+guarantor market, which quotes $\pi \ge \pi^{*}(s)$ only for sellers whose
+expected loss it can bear. The loop makes reputation a \emph{storable,
+revenue-bearing} asset and squarely addresses the delinquency-and-exit threat
+(T3): abandoning a depleted identity forfeits the registration stake and the
+accumulated goodwill, while relaunching a fresh identity begins at $s = 50$
+with an uninsured profile -- the uninsurable floor $\pi^{*}(s) \to \infty$ as
+$s \to 0$ prices the worst offenders out of the guarantee market before they can
+harm a first escrow.
+
+\paragraph{Why the loop is necessary: the abstention trap.}
+A voter who abstains forgoes the winning bonus but never suffers the loser's
+forfeiture; because the MVP's \textsf{SchellingVoting} \emph{refunds}
+abstainers (Definition~\ref{def:settlement}), the expected one-shot monetary
+payoff of abstaining is exactly zero, while the payoff of honest voting is
+positive but small -- the per-winner bonus $v \cdot m_{\ell}/m_{w}$ is divided
+among a supermajority and shrinks as the electorate grows. In a purely
+one-shot, purely monetary reading, an honest voter is therefore only marginally
+better off than an abstainer. This is not a defect of the adjudication rule but
+the well-known need for a reputational component in Schelling-style voting, and
+it is precisely what the closed loop supplies: participation in adjudication is
+observable, recorded in the profile, and priced into future guarantees, so that
+repeated useful voting becomes a revenue-bearing reputation asset while
+persistent abstention carries an opportunity cost (higher $\pi^{*}$, fewer trade
+opportunities). The loop converts a one-shot indifference (vote vs.\ abstain)
+into a repeated-game strict preference. Our simulation makes the premise
+quantitative: at $q = 0.7$ and $q = 0.9$, the honest-voting payoff is
+statistically indistinguishable from zero at the $95\%$ confidence level, so
+the reputational tie-breaker is not optional but load-bearing for
+participation (Section~\ref{sec:eval}).
+
+% ============================================================================
+\subsection{Comparison with Existing Mechanisms}
+\label{sec:related}
+% ============================================================================
+
+Table~\ref{tab:comparison} positions AgentTrust against the principal deployed
+systems for decentralized adjudication and attestation, along the five axes of
+our design goals.
+
+\begin{table}[t]
+\centering
+\caption{Comparison of decentralized adjudication / attestation systems. The
+last row is this work. AgentTrust is the only design that closes the
+adjudication--guarantee--reputation loop and couples staked Schelling-point
+voting to escrow-backed commerce with registration-stake Sybil control.}
+\label{tab:comparison}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{p{2.1cm}p{2.9cm}p{2.9cm}p{2.9cm}p{2.9cm}}
+\hline
+System & Adjudication & Staking / incentives & Reputation loop & Guarantee linkage \\
+\hline
+Kleros \cite{kleros} & Jury drawn by lottery from PNK stakers; majority vote & Juror stake + fees & None (verdicts do not feed a reputational score used for pricing) & Escrow integration only via third parties; no endogenous pricing \\
+Aragon Court \cite{aragon} & Guardian staking; subjective disputes; appeal tree & Guardian ANJ stake + rewards & None & None \\
+UMA \cite{uma} & Optimistic oracle; proposer bond + challenge; price-verification focus & Proposer bond; disputer stake & None (oracle data, not agent reputation) & None \\
+EAS \cite{eas} & None (attestation only) & None (attestation fee) & Raw attestations; no adjudicative incentive & None \\
+Traditional arbitration & Centralized authority & Legal bonds, no crypto-economic stake & Private / centralized records & Insurers separate from adjudicators \\
+\textbf{AgentTrust (ours)} & \textbf{Staked community supermajority; Schelling-point convergence} & \textbf{Per-vote stake, forfeiture, majority bonus} & \textbf{Verdicts drive \textsf{ReputationHub}; score prices guarantees (Prop.~\ref{prop:pricing})} & \textbf{\textsf{GuaranteeEscrow} priced by reputation; buyer-insurance semantics} \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Kleros \cite{kleros}.}
+Kleros is the closest ancestor: it selects jurors by token-weighted lottery and
+uses stake-backed majority voting with rewards for the majority and slashing for
+the minority, an incentive structure closely related to ours. Its differences
+are structural. First, Kleros draws a \emph{random} jury per case; AgentTrust
+openly admits all community votes (with random sampling left as a refinement),
+relying instead on the two-thirds supermajority and the quorum to stabilize
+verdicts. Second -- and decisively for our contribution -- Kleros maintains no
+reputation record of the disputing parties, and its verdicts do not flow back
+into any pricing signal. AgentTrust's verdicts write \texttt{WON}/\texttt{LOST}
+into \textsf{ReputationHub}, whose score is a closed-form input to the guarantee
+premium (Proposition~\ref{prop:pricing}); the adjudication is thus
+\emph{productive}, not terminal.
+
+\paragraph{Aragon Court \cite{aragon}.}
+Aragon Court adjudicates subjective disputes through staked guardians and a
+multilevel appeal mechanism. Its appeal tree is a sophisticated refinement of
+the simple single-round design we analyze, and could be layered onto our voting
+contract; however, Aragon Court likewise lacks any linkage from verdicts to
+guarantee pricing or to a persistent party reputation used for access control.
+
+\paragraph{UMA \cite{uma}.}
+UMA's optimistic oracle resolves \emph{objective} data questions via a proposer
+bond and a challenge window, with a final staked token vote. Its focus is
+price-oracle truthfulness rather than bilateral dispute resolution between
+trading parties, and it maintains no per-agent reputation or guarantee product.
+The proposer-bond/challenge structure is complementary to -- not a substitute
+for -- the staked-community voting we analyze.
+
+\paragraph{EAS \cite{eas}.}
+Ethereum Attestation Service provides portable, verifiable attestations without
+any adjudicative or staked-verdict layer. AgentTrust's \textsf{ReputationHub}
+profile is conceptually an attestation of behavior, and the MVP records the same
+information the full design would carry as EAS attestations; but EAS supplies no
+mechanism by which a disputed outcome is \emph{decided}, and no incentive for a
+dispute to be decided truthfully. Our contribution is precisely the missing
+decision-and-incentive layer on top of attestable records.
+
+\paragraph{Traditional arbitration.}
+Classical arbitration is centralized: a designated authority holds exclusive
+adjudication power, which our threat model identifies as T4 (single-point
+authority abuse), and it lacks crypto-economic staking, on-chain verdict
+enforcement, and reputation that prices future insurance. AgentTrust removes the
+single point of authority (community supermajority), enforces the verdict
+atomically with fund release (Definition~\ref{def:escrow}), and makes
+reputation a storable economic asset.
+
+\paragraph{Summary.}
+The distinctive claim of this chapter is that \emph{no deployed system combines
+all three elements}. Kleros and Aragon Court provide staked adjudication but no
+reputation loop and no endogenous guarantee. UMA provides staked truthfulness
+for oracles but no party reputation and no guarantee product. EAS provides
+attestations but no adjudication incentive. Traditional arbitration provides
+accountability but no decentralization. AgentTrust's Schelling-point reputation
+community is, to our knowledge, the only mechanism in which the same community
+stake that adjudicates a dispute simultaneously prices the guarantee of the
+next trade and updates the reputation that gates admission -- adjudication,
+guarantee, and reputation form one closed, incentive-compatible loop.

@@ -1,0 +1,761 @@
+% ============================================================================
+%  Chapter 5: System Implementation and Evaluation
+%  AgentTrust: Schelling-Point Reputation Communities
+%
+%  This file is a chapter of the main paper. It must be \input (or
+%  \include)d from the main document; it contains no preamble and relies on
+%  the environments (definition, theorem, lemma, proposition, proof, remark,
+%  example, corollary) configured by the main document (e.g., via amsthm).
+%  All \cite keys are placeholders; the bibliography is merged by a later
+%  task.
+%
+%  NOTE: This is Chapter 5. Its numbering continues Chapter 4
+%  (paper/mech-design.tex): theorem/lemma/proposition/corollary numbering is
+%  carried by the main document's global counters, so this chapter introduces
+%  no new numbered environments and only references Definitions 1--7,
+%  Lemmas 1--2, Theorems 1--3, Proposition 1, and Corollary 1 defined there.
+%  Every figure path below (simulation/plots/*.png) is relative to the paper
+%  root and is a placeholder for the compiled artifacts produced by
+%  simulation/experiments.py.
+% ============================================================================
+
+\section{System Implementation and Evaluation}
+\label{sec:impl}
+
+This chapter describes the reference implementation of AgentTrust and the
+empirical evidence supporting the mechanism design of Chapter~\ref{sec:mech}.
+The system comprises four production Solidity contracts -- \textsf{AgentRegistry},
+\textsf{GuaranteeEscrow}, \textsf{SchellingVoting}, and \textsf{ReputationHub} --
+a Foundry test suite that locks in the invariants of
+Chapter~\ref{sec:mech}, a Mesa-based agent-based simulation that empirically
+confirms the analytical results, and a Next.js front end deployable against a
+local demonstration chain or the Base Sepolia testnet. Every parameter and
+number quoted below was extracted directly from the deployed bytecode, the test
+assertions, or the simulation output files; none are fabricated.
+
+We proceed as follows. Section~\ref{sec:arch} presents the overall
+architecture and the closed data flow across the four contracts.
+Section~\ref{sec:contracts} details the implementation of each contract and the
+security-engineering decisions behind it. Section~\ref{sec:testing} reports the
+test matrix and the end-to-end business story. Section~\ref{sec:eval}
+empirically validates Theorems~1--3 and Lemmas~1--2 of
+Chapter~\ref{sec:mech} with five simulation experiments, and discusses the
+documented limitations of the MVP honestly. Section~\ref{sec:deploy} gives the
+deployment topology for local demonstration and testnet.
+
+% ============================================================================
+\subsection{System Architecture}
+\label{sec:arch}
+% ============================================================================
+
+\paragraph{Contract responsibilities and dependencies.}
+The four contracts form a strict, acyclic dependency chain in which identity
+precedes escrow, escrow and voting jointly write reputation, and no contract
+depends on a downstream component at construction time. Table~\ref{tab:arch}
+summarizes their roles.
+
+\begin{table}[t]
+\centering
+\caption{Contract responsibilities and inter-contract dependencies. The
+dependency order is \textsf{AgentRegistry} $\to$ (\textsf{GuaranteeEscrow},
+\textsf{SchellingVoting}) $\to$ \textsf{ReputationHub}; \textsf{SchellingVoting}
+additionally holds \emph{ownership} of \textsf{GuaranteeEscrow} after
+deployment so that the community verdict can drive escrow settlement.}
+\label{tab:arch}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{p{2.6cm}p{5.2cm}p{4.4cm}}
+\hline
+Contract & Role & Key dependencies \\
+\hline
+\textsf{AgentRegistry} & ERC-721 agent identity; binds each Agent ID to a
+responsible principal (the minter); anti-Sybil registration stake;
+MCP/A2A endpoint metadata. & OpenZeppelin \texttt{ERC721} only \\
+\textsf{GuaranteeEscrow} & Trade state machine; escrow custody; guarantee
+staking; timeout release/refund; dispute resolution entry point. &
+\textsf{AgentRegistry} (agent validity via \texttt{ownerOf}),
+\textsf{ReputationHub} (\texttt{recordOutcome}) \\
+\textsf{SchellingVoting} & Staked Schelling-point adjudication; majority
+reward, minority forfeiture, void refund. & \textsf{GuaranteeEscrow}
+(immutable reference; drives \texttt{resolveDispute}) \\
+\textsf{ReputationHub} & ACL-gated outcome ledger; on-chain scalar score. &
+None (writes are made only by authorized \textsf{GuaranteeEscrow} /
+\textsf{SchellingVoting} callers) \\
+\hline
+\end{tabular}
+\end{table}
+
+\textsf{AgentRegistry} is standalone: it extends OpenZeppelin's \texttt{ERC721}
+(\texttt{AgentTrust Agent ID}, symbol \texttt{ATID}) and, like any ERC-721, is
+self-contained. \textsf{GuaranteeEscrow} holds immutable references to the
+registry and the hub; the registry is consulted on every principal-scoped
+transition so that only the \emph{responsible owner} of an agent can act on its
+behalf, and the hub is the sole sink for outcome records
+(\texttt{COMPLETED}, \texttt{DEFAULTED}, \texttt{WON}, \texttt{LOST}).
+\textsf{SchellingVoting} holds an immutable reference to the escrow and, by
+design, is made the escrow's \emph{owner} at deployment time (the deploy script
+calls \texttt{escrow.transferOwnership(address(voting))}); this is what allows
+a community verdict to invoke \texttt{GuaranteeEscrow.resolveDispute}
+atomically with fund release. \textsf{ReputationHub} is written by exactly two
+authorized callers -- the escrow and the voting contract -- which is the
+enforcement of the no-self-rating property of the design
+(Goal~\textbf{G2} / threat~\textbf{T2} in Chapter~\ref{sec:mech}).
+
+\paragraph{Closed-loop data flow.}
+Figure~\ref{fig:loop} summarizes the end-to-end lifecycle as a closed loop in
+which a trade outcome is converted into a reputation signal that prices the
+guarantee of the next trade. Every arrow is a deterministic, on-chain-verifiable
+transition; the loop is the implementation of the reputation--guarantee pricing
+cycle of Section~\ref{sec:pricing}.
+
+\begin{figure}[t]
+\centering
+\[
+\begin{aligned}
+\text{createTrade} &\;\to\; \text{fund} \;\to\; \text{guarantee}
+\;\to\; \text{deliver} \\
+&\;\to\;
+\begin{cases}
+\text{confirm / timeoutAutoRelease} &\Rightarrow \text{RELEASED},\
+\text{recordOutcome(COMPLETED)}\\
+\text{dispute} \;\to\; \text{openCase} \;\to\; \text{vote}
+\;\to\; \text{settle} &\Rightarrow \text{RESOLVED},\
+\text{recordOutcome(WON/LOST/DEFAULTED)}
+\end{cases} \\
+&\;\to\; \text{score } s = \mathsf{score}(\rho) \;\to\;
+\text{guarantee premium } \pi^{*}(s) \;\to\; \text{next-trade admission}
+\;\to\; \text{incentive to perform}.
+\end{aligned}
+\]
+\caption{Closed-loop data flow (placeholder for a rendering of this
+lifecycle). Verdicts release escrowed funds and update reputation in the same
+atomic call, closing the loop into guarantee pricing \cite{truthcoin}.}
+\label{fig:loop}
+\end{figure}
+
+\paragraph{Deployment topology.}
+The front end is a static Next.js 16 application using \texttt{wagmi} v3 and
+\texttt{viem} v2 (with React 19, TanStack Query v5, and Tailwind v4). It never
+hard-codes a chain: \texttt{frontend/lib/config.ts} reads the environment
+variable \texttt{NEXT\_PUBLIC\_CHAIN} and exposes a single \texttt{activeChain}
+and a \texttt{CONTRACT\_ADDRESSES} map. With
+\texttt{NEXT\_PUBLIC\_CHAIN=anvil} (the default) the application targets the
+local Anvil demonstration chain (chain id $31337$, RPC
+\texttt{http://127.0.0.1:8545}) using the deterministic deployment addresses;
+with \texttt{NEXT\_PUBLIC\_CHAIN=base-sepolia} it targets the Base Sepolia
+testnet (addresses to be filled after a real deployment). The application is
+statically exported (\texttt{output: "export"} in \texttt{next.config.ts}) and
+can be served from GitHub Pages under a repository sub-path such as
+\texttt{/multiagent/}. Together with the one-command \texttt{docker compose}
+topology (an Anvil node, a setup service that runs the deploy script, and the
+front end), the entire system can be demonstrated on a single machine.
+
+% ============================================================================
+\subsection{Smart Contract Implementation}
+\label{sec:contracts}
+% ============================================================================
+
+All four contracts are written in Solidity \texttt{0.8.24} against OpenZeppelin
+v5 and inherit \texttt{Ownable}; the escrow, voting, and registry additionally
+inherit \texttt{ReentrancyGuard}. We describe the core design decisions and the
+key entry points of each contract; the full bytecode is
+\texttt{contracts/src/*.sol}.
+
+\paragraph{\textsf{AgentRegistry}: identity as a non-fungible, attributable
+token.}
+The registry mints one ERC-721 token per agent and \emph{binds responsibility}:
+the minter is recorded as the agent's \texttt{owner} (the legally responsible
+principal), and every subsequent principal-scoped action in the escrow checks
+\texttt{registry.ownerOf(agentId) == msg.sender}. The mint is gated by an
+anti-Sybil registration stake,
+\[
+\texttt{registerAgent(name, description, endpoint)} \quad\text{requires}\quad
+\texttt{msg.value} \ge \texttt{registrationFee},
+\]
+which instantiates the identity-cost term of Theorem~\ref{thm:sybil}. The
+per-agent record additionally stores an \texttt{endpoint} (an MCP/A2A
+connection endpoint), making the identity machine-discoverable. Two
+security-relevant details: overpayments are refunded \emph{after} the state
+write and under \texttt{nonReentrant} (checks-effects-interactions), and the
+democratic configuration sets \texttt{registrationFee = 0} by default so that
+the demonstration and the end-to-end tests register agents for free -- the
+simulation of Theorem~\ref{thm:sybil} (Section~\ref{sec:eval}) evaluates the
+fee-paying configuration that the contract supports via
+\texttt{setRegistrationFee}. \texttt{withdrawFees} is \texttt{onlyOwner}.
+
+\paragraph{\textsf{GuaranteeEscrow}: a seven-state machine with four one-day
+windows.}
+The escrow encodes the lifecycle of Chapter~\ref{sec:mech}
+(Definition~\ref{def:escrow}) as an explicit state machine,
+\[
+\texttt{CREATED} \to \texttt{FUNDED} \to \texttt{GUARANTEED} \to
+\texttt{DELIVERED} \to (\texttt{RELEASED} \mid \texttt{DISPUTED} \to
+\texttt{RESOLVED}),
+\]
+with four one-day windows (\texttt{FUND\_WINDOW}, \texttt{GUARANTEE\_WINDOW},
+\texttt{DELIVER\_WINDOW}, \texttt{CONFIRM\_WINDOW}), each a
+\texttt{1 days} constant. The principal-scoped transitions are:
+\begin{itemize}
+  \item \texttt{createTrade} rejects a trade unless both agents are registered
+        (\texttt{ownerOf} $\ne$ \texttt{address(0)}); this is a \emph{fund-safety}
+        invariant (Comment C1) -- an unregistered agent would otherwise revert
+        in every downstream refund/settlement path and permanently lock funds.
+  \item \texttt{fund} requires the buyer's owner and exactly
+        $\texttt{msg.value} = x$.
+  \item \texttt{guarantee} requires coverage $\gamma \in (0, 2 \cdot 10^{18}]$,
+        $\texttt{premium} \le x$ (the anti-underflow guard that keeps the
+        seller's share $x - \pi$ positive), and an exact collateral
+        $\texttt{msg.value} = \lfloor x \cdot \gamma / 10^{18} \rfloor$; the
+        premium is \emph{quoted but not deposited} -- it is netted from the
+        seller's share at release, so the escrow's custody is exactly
+        $x + \texttt{stake}$.
+  \item \texttt{deliver} / \texttt{confirm} are owner-scoped; \texttt{confirm}
+        calls \texttt{\_release} (seller receives $x - \pi$, guarantor
+        receives $\texttt{stake} + \pi$) and records
+        \texttt{COMPLETED} for the seller.
+  \item \texttt{dispute} may be raised by either party's owner from the
+        \texttt{DELIVERED} state. (The MVP imposes no dispute window; this is a
+        documented limitation.)
+  \item \texttt{resolveDispute(tradeId, verdict, buyerShareBps)} is the
+        arbitration entry point: \texttt{BUYER\_WINS} resolves at share $10000$,
+        \texttt{PARTIAL\_BUYER} at an arbitrary share $\le 10000$, and
+        \texttt{SELLER\_WINS} at share $0$. In the MVP it is \texttt{onlyOwner};
+        because ownership is transferred to \textsf{SchellingVoting} at
+        deployment, in the deployed system this function is invoked by the
+        community verdict. Each branch records \texttt{WON} or \texttt{LOST}
+        for the seller exactly once (avoiding double counting with the voting
+        contract).
+  \item \texttt{timeoutAutoRelease} and \texttt{timeoutRefund} implement the
+        timeout paths: a buyer who fails to confirm lets anyone trigger the
+        auto-release; a seller who fails to deliver lets anyone trigger the
+        refund \emph{plus} guarantor forfeiture and a \texttt{DEFAULTED}
+        record. Every branch pays out exactly the custody $x + \texttt{stake}$,
+        matching Table~\ref{tab:escrow-conservation}.
+\end{itemize}
+
+\paragraph{\textsf{SchellingVoting}: staked Schelling adjudication.}
+The voting contract is the implementation of Definitions~\ref{def:case}--\ref{def:settlement}.
+A \texttt{Case} stores the trade identifier, both agent identifiers, the
+per-vote stake $v$, the deadline, the vote counters, and the
+\emph{effectiveness} flag; the constants
+$\texttt{MAJORITY\_BPS} = 6500$ and $\texttt{MIN\_VOTERS} = 3$ match
+$\kappa = 0.65$ and $\nu = 3$ of the analysis exactly.
+\begin{itemize}
+  \item \texttt{openCase} is \texttt{onlyOwner} in the MVP (the full design
+        drives it from the escrow), requires a positive stake, rejects a second
+        case on the same trade via \texttt{tradeHasCase}, and verifies the
+        trade is \texttt{DISPUTED} -- a duplicate or mistimed case would
+        otherwise settle against an already-\texttt{RESOLVED} escrow and lock
+        capital permanently.
+  \item \texttt{vote} enforces the window, one vote per address
+        (\texttt{hasVoted} is a per-case flag), and the exact deposit
+        $\texttt{msg.value} = v$; \texttt{ABSTAIN} votes are counted but
+        excluded from the majority test.
+  \item \texttt{settle} computes the winner with the integer-safe BPS test
+        $m_{X} \cdot 10000 \ge T \cdot 6500$ (with the $T = 0$ short-circuit
+        that Definition~\ref{def:rule} requires), sets
+        $\texttt{effective} = T \ge 3 \wedge \texttt{winner} \neq
+        \texttt{ABSTAIN}$, and immediately applies the verdict through
+        \texttt{\_applyVerdict}: a void case or a buyer majority resolves the
+        escrow as \texttt{BUYER\_WINS} at share $10000$; a seller majority
+        resolves as \texttt{SELLER\_WINS} at share $0$.
+  \item \texttt{claimReward} pays a majority voter
+        $v + \lfloor v \cdot m_{\ell} / m_{w} \rfloor$ (principal plus the
+        pro-rata forfeiture pool); the integer remainder is the bounded dust
+        term $\delta < m_{w}$ wei of Definition~\ref{def:settlement}.
+        \texttt{claimRefund} returns the stake to every voter of a void case
+        and to abstainers of an effective case; the two claim paths are
+        mutually exclusive via the per-voter \texttt{claimed} flag.
+\end{itemize}
+
+\paragraph{\textsf{ReputationHub}: ACL-gated, immutable behavior records.}
+The hub is deliberately minimal. Writes are restricted to an explicit
+allowlist (\texttt{authorizedCallers}) configured by the owner; in the deployed
+system the only two authorized callers are \textsf{GuaranteeEscrow} and
+\textsf{SchellingVoting}, so self-rating is impossible by construction
+(Goal~\textbf{G2}). The per-agent profile is the four-dimensional counter
+$\rho = (\texttt{COMPLETED}, \texttt{DEFAULTED}, \texttt{WON}, \texttt{LOST})$
+of Definition~\ref{def:rep}, and the scalar score is computed on-chain,
+\[
+\mathsf{score}(\rho) = 100 - 100 \cdot \frac{d}{\theta} - 50 \cdot
+\frac{l}{\theta}, \qquad \theta = c + d + w + l,
+\]
+clipped to $[0,100]$, defaulting to $50$ for a fresh agent. This is exactly the
+quantity that prices guarantees in Proposition~\ref{prop:pricing}.
+
+\paragraph{Security engineering.}
+Four classes of defensive design recur throughout the contracts.
+\begin{enumerate}
+  \item \textbf{Reentrancy.} Every state-changing external function that moves
+        value inherits \texttt{ReentrancyGuard}; the escrow documents that
+        transfers precede state updates and rely on this guard, and the
+        registry places its overpayment refund after the state write.
+  \item \textbf{Checks-effects-interactions.} All validity checks precede
+        state changes, and all external calls to principals are
+        \texttt{require}-wrapped against failure.
+  \item \textbf{Integer precision and underflow.} Coverage and shares are
+        kept in basis points / $10^{18}$ fractions with floor division exactly
+        as the EVM performs it; $\texttt{premium} \le x$ and
+        $\gamma \le 2 \cdot 10^{18}$ bound the arithmetic so that the seller's
+        share $x - \pi$ and the stake $x\gamma/10^{18}$ never underflow; and
+        $\texttt{MAJORITY\_BPS} = 6500$ is the integer-safe approximation of
+        $2/3$ that avoids boundary integer-division ambiguity
+        (Section~\ref{sec:threshold}).
+  \item \textbf{Dust and void flow.} The only unaccounted value is the bounded
+        voting dust $\delta = (v\,m_{\ell}) \bmod m_{w} < m_{w}$ wei; void
+        cases refund every stake through \texttt{claimRefund} and default the
+        escrow conservatively to the buyer (Section~\ref{sec:default}), so no
+        state transition can lock or leak value (Lemma~\ref{lem:conservation}).
+\end{enumerate}
+
+% ============================================================================
+\subsection{Testing and Formal Verification}
+\label{sec:testing}
+% ============================================================================
+
+The contract suite is tested with Foundry (\texttt{forge test}); the full
+matrix of five suites and $38$ tests passes with $0$ failures. Table~\ref{tab:tests}
+breaks the suites down by contract and by the class of assertion they carry.
+
+\begin{table}[t]
+\centering
+\caption{Foundry test matrix. Each test asserts either a state-machine
+transition, an amount-conservation equation, an access-control rule, a boundary
+condition, or an end-to-end invariant; the final row is the full-lifecycle
+story.}
+\label{tab:tests}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{p{3.4cm}clp{7.2cm}}
+\hline
+Suite & Tests & Assertion classes & Representative tests \\
+\hline
+\textsf{AgentRegistry}.t.sol & 8 & minting/ownership, fee, metadata,
+onlyOwner, conservation & \texttt{test\_registerAgent\_paysRegistrationFee},
+\texttt{test\_registerAgent\_refundsOverpayment} \\
+\textsf{GuaranteeEscrow}.t.sol & 10 & state machine, amounts, permissions,
+windows, underflow & \texttt{test\_fullHappyPath},
+\texttt{test\_sellerDefault\_timeoutRefund},
+\texttt{test\_guarantee\_premiumBounded} \\
+\textsf{SchellingVoting}.t.sol & 11 & majority rule, quorum, permissions,
+deadline, duplicates, claims & \texttt{test\_vote\_majority2of3\_buyerWins},
+\texttt{test\_vote\_insufficientQuorum\_refundAll},
+\texttt{test\_openCase\_duplicateRejected} \\
+\textsf{ReputationHub}.t.sol & 8 & ACL, counters, score boundaries, events &
+\texttt{test\_recordOutcome\_rejectsUnauthorized},
+\texttt{test\_reputationScore\_boundaries} \\
+\textsf{E2E}.t.sol & 1 & full-lifecycle conservation & \texttt{test\_fullStory\_dispute\_communityVerdict} \\
+\hline
+\textbf{Total} & \textbf{38} & & \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{End-to-end business story.}
+The single end-to-end test (\texttt{test\_fullStory\_dispute\_communityVerdict})
+is the automated baseline of the seven-step demonstration in
+\texttt{contracts/demo/DEMO.md}: (1) two agents are registered
+(\texttt{DataAgent}, \texttt{TraderAgent}); (2) the buyer creates a $2$-ETH
+guaranteed trade; (3) a guarantor posts $100\%$ coverage at a $0.1$-ETH
+premium; (4) the seller declares delivery; (5) the buyer disputes; (6) the
+community votes ($2$ BUYER, $1$ SELLER at a $0.05$-ETH stake each, one-day
+window); (7) the case settles buyer-wins. The test then asserts the exact
+absolute balances against a hand-computed ledger: the buyer receives her $2$
+ETH plus the forfeited $2$-ETH guarantor stake (ending at $5$ ETH), the seller
+receives nothing, and the guarantor loses the $2$-ETH stake. A control trade
+exercises the happy path ($x = 1$ ETH, $0.05$-ETH premium), after which the
+seller's balance is exactly $x - \pi = 0.95$ ETH and her reputation profile
+shows one \texttt{COMPLETED} and one \texttt{LOST} (score $50$). The final
+assertions verify global conservation: the escrow took in $6$ ETH and paid out
+$6$ ETH (balance $0$), and the voting contract took in $3 \times 0.05$ and paid
+out $2 \times 0.075$ ETH (balance $0$) -- an empirical, whole-system
+instantiation of Lemma~\ref{lem:conservation}.
+
+\paragraph{Boundary cases.}
+The suites exercise the security-critical edges explicitly. \texttt{test\_guarantee\_premiumBounded}
+rejects a premium that would underflow the seller's share ($\pi > x$).
+\texttt{test\_guarantee\_requiresEnoughStake} rejects a guarantor collateral
+that deviates from $\lfloor x\gamma/10^{18}\rfloor$.
+\texttt{test\_openCase\_duplicateRejected} enforces the one-case-per-trade
+invariant (\texttt{tradeHasCase}).
+\texttt{test\_vote\_insufficientQuorum\_refundAll} and
+\texttt{test\_vote\_majorityBelow2of3\_refundAndDefault} verify that a quorum
+shortfall or a $2/2$ tie voids the case, refunds every stake, and defaults the
+escrow to the buyer. \texttt{test\_sellerDefault\_timeoutRefund} verifies that
+a delivery-timeout refund forfeits the guarantor stake and records
+\texttt{DEFAULTED}. \texttt{test\_claimReward\_doubleClaimRejected},
+\texttt{test\_claim\_unauthorizedRejected}, and
+\texttt{test\_settle\_doubleSettleRejected} verify the claim/settle liveness
+guards. \texttt{test\_reputationScore\_boundaries} pins the score at the
+boundaries: $50$ for a new agent, $100$ after one \texttt{COMPLETED}, and $50$
+again after a \texttt{DEFAULTED} offsets it. Permission and window
+violations are asserted in \texttt{test\_permissions},
+\texttt{test\_vote\_permissions}, \texttt{test\_settle\_onlyAfterDeadline},
+and \texttt{test\_fundDeadline\_refund}.
+
+% ============================================================================
+\subsection{Experimental Evaluation}
+\label{sec:eval}
+% ============================================================================
+
+To validate the analytical results of Chapter~\ref{sec:mech} under random
+behavior, we implemented an agent-based simulation in Python (Mesa 3.5, NumPy,
+Matplotlib). The settlement core (\texttt{simulation/model.py}) mirrors
+\textsf{SchellingVoting.sol} \emph{verbatim}: stakes are integer wei,
+majorities are tested as $m_{X} \cdot 10000 \ge T \cdot 6500$ with
+$T = m_{B} + m_{S}$, an empty or non-supermajority profile voids the case,
+majority net payoff is $\lfloor v \cdot m_{\ell} / m_{w}\rfloor$, and the
+effectiveness rule is $T \ge 3 \wedge w \ne \bot$. All experiments use the
+fixed seed $\texttt{SEED} = 20260810$ and complete in under two minutes; raw
+data are in \texttt{simulation/results/*}, figures in
+\texttt{simulation/plots/*}. Table~\ref{tab:exp-summary} maps each experiment
+to the result it validates.
+
+\begin{table}[t]
+\centering
+\caption{Simulation experiments and the Chapter~\ref{sec:mech} results they
+validate. Each experiment reproduces the on-chain settlement logic with integer
+arithmetic.}
+\label{tab:exp-summary}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{p{1.6cm}p{4.6cm}p{5.6cm}p{2.2cm}}
+\hline
+Exp & Focus & Validates & Replications \\
+\hline
+1 & Honest equilibrium vs.\ invert / fixed / abstain & Lemma~\ref{lem:best-response},
+Theorem~\ref{thm:incentive} & $3000$ \\
+2 & Collusion flip probability vs.\ coalition size & Theorem~\ref{thm:collusion} & $2000$ \\
+3 & Sybil cost vs.\ flip probability & Theorem~\ref{thm:sybil} & (sweep) \\
+4 & Fund conservation across random cases & Lemma~\ref{lem:conservation} & $4000$ \\
+5 & Threshold scan of \texttt{MAJORITY\_BPS} & Section~\ref{sec:threshold} & $3000$ \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection*{Exp.\ 1 -- Honest voting is a best response (Lemma~\ref{lem:best-response},
+Theorem~\ref{thm:incentive}).}
+
+We fix $n = 15$ voters, of whom $14$ are honest and one is a \emph{deviator},
+and scan the signal accuracy $q \in \{0.51, 0.6, 0.7, 0.8, 0.9\}$. For each
+$q$ the deviator commits to one of the strategies
+$\{\text{honest}, \text{invert}, \text{always\_buyer}, \text{always\_seller},
+\text{abstain}\}$, and we record its mean net payoff over $3000$ replications.
+Table~\ref{tab:exp1} reports the results; Figure~\ref{fig:exp1} plots the same
+data.
+
+\begin{table}[t]
+\centering
+\caption{Exp.\ 1 -- deviator mean net payoff (ETH) as a function of signal
+accuracy $q$, $n = 15$ ($14$ honest + $1$ deviator), $3000$ replications,
+$\texttt{SEED} = 20260810$. Values are from
+\texttt{simulation/results/exp1\_honest\_equilibrium.csv}.}
+\label{tab:exp1}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lccccc}
+\hline
+$q$ & honest & invert & always\_buyer & always\_seller & abstain \\
+\hline
+$0.51$ & $+0.005$ & $-0.015$ & $-0.012$ & $+0.002$ & $0.000$ \\
+$0.60$ & $-0.006$ & $-0.088$ & $-0.048$ & $-0.046$ & $0.000$ \\
+$0.70$ & $-0.011$ & $-0.329$ & $-0.165$ & $-0.176$ & $0.000$ \\
+$0.80$ & $-0.010$ & $-0.643$ & $-0.321$ & $-0.332$ & $0.000$ \\
+$0.90$ & $-0.003$ & $-0.875$ & $-0.432$ & $-0.446$ & $0.000$ \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\linewidth]{exp1_honest_equilibrium.png}
+\caption{Exp.\ 1 -- deviator mean net payoff vs.\ signal accuracy $q$. The gap
+between the honest strategy and the invert/fixed strategies grows monotonically
+with $q$, consistent with the bound
+$p_{\sigma_{i}} - p_{\bar\sigma_{i}} \ge (2q - 1) - \varepsilon_{n}$ of
+Lemma~\ref{lem:best-response}. (Figure: \texttt{simulation/plots/exp1\_honest\_equilibrium.png}.)}
+\label{fig:exp1}
+\end{figure}
+
+The honest strategy strictly dominates \emph{invert} and both fixed-direction
+strategies at every $q$, and the gap is monotone in $q$: it widens from
+$\approx 0.020$ ETH at $q = 0.51$ to $\approx 0.87$ ETH at $q = 0.9$, tracking
+$(2q - 1)$ as Lemma~\ref{lem:best-response} predicts. This confirms that a
+rational voter who believes others vote their signals has no profitable
+deviation to misreporting, and that the truthful profile of
+Theorem~\ref{thm:incentive} is empirically sustained. The single-voter
+estimator is noisy (the deviator's 95\% CI is roughly an order of magnitude
+wider than the honest block's mean), so the honest deviator's point estimates
+are statistically indistinguishable from the other honest voters' mean and from
+zero.
+
+\emph{Honest discussion.} The table also exposes an MVP limitation. The
+abstention strategy yields exactly $0$ by construction (abstainers always
+recover their stake), and the honest deviator's net converges to $\approx 0$
+as $q \to 1$. A \emph{myopic} voter is therefore nearly indifferent between
+honest voting and free abstention in single-period monetary terms: the
+per-round honest bonus is small relative to the forfeiture risk. This is the
+quantitative confirmation that the mechanism requires the \emph{multi-period}
+reputation--guarantee pricing loop of Section~\ref{sec:pricing} to close the
+incentive: in the full protocol, sustained participation in adjudication grows
+a voter's reputation (lowering the guarantee premium on her own trades), while
+abstainers are excluded from governance rewards -- the loop converts the
+single-period tie into a strict multi-period dominance.
+
+\subsubsection*{Exp.\ 2 -- Collusion resistance (Theorem~\ref{thm:collusion}).}
+
+We fix $n = 21$ voters, the true state BUYER, signal accuracy $q = 0.85$, and
+a collusion of $c$ adversarial voters who \emph{always} vote SELLER; the
+remaining $21 - c$ voters are honest. We sweep $c/n$ and measure the
+probability that the verdict is \emph{flipped} to the coalition's side over
+$2000$ replications. Table~\ref{tab:exp2} and Figure~\ref{fig:exp2} report the
+results.
+
+\begin{table}[t]
+\centering
+\caption{Exp.\ 2 -- flip probability vs.\ coalition size, $n = 21$, true state
+BUYER, $q = 0.85$, $2000$ replications,
+\texttt{simulation/results/exp2\_collusion.csv}. The flip probability stays
+below $1\%$ up to a $38\%$ coalition and jumps to certainty at
+$14/21 = 2h$ (with $h = 7$ honest voters).}
+\label{tab:exp2}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lcccccc}
+\hline
+Colluders $c$ & $0, 2, 4$ & $6$ & $8$ & $10$ & $12$ & $14{+}$ \\
+Coalition share & $\le 0.190$ & $0.286$ & $0.381$ & $0.476$ & $0.571$ & $\ge 0.667$ \\
+Flip rate & $0.000$ & $0.0005$ & $0.0075$ & $0.079$ & $0.397$ & $1.000$ \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\linewidth]{exp2_collusion.png}
+\caption{Exp.\ 2 -- flip probability as a function of the adversarial
+coalition share. The curve is flat near zero up to a third of the electorate
+and rises superlinearly to certainty at $2/3$. (Figure:
+\texttt{simulation/plots/exp2\_collusion.png}.)}
+\label{fig:exp2}
+\end{figure}
+
+A coalition of up to $38\%$ of the effective voters flips fewer than $1\%$ of
+cases ($0.0075$ at $c/n = 0.381$), confirming the strategic-harmlessness claim
+of Theorem~\ref{thm:collusion} (which guarantees it only up to $35\%$). The
+flip probability then rises superlinearly -- $0.079$ at $c/n \approx 0.476$,
+$0.397$ at $c/n \approx 0.571$ -- and becomes exactly $1$ at
+$c/n = 2/3$ ($c = 14 = 2h$). Two observations sharpen the theory. First, the
+empirical flip is a \emph{smooth} probability, not a step: the attacker
+accumulates partial flip probability before the supermajority barrier. Second,
+the theoretical sufficient bound $\lceil 13h/7 \rceil$ (with $h = 7$,
+$\lceil 13 \rceil = 13$) is confirmed as a \emph{conservative} sufficient
+condition under the $6500$-BPS approximation -- certainty is reached only at
+the ideal two-thirds point $c = 14$. Below the barrier the coalition not only
+fails to flip the verdict but, when it loses, forfeits its stakes to the
+honest majority (Definition~\ref{def:settlement}).
+
+\subsubsection*{Exp.\ 3 -- Sybil resistance (Theorem~\ref{thm:sybil}).}
+
+We fix $h = 14$ honest voters and let an adversary create $k$ Sybil identities,
+each costing $\texttt{registrationFee} = 0.1$ ETH plus a $1.0$-ETH vote stake
+($1.1$ ETH per identity), all voting SELLER against the true state BUYER. We
+sweep $k$ and measure both the flip probability and the total attack cost.
+Table~\ref{tab:exp3} and Figure~\ref{fig:exp3} report the results.
+
+\begin{table}[t]
+\centering
+\caption{Exp.\ 3 -- Sybil flip probability and total attack cost vs.\ number
+of Sybil identities $k$ ($h = 14$ honest, fee $0.1$ + stake $1.0$ ETH per
+identity), \texttt{simulation/results/exp3\_sybil.csv}.}
+\label{tab:exp3}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lcccccccc}
+\hline
+$k$ & $0{-}8$ & $10$ & $12$ & $16$ & $20$ & $22$ & $24$ & $26$ \\
+Flip rate & $0.002$ & $0.013$ & $0.041$ & $0.147$ & $0.355$ & $0.648$ & $0.900$ & $1.000$ \\
+Cost (ETH) & $\le 8.8$ & $11.0$ & $13.2$ & $17.6$ & $22.0$ & $24.2$ & $26.4$ & $28.6$ \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\linewidth]{exp3_sybil.png}
+\caption{Exp.\ 3 -- Sybil flip probability and attack cost. High flip
+probability requires $k \ge 22$ identities costing at least $24.2$ ETH, an order
+of magnitude above any realistic dispute-value cap. (Figure:
+\texttt{simulation/plots/exp3\_sybil.png}.)}
+\label{fig:exp3}
+\end{figure}
+
+A flip probability of $0.648$ requires $k = 22$ identities at a cost of
+$24.2$ ETH; it reaches $0.9$ at $k = 24$ ($26.4$ ETH) and certainty at
+$k = 26$ ($28.6$ ETH). The theoretical sufficient bound of
+Theorem~\ref{thm:sybil}, $\lceil 13h/7 \rceil = \lceil 13 \cdot 14/7 \rceil
+= 26$, is again confirmed as a conservative upper bound (measured certainty at
+$k = 26$). The realistic attack is cost-prohibitive: the maximum extractable
+value of a captured verdict -- trade value plus premium -- is on the order of
+$5$ ETH in the calibrated scenario, roughly a fifth of the $24.2$-ETH minimum
+for a high-probability flip, so an expected-value-maximizing adversary does not
+mount the attack. The observed critical point ($k \approx 22$) is slightly
+below the pure theory because honest signal noise ($1 - q = 0.15$ here) gives
+the attack side some free votes, exactly as Remark~\ref{rem:sybil-mvp} warns
+for the capital-only barrier.
+
+\subsubsection*{Exp.\ 4 -- Deterministic fund conservation (Lemma~\ref{lem:conservation}).}
+
+We generate $4000$ random cases with $n \in [5, 30]$, $q \in [0.55, 0.95]$, and
+random voter strategies, and verify the conservation identity of
+Lemma~\ref{lem:conservation}: $\sum_{i} P_{i} = (m_{B} + m_{S} + m_{\bot})v -
+\delta$ for effective cases and the full pool for void cases. The result is
+exact: of the $4000$ cases, $1993$ settle effective and $2007$ void, and the
+maximal absolute deviation of $\sum_{i} \text{net}_{i}$ from its expected value
+is $0$ wei on \emph{every} path. Conservation holds exactly up to the bounded
+dust term $\delta = (v \cdot m_{\ell}) \bmod m_{w}$ wei, which is the only value
+left in the voting contract after settlement (data:
+\texttt{simulation/results/exp4\_fund\_conservation.txt}). This is a direct,
+whole-distribution confirmation of Lemma~\ref{lem:conservation} and
+Table~\ref{tab:escrow-conservation}.
+
+\subsubsection*{Exp.\ 5 -- Why a two-thirds supermajority
+(Section~\ref{sec:threshold}).}
+
+We fix $n = 15$ all-honest voters, $q = 0.7$, and scan
+\texttt{MAJORITY\_BPS} over $\{5000, 5500, 6000, 6500, 7000\}$, measuring the
+correct-verdict rate and the void rate over $3000$ replications. Table~\ref{tab:exp5}
+and Figure~\ref{fig:exp5} report the results.
+
+\begin{table}[t]
+\centering
+\caption{Exp.\ 5 -- threshold scan of \texttt{MAJORITY\_BPS}, $n = 15$,
+all honest, $q = 0.7$, $3000$ replications,
+\texttt{simulation/results/exp5\_threshold\_scan.csv}. At the deployed
+$6500$ BPS the mechanism achieves a $0.721$ correct-verdict rate at a $0.275$
+void rate.}
+\label{tab:exp5}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lccccc}
+\hline
+\texttt{MAJORITY\_BPS} & $5000$ & $5500$ & $6000$ & $6500$ & $7000$ \\
+Correct rate & $0.947$ & $0.856$ & $0.856$ & $0.721$ & $0.512$ \\
+Void rate & $0.000$ & $0.125$ & $0.125$ & $0.275$ & $0.487$ \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\linewidth]{exp5_threshold_scan.png}
+\caption{Exp.\ 5 -- correct-verdict and void rates vs.\ \texttt{MAJORITY\_BPS}.
+A lower threshold maximizes correctness but forfeits collusion resistance
+(Exp.\ 2); the deployed $6500$ is the engineering compromise. (Figure:
+\texttt{simulation/plots/exp5\_threshold\_scan.png}.)}
+\label{fig:exp5}
+\end{figure}
+
+Lowering the threshold maximizes correctness ($0.947$ at $5000$ BPS, i.e.\ a
+bare majority) but, as Exp.\ 2 showed, a $1/2$ threshold lets a one-third
+coalition dictate outcomes. Raising it to $7000$ BPS voids nearly half of all
+cases ($0.487$), because even small honest signal noise and abstention deny the
+supermajority. The deployed $6500$ BPS sits at the engineering compromise:
+$0.721$ correctness at a $0.275$ void rate, tolerating a coordinated malicious
+minority of up to a third (Theorem~\ref{thm:collusion}) while keeping
+legitimate cases alive -- a direct empirical restatement of the three
+arguments in Section~\ref{sec:threshold}.
+
+\paragraph{Summary of limitations.}
+Four limitations of the current prototype are documented and left to future
+work. (i) \emph{Free abstention}: Exp.\ 1 shows single-period honest net
+$\approx$ abstention net $= 0$, so the incentive closes only through the
+multi-period reputation loop of Section~\ref{sec:pricing}; the MVP contracts do
+not yet penalize or reward participation directly. (ii) \emph{Dust}: the
+bounded integer remainder $\delta < m_{w}$ wei stays in the voting contract;
+Exp.\ 4 confirms it is the only unconserved value, and a batched-settlement
+refinement removes it. (iii) \emph{Engineering threshold}: $6500/10000$ is an
+approximation of $2/3$ that marginally lowers the adversarial requirement
+(factor $13/7 \approx 1.857$ instead of $2$) at negligible security cost.
+(iv) \emph{Demo-grade chain}: the canonical deployment is a local Anvil chain
+for demonstration and the Base Sepolia testnet for integration; the MVP is not
+mainnet-deployed. Additional MVP simplifications noted in the code are the
+owner-only \texttt{openCase} (the full design drives case opening from the
+escrow), the absence of a dispute window, claim-based (non-Merkle) settlement,
+and no ZK-based random jury sampling.
+
+% ============================================================================
+\subsection{Deployment}
+\label{sec:deploy}
+% ============================================================================
+
+\paragraph{Local demonstration chain.}
+The canonical deployment runs on a local Anvil node
+(\texttt{anvil --chain-id 31337 --port 8545}). The deploy script
+\texttt{contracts/script/Deploy.s.sol} executes in the fixed order
+\textsf{AgentRegistry} $\to$ \textsf{ReputationHub} $\to$
+\textsf{GuaranteeEscrow} $\to$ \textsf{SchellingVoting}, then performs the two
+linkage steps required by the architecture: it authorizes the escrow and the
+voting contract as \textsf{ReputationHub} writers
+(\texttt{setAuthorizedCaller}) and transfers escrow ownership to the voting
+contract (\texttt{transferOwnership}), so that a community verdict can drive
+settlement. Anvil's deterministic address derivation yields stable addresses
+that are pre-filled into \texttt{frontend/lib/config.ts}
+(Table~\ref{tab:addresses}); re-deploying does not change them. With the
+default \texttt{registrationFee = 0}, agents register for free, and the
+three deterministic Anvil test accounts (each funded with $10000$ ETH) serve as
+the seller, buyer, and guarantor/voter wallets of the five-minute
+demonstration in \texttt{contracts/demo/DEMO.md}.
+
+\begin{table}[t]
+\centering
+\caption{Deterministic deployment addresses on the local Anvil chain
+(chain id $31337$), as produced by
+\texttt{forge script script/Deploy.s.sol --broadcast} and wired into
+\texttt{frontend/lib/config.ts}.}
+\label{tab:addresses}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{ll}
+\hline
+Contract & Anvil address \\
+\hline
+\textsf{AgentRegistry} & \texttt{0x5fBDB2315678afecb367f032d93F642f64180aa3} \\
+\textsf{ReputationHub} & \texttt{0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512} \\
+\textsf{GuaranteeEscrow} & \texttt{0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0} \\
+\textsf{SchellingVoting} & \texttt{0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9} \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Testnet deployment (Base Sepolia).}
+To move to a public testnet the operator runs the same script against
+\texttt{https://sepolia.base.org} with verification enabled:
+\begin{verbatim}
+forge script script/Deploy.s.sol --rpc-url https://sepolia.base.org \
+  --broadcast --verify --private-key "$PRIVATE_KEY"
+\end{verbatim}
+The pre-requisites are: a testnet private key (loaded via
+\texttt{vm.envUint("PRIVATE\_KEY")}, never committed to the repository),
+test ETH obtained from a Base Sepolia faucet for the deployer and the demo
+wallets, and block-explorer API access for source verification. After
+deployment the four addresses are written into
+\texttt{frontend/lib/config.ts} and \texttt{wagmi} is pointed at
+\texttt{baseSepolia} (which is exactly what \texttt{NEXT\_PUBLIC\_CHAIN =
+base-sepolia} selects at build time).
+
+\paragraph{Static front-end hosting.}
+Because the front end is statically exported, it is deployed to GitHub Pages.
+The workflow (\texttt{.github/workflows/deploy-pages.yml}) builds the
+application with \texttt{NEXT\_PUBLIC\_CHAIN=base-sepolia} and
+\texttt{NEXT\_PUBLIC\_BASE\_PATH=/<repository-name>} (e.g.\
+\texttt{/multiagent/}) on every push to \texttt{main}, uploads the
+\texttt{frontend/out} artifact, and publishes it. The same containerized path
+is available via \texttt{docker compose}, which starts the Anvil node, runs
+the deploy script, and serves the front end with one command.
+
+% ============================================================================
+%  End of Chapter 5 (paper/implementation.tex). Numbering continues Chapter 4
+%  (paper/mech-design.tex); no new theorem/lemma/proposition/corollary
+%  environments are introduced in this chapter.
+% ============================================================================

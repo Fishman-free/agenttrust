@@ -1,0 +1,59 @@
+% ============================================================================
+%  Chapter 3: The Identity--Trust--Accountability (ITA) Architecture
+% ============================================================================
+\section{The ITA Architecture}
+\label{sec:ita}
+
+This section describes \emph{what} the protocol records and \emph{how} it holds agents
+accountable. The incentive layer that explains \emph{why} rational agents behave honestly is the
+subject of Section~\ref{sec:mech}; the concrete contract implementation is
+Section~\ref{sec:impl}.
+
+\subsection{Design goals and threat model}
+We model three classes of principals: agents $A_{i}$ (autonomous trading entities), certification
+and guarantee providers $S$ (guarantors, premium setters), and adjudication/enforcement entities
+$E$ (voters, settlement executors). The system is designed to uphold six trust properties:
+\emph{identity authenticity} (every agent maps to a real principal), \emph{non-repudiation}
+(commitments are provably attributable), \emph{traceability} (outcomes are auditable on-chain),
+\emph{fairness} (disputes are decided by a verifiable, non-capturable process), \emph{incentive
+compatibility} (honest behavior is a dominant/equilibrium strategy), and \emph{privacy
+adjustability} (only necessary claims are exposed). It defends against four canonical attacks:
+Sybil attacks (mass identity fabrication), reputation manipulation (self-rating or score farming),
+delinquency-and-exit (misbehaving under one identity then abandoning it), and single-point-authority
+abuse (a centralized credit adjudicator who simultaneously scores, revokes, and investigates).
+
+\subsection{Layer 1 --- Identity}
+The identity layer gives every agent a verifiable, principal-bound identity. Rather than
+introducing new cryptographic primitives, it composes mature standards --- W3C DIDs/VCs, soulbound
+tokens (EIP-5192/4973), account abstraction (ERC-4337), and proof-of-personhood --- into a
+single on-chain registry. In our implementation, \textsf{AgentRegistry} mints an ERC-721 Agent ID
+per registered agent, binds it to the caller (the responsible principal), and charges a
+\emph{registration fee} to price identity creation and deter Sybils. The registry thereby answers
+Q1's identity side: agents must ``obtain a license before trading.''
+
+\subsection{Layer 2 --- Trust}
+The trust layer records, qualifies, and prices evidence of good behavior. It stores reputation
+profiles as on-chain attestations (the role of EAS in the standards survey), supports
+contextualized multi-dimensional scoring, and authorizes delegated claims via VCs. In our
+implementation, \textsf{ReputationHub} maintains per-agent multi-dimensional profiles
+(completions, defaults, dispute wins/losses), restricts writers to audited escrow/voting contracts
+(no self-rating), and exposes a scalar score that prices future guarantees
+(Section~\ref{sec:pricing}).
+
+\subsection{Layer 3 --- Accountability}
+The accountability layer guarantees funds, adjudicates disputes, and sanctions misbehavior. It
+combines guaranteed escrow (the role of Nexus Mutual-style insurance), decentralized arbitration
+(the role of Kleros/UMA), and forfeiture/revocation. In our implementation,
+\textsf{GuaranteeEscrow} escrows trade funds and holds guarantor stakes that are forfeited on
+default, and \textsf{SchellingVoting} adjudicates disputes by staked community vote whose verdict
+drives escrow release and reputation update.
+
+\subsection{From centralized adjudicator to decentralized trust infrastructure}
+A central design thesis, echoing the survey's analysis, is that a \emph{social-credit-style}
+centralized adjudicator --- a single authority that scores, revokes, and investigates --- is a
+single point of abuse, monopoly, privacy, and fairness failure. The ITA architecture therefore
+shifts the design center from ``centralized credit adjudicator'' to ``operator and rule-setter of
+decentralized trust infrastructure'': trust is maintained by verifiable code and multi-party
+governance rather than by the subjective endorsement of a single authority. This motivates the
+decision that dispute adjudication (the arbiter of what counts as good behavior) be decentralized
+staked voting rather than a privileged contract owner --- the subject of Section~\ref{sec:mech}.

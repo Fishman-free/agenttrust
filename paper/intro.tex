@@ -1,0 +1,77 @@
+% ============================================================================
+%  Chapter 1: Introduction
+% ============================================================================
+\section{Introduction}
+\label{sec:intro}
+
+\paragraph{Background: from analysis tool to digital-twin counterparty.}
+Large language models (LLMs) and tool-use capabilities have made AI agents able to plan
+autonomously, call external tools, and execute multi-step tasks. The decisive shift is that an
+agent is no longer merely a system that \emph{answers questions}; it can make economically
+consequential commitments on behalf of its owner --- negotiating prices, signing terms, initiating
+transfers, and settling smart contracts. When an agent holds funds and can complete payments, it
+effectively constitutes a ``digital twin'' trading counterparty of its human owner.
+
+This trend has given rise to agentic commerce and agent-to-agent (A2A) finance as research
+categories \cite{a2a-finance, agent-rep}. Prior work observes that AI agents are transitioning from
+analysis tools into counterparties, generating a demand for financial-grade infrastructure for
+identity, authorization, payment, verification, reputation, and accountability. However,
+widespread adoption amplifies three systemic risks: \emph{identity fraud} --- anyone can cheaply
+mass-produce ``fake agents''; \emph{mutual-trust deficit} --- an anonymous counterparty cannot
+tell whether the other side is trustworthy; and \emph{accountability vacuum} --- after an agent
+misbehaves there is no clear path to attribute fault, present evidence, and impose sanctions.
+
+\paragraph{Problem statement.}
+We focus on three interconnected questions:
+
+\begin{itemize}[leftmargin=2em,itemsep=1pt]
+  \item \textbf{Q1 (Trust).} When agents transact on behalf of humans, how can mutual trust be
+  established so that ``scammer agents'' do not infiltrate?
+  \item \textbf{Q2 (Accountability).} When a scammer agent commits fraud, how are fault, evidence,
+  and sanctions determined?
+  \item \textbf{Q3 (Incentives).} Which economic and governance mechanisms make the trust
+  infrastructure self-sustaining and scalable?
+\end{itemize}
+
+These questions restate the classic trust problem in a machine-to-machine, anonymity-by-default
+setting: trust must come not from knowing a counterpart's history but from a verifiable, auditable,
+and traceable technical infrastructure.
+
+\paragraph{Our approach: a Schelling-point reputation community.}
+We design and implement a decentralized guarantee and arbitration layer for agent-to-agent
+commerce. The system is organized along the identity--trust--accountability (ITA) architecture
+(Section~\ref{sec:ita}): a registry issues ERC-721 agent identities bound to real principals; a
+guaranteed escrow escrows trade funds against guarantor stakes; disputes are adjudicated by a
+community of staked voters whose majority --- by a Schelling-point argument --- is incentivized to
+vote truthfully; and a reputation hub records outcomes on-chain and prices future guarantees. The
+central novelty is the \emph{closed loop}: verdicts update reputation, reputation prices the
+guarantee, and the guarantee determines whether low-reputation agents can transact at all
+(Section~\ref{sec:pricing}).
+
+The mechanism is instantiated by four production Solidity contracts (Section~\ref{sec:contracts})
+with 38 passing tests, and its game-theoretic claims are validated by Monte-Carlo simulation
+(Section~\ref{sec:eval}).
+
+\paragraph{Contributions.}
+\begin{itemize}[leftmargin=2em,itemsep=1pt]
+  \item \textbf{A closed-loop mechanism} connecting adjudication, guarantees, and reputation --- the
+  first, to our knowledge, to tie all three into one on-chain cycle (Sections~\ref{sec:mech},
+  \ref{sec:pricing}).
+  \item \textbf{A formal game-theoretic analysis} of the staked-voting mechanism: honest voting is
+  an incentive-compatible equilibrium under a two-thirds supermajority rule; a coordinated
+  malicious minority of at most $35\%$ of voters is strategically harmless; Sybil attacks are
+  unprofitable because adversarial voting power scales linearly in expenditure; and the mechanism
+  conserves funds exactly (Section~\ref{sec:analysis}).
+  \item \textbf{A production implementation} --- four verified-style Solidity contracts, 38 tests,
+  an end-to-end demo flow, and Docker one-command bootstrapping --- together with a
+  \textsf{mesa}-based simulation that empirically validates the theory (Section~\ref{sec:impl}).
+  \item \textbf{An honest evaluation} of the MVP's limitations (free-abstention refunds, integer
+  dust, threshold approximation) and the deployment path to a public testnet
+  (Sections~\ref{sec:eval}, \ref{sec:deploy}).
+\end{itemize}
+
+\paragraph{Organization.}
+Section~\ref{sec:related-work} surveys related work. Section~\ref{sec:ita} presents the ITA
+architecture and its mapping to the four contracts. Section~\ref{sec:mech} formalizes the mechanism
+and proves its incentive properties. Section~\ref{sec:impl} describes the implementation and its
+empirical evaluation. Section~\ref{sec:conclusion} concludes.
