@@ -41,6 +41,21 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         mapping(address => bool) claimed;
     }
 
+    struct CaseDetailsView {
+        uint256 tradeId;
+        uint256 stake;
+        uint256 commitDeadline;
+        uint256 revealDeadline;
+        uint256 eligibilityAgentCount;
+        uint256 committedCount;
+        uint256 votesForBuyer;
+        uint256 votesForSeller;
+        uint256 abstentions;
+        bool settled;
+        bool effective;
+        Side winner;
+    }
+
     GuaranteeEscrow public immutable escrow;
     AgentRegistry public immutable registry;
     ReputationHub public immutable hub;
@@ -51,6 +66,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     uint256 public totalLiability;
     mapping(uint256 => Case) private _cases;
     mapping(uint256 => bool) public tradeHasCase;
+    mapping(uint256 => uint256) public tradeCaseIdPlusOne;
     mapping(address => uint256) public pendingWithdrawals;
 
     event CaseOpened(
@@ -110,8 +126,9 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     function openCase(uint256 tradeId) external nonReentrant returns (uint256 caseId) {
         require(!tradeHasCase[tradeId], unicode"SchellingVoting: 该交易已有案件");
         escrow.openArbitration(tradeId);
-        tradeHasCase[tradeId] = true;
         caseId = nextCaseId++;
+        tradeHasCase[tradeId] = true;
+        tradeCaseIdPlusOne[tradeId] = caseId + 1;
         Case storage c = _cases[caseId];
         c.exists = true;
         c.tradeId = tradeId;
@@ -120,6 +137,63 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         c.revealDeadline = c.commitDeadline + revealWindow;
         c.eligibilityAgentCount = escrow.eligibilityAgentCount(tradeId);
         emit CaseOpened(caseId, tradeId, c.stake, c.commitDeadline, c.revealDeadline, c.eligibilityAgentCount);
+    }
+
+    function caseIdForTrade(uint256 tradeId) external view returns (uint256 caseId) {
+        uint256 caseIdPlusOne = tradeCaseIdPlusOne[tradeId];
+        require(caseIdPlusOne != 0, unicode"SchellingVoting: 交易无案件");
+        return caseIdPlusOne - 1;
+    }
+
+    function caseDetails(uint256 caseId)
+        external
+        view
+        existingCase(caseId)
+        returns (
+            uint256 tradeId,
+            uint256 stake,
+            uint256 commitDeadline,
+            uint256 revealDeadline,
+            uint256 eligibilityAgentCount,
+            uint256 committedCount,
+            uint256 votesForBuyer,
+            uint256 votesForSeller,
+            uint256 abstentions,
+            bool settled,
+            bool effective,
+            Side winner
+        )
+    {
+        bytes memory encodedDetails = abi.encode(_caseDetails(caseId));
+        assembly ("memory-safe") {
+            return(add(encodedDetails, 0x20), mload(encodedDetails))
+        }
+    }
+
+    function _caseDetails(uint256 caseId) private view returns (CaseDetailsView memory details) {
+        Case storage c = _cases[caseId];
+        details.tradeId = c.tradeId;
+        details.stake = c.stake;
+        details.commitDeadline = c.commitDeadline;
+        details.revealDeadline = c.revealDeadline;
+        details.eligibilityAgentCount = c.eligibilityAgentCount;
+        details.committedCount = c.committedCount;
+        details.votesForBuyer = c.votesForBuyer;
+        details.votesForSeller = c.votesForSeller;
+        details.abstentions = c.abstentions;
+        details.settled = c.settled;
+        details.effective = c.effective;
+        details.winner = c.winner;
+    }
+
+    function jurorStatus(uint256 caseId, address subject)
+        external
+        view
+        existingCase(caseId)
+        returns (bool committed, bool revealed, Side side, bool claimed)
+    {
+        Case storage c = _cases[caseId];
+        return (c.hasCommitted[subject], c.revealed[subject], c.side[subject], c.claimed[subject]);
     }
 
     function caseResult(uint256 caseId) external view existingCase(caseId) returns (bool effective, Side winner) {

@@ -100,6 +100,94 @@ contract SchellingVotingTest is Test {
         voting.openCase(tradeId);
     }
 
+    function test_tradeCaseIndexMapsToCaseZeroWithoutSentinelAmbiguity() public view {
+        assertEq(voting.tradeCaseIdPlusOne(tradeId), caseId + 1);
+        assertEq(voting.caseIdForTrade(tradeId), caseId);
+    }
+
+    function test_caseIdForTradeRejectsMissingTradeCase() public {
+        uint256 tradeWithoutCase = tradeId + 1;
+        assertEq(voting.tradeCaseIdPlusOne(tradeWithoutCase), 0);
+        vm.expectRevert(unicode"SchellingVoting: 交易无案件");
+        voting.caseIdForTrade(tradeWithoutCase);
+    }
+
+    function test_caseDetailsTracksConfigurationCountsAndResult() public {
+        (
+            uint256 indexedTradeId,
+            uint256 stake,
+            uint256 commitDeadline,
+            uint256 revealDeadline,
+            uint256 eligibilityAgentCount,,,,,,,
+        ) = voting.caseDetails(caseId);
+        assertEq(indexedTradeId, tradeId);
+        assertEq(stake, STAKE);
+        assertEq(commitDeadline, block.timestamp + 1 days);
+        assertEq(revealDeadline, block.timestamp + 2 days);
+        assertEq(eligibilityAgentCount, escrow.eligibilityAgentCount(tradeId));
+
+        _commit(jurors[0], SchellingVoting.Side.BUYER);
+        _commit(jurors[1], SchellingVoting.Side.BUYER);
+        _commit(jurors[2], SchellingVoting.Side.BUYER);
+        vm.warp(block.timestamp + 1 days);
+        _reveal(jurors[0], SchellingVoting.Side.BUYER);
+        _reveal(jurors[1], SchellingVoting.Side.BUYER);
+        _reveal(jurors[2], SchellingVoting.Side.BUYER);
+        vm.warp(block.timestamp + 1 days);
+        voting.settle(caseId);
+
+        (
+            ,,,,,
+            uint256 committedCount,
+            uint256 buyerVotes,
+            uint256 sellerVotes,
+            uint256 abstentions,
+            bool settled,
+            bool effective,
+            SchellingVoting.Side winner
+        ) = voting.caseDetails(caseId);
+        assertEq(committedCount, 3);
+        assertEq(buyerVotes, 3);
+        assertEq(sellerVotes, 0);
+        assertEq(abstentions, 0);
+        assertTrue(settled);
+        assertTrue(effective);
+        assertEq(uint8(winner), uint8(SchellingVoting.Side.BUYER));
+    }
+
+    function test_jurorStatusTracksCommitRevealAndClaimLifecycle() public {
+        (bool committed, bool revealed, SchellingVoting.Side side, bool claimed) = voting.jurorStatus(caseId, jurors[0]);
+        assertFalse(committed);
+        assertFalse(revealed);
+        assertEq(uint8(side), uint8(SchellingVoting.Side.BUYER));
+        assertFalse(claimed);
+
+        _commit(jurors[0], SchellingVoting.Side.SELLER);
+        (committed, revealed, side, claimed) = voting.jurorStatus(caseId, jurors[0]);
+        assertTrue(committed);
+        assertFalse(revealed);
+        assertEq(uint8(side), uint8(SchellingVoting.Side.BUYER));
+        assertFalse(claimed);
+
+        vm.warp(block.timestamp + 1 days);
+        _reveal(jurors[0], SchellingVoting.Side.SELLER);
+        (committed, revealed, side, claimed) = voting.jurorStatus(caseId, jurors[0]);
+        assertTrue(committed);
+        assertTrue(revealed);
+        assertEq(uint8(side), uint8(SchellingVoting.Side.SELLER));
+        assertFalse(claimed);
+
+        vm.warp(block.timestamp + 1 days);
+        voting.settle(caseId);
+        vm.prank(jurors[0]);
+        voting.claim(caseId);
+        (committed, revealed, side, claimed) = voting.jurorStatus(caseId, jurors[0]);
+        assertTrue(committed);
+        assertTrue(revealed);
+        assertEq(uint8(side), uint8(SchellingVoting.Side.SELLER));
+        assertTrue(claimed);
+    }
+
     function test_commitRevealDeadlinesAndWrongSalt() public {
         _commit(jurors[0], SchellingVoting.Side.BUYER);
         _commit(jurors[1], SchellingVoting.Side.BUYER);
@@ -338,7 +426,7 @@ contract SchellingVotingTest is Test {
 
     function testFuzz_nonexistentCaseRejectsEveryOperation(uint128 rawId, uint8 rawOperation) public {
         uint256 missingId = bound(uint256(rawId), voting.nextCaseId(), type(uint128).max);
-        uint256 operation = bound(uint256(rawOperation), 0, 5);
+        uint256 operation = bound(uint256(rawOperation), 0, 7);
         bytes memory callData;
         if (operation == 0) {
             callData = abi.encodeCall(voting.commitVote, (missingId, bytes32(uint256(1))));
@@ -350,8 +438,12 @@ contract SchellingVotingTest is Test {
             callData = abi.encodeCall(voting.claim, (missingId));
         } else if (operation == 4) {
             callData = abi.encodeCall(voting.caseResult, (missingId));
-        } else {
+        } else if (operation == 5) {
             callData = abi.encodeCall(voting.finalizeJurorMetrics, (missingId, jurors[0]));
+        } else if (operation == 6) {
+            callData = abi.encodeCall(voting.caseDetails, (missingId));
+        } else {
+            callData = abi.encodeCall(voting.jurorStatus, (missingId, jurors[0]));
         }
 
         (bool ok,) = address(voting).call(callData);

@@ -1,204 +1,497 @@
 "use client";
-import { useState } from "react";
-import { useAccount, useConnect, useReadContract, useWriteContract } from "wagmi";
-import { injected } from "wagmi/connectors";
-import { guaranteeEscrowAbi } from "@/lib/abi";
-import { CONTRACT_ADDRESSES, WRITES_ENABLED } from "@/lib/config";
-import { parseEther } from "viem";
 
-// 对应合约 GuaranteeEscrow.State 枚举（0-6）
-const STATE_LABEL = ["已创建", "已付款", "已担保", "已交付", "争议中", "已释放", "已结算"] as const;
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { formatEther, formatUnits, parseEther, parseUnits, type Address, type Hash } from "viem";
+import { useAccount, useReadContract, useWriteContract } from "wagmi";
+import { TransactionStatus, useTransactionFeedback } from "@/app/components/transaction-status";
+import { agentRegistryAbi, guaranteeEscrowAbi } from "@/lib/abi";
+import { activeChain, CONTRACT_ADDRESSES, WRITES_ENABLED } from "@/lib/config";
+import { parseTradeCreated } from "@/lib/receipt-events";
+import { getTradeStateMeta, TRADE_STATE_META, type TradeAction } from "@/lib/trade-state";
+import { getWriteReadiness, type WriteReadiness } from "@/lib/write-readiness";
+import { TradeSubmissionGate, type TradeOperationKind } from "./workflow";
 
-// 合约 coverage 单位：1e18 = 100%（tsconfig target ES2017，禁用 10n 字面量，用 BigInt() 构造）
-const WEI_ONE = BigInt(10) ** BigInt(18);
+const ZERO = BigInt(0);
+const ACTION_FUNCTIONS = {
+  acceptTrade: "acceptTrade",
+  acceptGuarantee: "acceptGuarantee",
+  deliver: "deliver",
+  confirm: "confirm",
+  timeoutCancelUnaccepted: "timeoutCancelUnaccepted",
+  timeoutCancelUnfunded: "timeoutCancelUnfunded",
+  timeoutRejectGuarantee: "timeoutRejectGuarantee",
+  timeoutRefund: "timeoutRefund",
+  timeoutAutoRelease: "timeoutAutoRelease",
+  timeoutVoidDispute: "timeoutVoidDispute",
+  retryOutcome: "retryOutcome",
+} as const;
 
-// 各状态下的下一步可用操作（用于操作台提示）
-const STATE_ACTIONS: Record<number, string> = {
-  0: "买家可付款（①）",
-  1: "担保人可担保（②）",
-  2: "卖家可交付（③）",
-  3: "买家可确认（④）或发起争议（争议页）",
-  4: "争议中——需平台仲裁（争议页）",
-  5: "已释放（终态）",
-  6: "已结算（终态）",
-};
+type SimpleAction = keyof typeof ACTION_FUNCTIONS;
+type WorkflowAction = SimpleAction | "fund";
+
+function parseId(value: string): bigint | undefined {
+  const normalized = value.trim();
+  return /^\d+$/.test(normalized) ? BigInt(normalized) : undefined;
+}
+
+function parseEtherValue(value: string, allowZero = false): bigint | undefined {
+  try {
+    const parsed = parseEther(value.trim());
+    return parsed > ZERO || (allowZero && parsed === ZERO) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseCoverage(value: string): bigint | undefined {
+  try {
+    const parsed = parseUnits(value.trim(), 16); // Percent input: 100% = 1e18 contract units.
+    return parsed > ZERO ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sameAddress(left?: Address, right?: Address) {
+  return Boolean(left && right && left.toLowerCase() === right.toLowerCase());
+}
+
+function eth(value?: bigint) {
+  return value === undefined ? "—" : `${formatEther(value)} ETH`;
+}
+
+function percent(value?: bigint) {
+  return value === undefined ? "—" : `${formatUnits(value, 16)}%`;
+}
+
+function shortAddress(value?: Address) {
+  return value ? `${value.slice(0, 6)}…${value.slice(-4)}` : "—";
+}
+
+function ActionButton({ label, readiness, onClick, primary = false }: {
+  label: string;
+  readiness: WriteReadiness;
+  onClick: () => void;
+  primary?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={primary ? "button button-primary" : "button button-secondary"}
+      disabled={!readiness.ready}
+      title={readiness.ready ? undefined : readiness.reason}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
 
 export default function TradePage() {
-  const { isConnected } = useAccount();
-  const { connect } = useConnect();
-  const { writeContract, isPending } = useWriteContract();
-
+  const { address, chainId, isConnected } = useAccount();
+  const write = useWriteContract();
   const [buyerId, setBuyerId] = useState("0");
   const [sellerId, setSellerId] = useState("1");
   const [amount, setAmount] = useState("0.1");
+  const [maxPremium, setMaxPremium] = useState("0.005");
   const [tradeId, setTradeId] = useState("");
-  const [coverage] = useState("100");
+  const [guarantorAgentId, setGuarantorAgentId] = useState("2");
+  const [coverage, setCoverage] = useState("100");
   const [premium, setPremium] = useState("0.005");
+  const [successLabel, setSuccessLabel] = useState<string>();
+  const [activeHash, setActiveHash] = useState<Hash>();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionLocked, setSubmissionLocked] = useState(false);
+  const [submissionError, setSubmissionError] = useState<Error | null>(null);
+  const [submissionGate] = useState(() => new TradeSubmissionGate());
+  const processedReceipt = useRef<Hash | undefined>(undefined);
 
-  // 读取当前交易状态：state 位于 trades(tradeId) 返回元组的下标 7；
-  // args 传 undefined 时跳过查询（未输入合法 Trade ID 时所有操作保持可用）
-  const tradeIdValid = /^\d+$/.test(tradeId.trim());
-  const { data: tradeData } = useReadContract({
+  const parsedBuyerId = parseId(buyerId);
+  const parsedSellerId = parseId(sellerId);
+  const parsedAmount = parseEtherValue(amount);
+  const parsedMaxPremium = parseEtherValue(maxPremium, true);
+  const parsedTradeId = parseId(tradeId);
+  const parsedGuarantorId = parseId(guarantorAgentId);
+  const parsedCoverage = parseCoverage(coverage);
+  const parsedPremium = parseEtherValue(premium, true);
+  const configured = WRITES_ENABLED;
+  const rightChain = chainId === activeChain.id;
+
+  const tradeRead = useReadContract({
     address: CONTRACT_ADDRESSES.guaranteeEscrow,
     abi: guaranteeEscrowAbi,
-    functionName: "trades",
-    args: tradeIdValid ? [BigInt(tradeId.trim())] : undefined,
-    query: { refetchInterval: 4000 }, // 交易确认后自动刷新状态，演示无需手动刷新
+    functionName: "getTrade",
+    args: parsedTradeId === undefined ? undefined : [parsedTradeId],
+    query: { enabled: configured && parsedTradeId !== undefined, refetchInterval: 4_000, retry: false },
   });
-  const tradeState = tradeData === undefined ? undefined : Number(tradeData[7]);
+  const trade = tradeRead.data;
+  const stateMeta = trade ? getTradeStateMeta(trade.state) : undefined;
 
-  // 某操作是否适用于当前状态（未读取到状态时不限制）
-  const canAct = (state: number) => tradeState === undefined || tradeState === state;
+  const quoteRead = useReadContract({
+    address: CONTRACT_ADDRESSES.guaranteeEscrow,
+    abi: guaranteeEscrowAbi,
+    functionName: "quoteGuaranteeTerms",
+    args: parsedSellerId === undefined || parsedAmount === undefined || parsedMaxPremium === undefined
+      ? undefined : [parsedSellerId, parsedAmount, parsedMaxPremium],
+    query: {
+      enabled: configured && parsedSellerId !== undefined && parsedAmount !== undefined && parsedMaxPremium !== undefined,
+      retry: false,
+    },
+  });
+  const quote = quoteRead.data;
 
-  // 输入校验：非法 ID / 金额直接提示，避免 BigInt/parseEther 抛异常
-  function parseId(s: string): bigint | null {
-    const v = s.trim();
-    return /^\d+$/.test(v) ? BigInt(v) : null;
-  }
-  function parseAmount(s: string): bigint | null {
-    try {
-      return parseEther(s.trim());
-    } catch {
-      return null;
+  const buyerOwnerRead = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "responsibleParty",
+    args: parsedBuyerId === undefined ? undefined : [parsedBuyerId],
+    query: { enabled: configured && parsedBuyerId !== undefined, retry: false },
+  });
+
+  const sellerOwnerRead = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "responsibleParty",
+    args: parsedSellerId === undefined ? undefined : [parsedSellerId],
+    query: { enabled: configured && parsedSellerId !== undefined, retry: false },
+  });
+
+  const guarantorOwnerRead = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "responsibleParty",
+    args: parsedGuarantorId === undefined ? undefined : [parsedGuarantorId],
+    query: { enabled: configured && parsedGuarantorId !== undefined, retry: false },
+  });
+
+  const stakeRead = useReadContract({
+    address: CONTRACT_ADDRESSES.guaranteeEscrow,
+    abi: guaranteeEscrowAbi,
+    functionName: "requiredStake",
+    args: parsedTradeId === undefined || parsedCoverage === undefined ? undefined : [parsedTradeId, parsedCoverage],
+    query: { enabled: configured && Boolean(trade) && parsedTradeId !== undefined && parsedCoverage !== undefined, retry: false },
+  });
+
+  const withdrawalRead = useReadContract({
+    address: CONTRACT_ADDRESSES.guaranteeEscrow,
+    abi: guaranteeEscrowAbi,
+    functionName: "pendingWithdrawals",
+    args: address ? [address] : undefined,
+    query: { enabled: configured && Boolean(address), refetchInterval: 4_000 },
+  });
+
+  // Hide every previous hash while the wallet prompt is open. The shared feedback hook
+  // prioritizes a resolved receipt over isSubmitting, so the page must not pass a stale hash.
+  const feedback = useTransactionFeedback({
+    hash: isSubmitting ? undefined : activeHash,
+    isSubmitting,
+    writeError: submissionError,
+    successLabel,
+  });
+  const busy = submissionLocked || feedback.phase === "submitting" || feedback.phase === "confirming";
+
+  useEffect(() => {
+    const operation = submissionGate.current();
+    if (!operation) return;
+
+    if (feedback.phase === "error") {
+      if (feedback.hash && !submissionGate.matches(feedback.hash)) return;
+      submissionGate.finish(operation.id);
+      window.setTimeout(() => setSubmissionLocked(false), 0);
+      return;
     }
-  }
 
-  function create() {
-    const b = parseId(buyerId);
-    const s = parseId(sellerId);
-    const a = parseAmount(amount);
-    if (b === null || s === null || a === null) return alert("请填写有效的 Agent ID 与交易金额");
-    writeContract({
+    if (feedback.phase !== "success" || !feedback.receipt || !feedback.hash) return;
+    if (!submissionGate.matches(feedback.hash) || processedReceipt.current === feedback.hash) return;
+    processedReceipt.current = feedback.hash;
+
+    // Only the receipt belonging to the create operation may select a new trade.
+    if (operation.kind === "create") {
+      const created = parseTradeCreated(feedback.receipt, CONTRACT_ADDRESSES.guaranteeEscrow, guaranteeEscrowAbi);
+      if (created) window.setTimeout(() => setTradeId(created.args.tradeId.toString()), 0);
+    }
+
+    submissionGate.finish(operation.id);
+    window.setTimeout(() => setSubmissionLocked(false), 0);
+    void tradeRead.refetch();
+    void withdrawalRead.refetch();
+  }, [feedback, submissionGate, tradeRead, withdrawalRead]);
+
+  const readiness = (authorized: boolean, stateValid: boolean, inputValid: boolean, unauthorizedReason?: string) =>
+    getWriteReadiness({
+      configured,
+      connected: isConnected,
+      rightChain,
+      busy,
+      authorized,
+      stateValid,
+      inputValid,
+      reasons: unauthorizedReason ? { unauthorized: unauthorizedReason } : undefined,
+    });
+
+  const createReady = readiness(
+    sameAddress(address, buyerOwnerRead.data),
+    true,
+    parsedBuyerId !== undefined && parsedSellerId !== undefined && parsedAmount !== undefined
+      && parsedMaxPremium !== undefined && Boolean(quote?.[3])
+      && Boolean(buyerOwnerRead.data && sellerOwnerRead.data)
+      && !sameAddress(buyerOwnerRead.data, sellerOwnerRead.data),
+    buyerOwnerRead.data ? "当前账户不是买家 Agent 的责任主体。" : "正在确认买家 Agent 的责任主体。",
+  );
+
+  const actionReady = (action: TradeAction, authorized = true, inputValid = parsedTradeId !== undefined, reason?: string) =>
+    readiness(authorized, Boolean(stateMeta?.actions.some((item) => item.action === action)), inputValid && Boolean(trade), reason);
+
+  const buyer = sameAddress(address, trade?.buyerSubject);
+  const seller = sameAddress(address, trade?.sellerSubject);
+  const guarantorOwner = sameAddress(address, guarantorOwnerRead.data);
+  const independentGuarantor = Boolean(
+    guarantorOwnerRead.data
+      && !sameAddress(guarantorOwnerRead.data, trade?.buyerSubject)
+      && !sameAddress(guarantorOwnerRead.data, trade?.sellerSubject),
+  );
+  const guaranteeReady = actionReady(
+    "guarantee",
+    guarantorOwner && independentGuarantor,
+    parsedGuarantorId !== undefined && parsedCoverage !== undefined && parsedPremium !== undefined
+      && stakeRead.data !== undefined && Boolean(trade)
+      && parsedCoverage >= (trade?.minCoverage ?? ZERO)
+      && parsedPremium >= (trade?.referencePremium ?? ZERO)
+      && parsedPremium <= (trade?.maxPremium ?? ZERO),
+    guarantorOwnerRead.data
+      ? "当前账户不是该担保 Agent 的责任主体，或交易方不能自担保。"
+      : "正在确认担保 Agent 的责任主体。",
+  );
+
+  const startWrite = async (kind: TradeOperationKind, label: string, send: () => Promise<Hash>) => {
+    // The gate closes the same-tick gap before React can render disabled buttons.
+    const operation = submissionGate.begin(kind);
+    if (!operation) return;
+
+    // Clear both wagmi and page-owned transaction state before opening the wallet.
+    write.reset();
+    setActiveHash(undefined);
+    setSubmissionError(null);
+    setSuccessLabel(label);
+    setSubmissionLocked(true);
+    setIsSubmitting(true);
+
+    try {
+      const hash = await send();
+      if (!submissionGate.bindHash(operation.id, hash)) return;
+      setActiveHash(hash);
+      setIsSubmitting(false);
+    } catch (cause) {
+      if (!submissionGate.finish(operation.id)) return;
+      setSubmissionError(cause instanceof Error ? cause : new Error(String(cause)));
+      setIsSubmitting(false);
+      setSubmissionLocked(false);
+    }
+  };
+
+  const createTrade = () => {
+    if (!createReady.ready || parsedBuyerId === undefined || parsedSellerId === undefined
+      || parsedAmount === undefined || parsedMaxPremium === undefined) return;
+    void startWrite("create", "交易创建成功，已自动载入 Trade ID。", () => write.writeContractAsync({
       address: CONTRACT_ADDRESSES.guaranteeEscrow,
       abi: guaranteeEscrowAbi,
       functionName: "createTrade",
-      args: [b, s, a],
-    });
-  }
-  function fund() {
-    const t = parseId(tradeId);
-    const a = parseAmount(amount);
-    if (t === null || a === null) return alert("请填写有效的 Trade ID 与交易金额");
-    writeContract({
+      args: [parsedBuyerId, parsedSellerId, parsedAmount, parsedMaxPremium],
+    }));
+  };
+
+  const runSimpleAction = (action: WorkflowAction, label: string, guard: WriteReadiness) => {
+    if (!guard.ready || parsedTradeId === undefined) return;
+    if (action === "fund") {
+      if (!trade?.amount) return;
+      void startWrite("fund", label, () => write.writeContractAsync({
+        address: CONTRACT_ADDRESSES.guaranteeEscrow,
+        abi: guaranteeEscrowAbi,
+        functionName: "fund",
+        args: [parsedTradeId],
+        value: trade.amount,
+      }));
+      return;
+    }
+    void startWrite(action, label, () => write.writeContractAsync({
       address: CONTRACT_ADDRESSES.guaranteeEscrow,
       abi: guaranteeEscrowAbi,
-      functionName: "fund",
-      args: [t],
-      value: a,
-    });
-  }
-  function guarantee() {
-    // T5 语义：担保人只质押本金（覆盖率×金额），保费仅报价记录、由卖家承担
-    const t = parseId(tradeId);
-    const covPct = Number(coverage); // 用户输入的百分比（默认 100）
-    const prem = parseAmount(premium);
-    const formAmount = parseAmount(amount);
-    if (t === null || !(covPct > 0 && covPct <= 200) || prem === null || formAmount === null) {
-      return alert("请填写有效的 Trade ID、覆盖率（0-200%）与保费");
-    }
-    // coverage 合约单位为 1e18 = 100%：百分比（精度 0.01%）→ 1e18 单位，纯 wei 整数运算
-    // （与合约 requiredStake = amount*coverage/1e18 同式），避免浮点/舍入导致的金额不符 revert
-    const coverageWei = (BigInt(Math.round(covPct * 100)) * WEI_ONE) / BigInt(10000);
-    if (coverageWei === BigInt(0)) return alert("覆盖率至少 0.01%");
-    // 优先用链上真实金额（trades 下标 3），表单金额仅作回退
-    const amountWei = tradeData !== undefined ? tradeData[3] : formAmount;
-    const stakeWei = (amountWei * coverageWei) / WEI_ONE;
-    writeContract({
+      functionName: ACTION_FUNCTIONS[action],
+      args: [parsedTradeId],
+    }));
+  };
+
+  const offerGuarantee = () => {
+    if (!guaranteeReady.ready || parsedTradeId === undefined || parsedGuarantorId === undefined
+      || parsedCoverage === undefined || parsedPremium === undefined || stakeRead.data === undefined) return;
+    void startWrite("guarantee", "担保报价已确认。", () => write.writeContractAsync({
       address: CONTRACT_ADDRESSES.guaranteeEscrow,
       abi: guaranteeEscrowAbi,
       functionName: "guarantee",
-      args: [t, coverageWei, prem],
-      value: stakeWei,
-    });
-  }
-  function deliver() {
-    const t = parseId(tradeId);
-    if (t === null) return alert("请填写有效的 Trade ID");
-    writeContract({
-      address: CONTRACT_ADDRESSES.guaranteeEscrow,
-      abi: guaranteeEscrowAbi,
-      functionName: "deliver",
-      args: [t],
-    });
-  }
-  function confirm() {
-    const t = parseId(tradeId);
-    if (t === null) return alert("请填写有效的 Trade ID");
-    writeContract({
-      address: CONTRACT_ADDRESSES.guaranteeEscrow,
-      abi: guaranteeEscrowAbi,
-      functionName: "confirm",
-      args: [t],
-    });
-  }
+      args: [parsedTradeId, parsedGuarantorId, parsedCoverage, parsedPremium],
+      value: stakeRead.data,
+    }));
+  };
 
-  // 担保质押额展示：与 guarantee 逻辑一致（链上金额优先 × 覆盖率）
-  const covPct = Number(coverage);
-  const chainAmount = tradeData !== undefined ? Number(tradeData[3]) / 1e18 : Number(amount);
-  const stakeDisplay =
-    Number.isFinite(chainAmount) && Number.isFinite(covPct) ? chainAmount * (covPct / 100) : 0;
+  const withdrawReady = readiness(true, true, Boolean(address && withdrawalRead.data && withdrawalRead.data > ZERO));
+  const withdraw = () => {
+    if (!withdrawReady.ready || !address) return;
+    void startWrite("withdraw", "余额已提取到当前账户。", () => write.writeContractAsync({
+      address: CONTRACT_ADDRESSES.guaranteeEscrow,
+      abi: guaranteeEscrowAbi,
+      functionName: "withdraw",
+      args: [address],
+    }));
+  };
+
+  const simpleActions: Array<{ action: WorkflowAction; label: string; guard: WriteReadiness }> = [
+    { action: "acceptTrade", label: "卖家接受交易", guard: actionReady("acceptTrade", seller, true, "仅卖家责任主体可接受交易。") },
+    { action: "fund", label: `买家托管 ${eth(trade?.amount)}`, guard: actionReady("fund", buyer, Boolean(trade?.amount), "仅买家责任主体可付款。") },
+    { action: "acceptGuarantee", label: "卖家接受担保", guard: actionReady("acceptGuarantee", seller, true, "仅卖家责任主体可接受担保。") },
+    { action: "deliver", label: "卖家确认交付", guard: actionReady("deliver", seller, true, "仅卖家责任主体可交付。") },
+    { action: "confirm", label: "买家确认完成", guard: actionReady("confirm", buyer, true, "仅买家责任主体可确认。") },
+  ];
+
+  const timeoutActions: Partial<Record<number, { action: SimpleAction; label: string }>> = {
+    0: { action: "timeoutCancelUnaccepted", label: "接受窗口结束后取消" },
+    1: { action: "timeoutCancelUnfunded", label: "付款窗口结束后取消" },
+    2: { action: "timeoutRefund", label: "担保窗口结束后退款" },
+    3: { action: "timeoutRejectGuarantee", label: "接受窗口结束后拒绝担保" },
+    4: { action: "timeoutRefund", label: "交付窗口结束后退款" },
+    5: { action: "timeoutAutoRelease", label: "确认窗口结束后自动放款" },
+    6: { action: "timeoutVoidDispute", label: "未开案超时后作废" },
+  };
+  const timeout = stateMeta ? timeoutActions[stateMeta.value] : undefined;
+  const retryReady = actionReady("retryOutcome", true, Boolean(trade?.outcomePending));
 
   return (
-    <main className="max-w-2xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-4">担保交易</h1>
-      {!isConnected && (
-        <button className="border px-4 py-2 rounded" onClick={() => connect({ connector: injected() })}>
-          连接钱包
-        </button>
-      )}
-      {isConnected && (
-        <div className="space-y-4">
-          <section className="border rounded p-4">
-            <h2 className="font-semibold mb-2">创建交易（买方发起）</h2>
-            <input aria-label="买家 Agent ID" placeholder="买家 Agent ID" value={buyerId} onChange={(e) => setBuyerId(e.target.value)}
-              className="w-full border rounded p-2 mb-2" />
-            <input aria-label="卖家 Agent ID" placeholder="卖家 Agent ID" value={sellerId} onChange={(e) => setSellerId(e.target.value)}
-              className="w-full border rounded p-2 mb-2" />
-            <input aria-label="交易金额（ETH）" placeholder="交易金额（ETH）" value={amount} onChange={(e) => setAmount(e.target.value)}
-              className="w-full border rounded p-2 mb-2" />
-            <button onClick={create} disabled={!WRITES_ENABLED || isPending}
-              className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">
-              {isPending ? "提交中…" : "创建交易"}
-            </button>
-          </section>
+    <main className="max-w-5xl mx-auto p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">担保交易闭环</h1>
+        <p className="text-sm text-gray-500 mt-1">创建、接受、托管、担保、交付、确认、超时与提现均以链上状态和责任主体为准。</p>
+        {!isConnected && <p className="text-sm mt-2" role="status">请使用页首钱包控件连接钱包；本页不会创建重复连接器。</p>}
+        {isConnected && !rightChain && <p className="text-sm text-red-600 mt-2" role="alert">请在页首切换至 {activeChain.name}（Chain ID {activeChain.id}）。</p>}
+      </div>
 
-          <section className="border rounded p-4">
-            <h2 className="font-semibold mb-2">交易流程（按状态操作）</h2>
-            <input aria-label="Trade ID" placeholder="Trade ID" value={tradeId} onChange={(e) => setTradeId(e.target.value)}
-              className="w-full border rounded p-2 mb-2" />
-            {tradeState !== undefined && (
-              <p className="text-sm mb-2">
-                <span className="font-semibold">当前状态：{STATE_LABEL[tradeState]}</span>
-                {tradeData !== undefined && (
-                  <span className="text-gray-500 ml-2">（Trade #{tradeData[0].toString()}）</span>
-                )}
-                <span className="text-gray-500 ml-2">· {STATE_ACTIONS[tradeState]}</span>
-              </p>
-            )}
-            <div className="flex gap-2 flex-wrap items-center">
-              <button onClick={fund} disabled={!WRITES_ENABLED || isPending || !canAct(0)}
-                className="border px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed">
-                ① 付款（{amount} ETH）
-              </button>
-              <button onClick={guarantee} disabled={!WRITES_ENABLED || isPending || !canAct(1)}
-                className="border px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed">
-                ② 担保（质押 {stakeDisplay.toFixed(4)} ETH）
-              </button>
-              <input aria-label="保费 ETH" placeholder="保费 ETH" value={premium} onChange={(e) => setPremium(e.target.value)}
-                className="border rounded p-1.5 w-28" />
-              <button onClick={deliver} disabled={!WRITES_ENABLED || isPending || !canAct(2)}
-                className="border px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed">
-                ③ 交付（卖家）
-              </button>
-              <button onClick={confirm} disabled={!WRITES_ENABLED || isPending || !canAct(3)}
-                className="border px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed">
-                ④ 确认（买家）
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 mt-2">状态：{STATE_LABEL.join(" → ")}（超时默认动作见 DEMO.md）</p>
-          </section>
+      <section className="border rounded p-4 space-y-3">
+        <h2 className="font-semibold">1. 创建交易（买家）</h2>
+        <div className="grid md:grid-cols-2 gap-3">
+          <label className="text-sm">买家 Agent ID<input aria-label="买家 Agent ID" value={buyerId} onChange={(event) => setBuyerId(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
+          <label className="text-sm">卖家 Agent ID<input aria-label="卖家 Agent ID" value={sellerId} onChange={(event) => setSellerId(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
+          <label className="text-sm">交易金额（ETH）<input aria-label="交易金额（ETH）" value={amount} onChange={(event) => setAmount(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
+          <label className="text-sm">最高保费（ETH）<input aria-label="最高保费（ETH）" value={maxPremium} onChange={(event) => setMaxPremium(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
         </div>
-      )}
+        <div className="rounded border p-3 text-sm bg-gray-50" aria-label="担保条款预览">
+          <strong>quoteGuaranteeTerms 预览</strong>
+          {quote ? (
+            <dl className="grid sm:grid-cols-4 gap-2 mt-2">
+              <div><dt className="text-gray-500">最低覆盖率</dt><dd>{percent(quote[0])}</dd></div>
+              <div><dt className="text-gray-500">最低质押</dt><dd>{eth(quote[1])}</dd></div>
+              <div><dt className="text-gray-500">参考保费</dt><dd>{eth(quote[2])}</dd></div>
+              <div><dt className="text-gray-500">可承保</dt><dd>{quote[3] ? "是" : "否（调整最高保费）"}</dd></div>
+            </dl>
+          ) : <p className="text-gray-500 mt-1">填写有效参数后显示链上报价。</p>}
+        </div>
+        <ActionButton label="创建交易" readiness={createReady} onClick={createTrade} primary />
+        {!createReady.ready && <p className="text-xs text-gray-500">{createReady.reason}</p>}
+      </section>
+
+      <section className="border rounded p-4 space-y-4">
+        <div>
+          <h2 className="font-semibold">2. 查询并推进交易</h2>
+          <label className="text-sm block mt-2">Trade ID<input aria-label="Trade ID" placeholder="输入或创建后自动载入" value={tradeId} onChange={(event) => setTradeId(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
+          {tradeRead.isLoading && <p className="text-sm text-gray-500 mt-2">正在调用 getTrade…</p>}
+          {tradeRead.error && parsedTradeId !== undefined && <p className="text-sm text-red-600 mt-2" role="alert">无法读取该交易：{tradeRead.error.message}</p>}
+        </div>
+
+        <ol className="grid sm:grid-cols-2 lg:grid-cols-5 gap-2" aria-label="全部交易状态">
+          {TRADE_STATE_META.map((item) => (
+            <li key={item.value} className={`border rounded p-2 text-xs ${stateMeta?.value === item.value ? "ring-2 ring-blue-500" : ""}`} aria-current={stateMeta?.value === item.value ? "step" : undefined}>
+              <span className="font-mono">{item.value}</span> · <strong>{item.label}</strong><br />
+              <span className="text-gray-500">{item.key}{item.terminal ? " · 终态" : ""}</span>
+            </li>
+          ))}
+        </ol>
+
+        {trade && stateMeta && (
+          <>
+            <div className="border rounded p-3 text-sm">
+              <div className="flex flex-wrap justify-between gap-2">
+                <strong>Trade #{trade.id.toString()} · {stateMeta.label}</strong>
+                <span className="font-mono text-gray-500">{stateMeta.key}</span>
+              </div>
+              <dl className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+                <div><dt className="text-gray-500">金额 / 最高保费</dt><dd>{eth(trade.amount)} / {eth(trade.maxPremium)}</dd></div>
+                <div><dt className="text-gray-500">买家 Agent / 主体</dt><dd>#{trade.buyerAgentId.toString()} · {shortAddress(trade.buyerSubject)}</dd></div>
+                <div><dt className="text-gray-500">卖家 Agent / 主体</dt><dd>#{trade.sellerAgentId.toString()} · {shortAddress(trade.sellerSubject)}</dd></div>
+                <div><dt className="text-gray-500">担保 Agent / 主体</dt><dd>{trade.guarantorSubject === "0x0000000000000000000000000000000000000000" ? "尚未报价" : `#${trade.guarantorAgentId.toString()} · ${shortAddress(trade.guarantorSubject)}`}</dd></div>
+                <div><dt className="text-gray-500">最低 / 实际覆盖率</dt><dd>{percent(trade.minCoverage)} / {percent(trade.coverage)}</dd></div>
+                <div><dt className="text-gray-500">参考 / 实际保费</dt><dd>{eth(trade.referencePremium)} / {eth(trade.premium)}</dd></div>
+                <div><dt className="text-gray-500">担保质押</dt><dd>{eth(trade.stake)}</dd></div>
+                <div><dt className="text-gray-500">信誉结果</dt><dd>{trade.outcomePending ? "待记录，可重试" : trade.outcomeRecorded ? "已记录" : "尚未产生"}</dd></div>
+              </dl>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="font-semibold">当前状态操作</h3>
+              <div className="flex flex-wrap gap-2">
+                {simpleActions.map((item) => (
+                  <ActionButton key={item.action} label={item.label} readiness={item.guard} onClick={() => runSimpleAction(item.action, `${item.label}成功。`, item.guard)} primary={item.guard.ready} />
+                ))}
+              </div>
+
+              <div className="border rounded p-3 space-y-3">
+                <h3 className="font-semibold">担保人报价</h3>
+                <div className="grid md:grid-cols-3 gap-3">
+                  <label className="text-sm">担保 Agent ID<input aria-label="担保 Agent ID" value={guarantorAgentId} onChange={(event) => setGuarantorAgentId(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
+                  <label className="text-sm">覆盖率（%）<input aria-label="覆盖率（%）" value={coverage} onChange={(event) => setCoverage(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
+                  <label className="text-sm">保费（ETH）<input aria-label="保费（ETH）" value={premium} onChange={(event) => setPremium(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
+                </div>
+                <p className="text-sm">requiredStake 链上精确值：<strong>{eth(stakeRead.data)}</strong></p>
+                <ActionButton label={`提供担保并质押 ${eth(stakeRead.data)}`} readiness={guaranteeReady} onClick={offerGuarantee} primary />
+                {!guaranteeReady.ready && <p className="text-xs text-gray-500">{guaranteeReady.reason}</p>}
+              </div>
+
+              {stateMeta.value === 5 && (
+                <div className="border rounded p-3">
+                  <strong>需要争议？</strong>
+                  <p className="text-sm text-gray-500 mt-1">争议保证金由争议页读取并精确提交。本页只传递 Trade ID，避免重复实现 bond 流程。</p>
+                  {buyer || seller ? <Link className="button button-warning inline-block mt-2 no-underline" href={`/disputes?tradeId=${trade.id.toString()}`}>前往争议页（Trade #{trade.id.toString()}）</Link> : <p className="text-sm mt-2">仅买卖双方责任主体可发起争议。</p>}
+                </div>
+              )}
+
+              {timeout && (
+                <div className="border rounded p-3">
+                  <strong>无人值守超时动作</strong>
+                  <p className="text-xs text-gray-500 my-2">任何账户均可在合约窗口实际到期后调用；若尚未到期，链上会拒绝。</p>
+                  {(() => {
+                    const guard = actionReady(timeout.action as TradeAction);
+                    return <ActionButton label={timeout.label} readiness={guard} onClick={() => runSimpleAction(timeout.action, `${timeout.label}成功。`, guard)} />;
+                  })()}
+                </div>
+              )}
+
+              {trade.outcomePending && (
+                <div className="border rounded p-3">
+                  <strong>信誉结果仍待写入</strong>
+                  <p className="text-sm text-gray-500 my-2">结算本身已完成，可安全调用 retryOutcome 重试信誉结果。</p>
+                  <ActionButton label="重试记录结果" readiness={retryReady} onClick={() => runSimpleAction("retryOutcome", "信誉结果重试已确认。", retryReady)} />
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="border rounded p-4 space-y-3">
+        <h2 className="font-semibold">3. 提取当前账户余额</h2>
+        <p className="text-sm">pendingWithdrawals：<strong>{eth(withdrawalRead.data)}</strong></p>
+        <p className="text-xs text-gray-500">收款地址固定为当前连接账户 {address ?? "—"}。</p>
+        <ActionButton label="提取全部余额" readiness={withdrawReady} onClick={withdraw} primary />
+      </section>
+
+      <TransactionStatus feedback={feedback} />
     </main>
   );
 }

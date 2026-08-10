@@ -9,24 +9,24 @@
 # 网络模型（关键）：
 #   - 容器内：setup 经服务名访问 anvil → http://anvil:8545（compose 内网）
 #   - 浏览器：前端页面连 http://127.0.0.1:8545（anvil 映射到宿主 8545）
-#     frontend/lib/config.ts 的 anvil RPC 地址对浏览器侧是正确的，无需改动。
+#     RPC 地址来自 deployments/31337.json 生成的前端模块。
 #
 # 地址模型：
-#   anvil 全新启动为确定性地址（0x5fBDB231… 等），与 config.ts 的 anvil 分支一致。
-#   setup 部署后用 cast 动态校验代码存在；前端直接用内置确定性地址。
+#   deployments/31337.json 是确定性地址的唯一来源，生成 frontend/lib/deployments.ts。
+#   setup 对四个具名地址、字节码、依赖、角色授权和所有权逐项校验。
 services:
   anvil:
-    image: ghcr.io/foundry-rs/foundry:stable
-    container_name: agenttrust-anvil
-    # foundry 镜像 ENTRYPOINT 是 ["/bin/sh","-c"]：数组 command 会被 Docker 追加为位置参数
-    # （/bin/sh -c anvil --host …），flag 全被当作 $0/$1，最终只执行裸 anvil → 默认监听 127.0.0.1，
-    # 容器间无法访问。解决：entrypoint 直接指向 anvil 二进制，参数经数组 command 原样传递。
+    image: ghcr.io/foundry-rs/foundry:v1.7.1
     entrypoint: ["anvil"]
-    command: ["--host", "0.0.0.0", "--chain-id", "31337", "--port", "8545"]
+    # v1.7.1 supports --state as load+dump and --state-interval for periodic durable snapshots.
+    command: ["--host", "0.0.0.0", "--chain-id", "31337", "--port", "8545", "--state", "/home/foundry/state.json", "--state-interval", "1"]
     ports:
-      - "8545:8545"
+      - "127.0.0.1:8545:8545"
+    volumes:
+      # Mount the image's foundry-owned home so the non-root UID 1000 can write state.json.
+      - anvil-data:/home/foundry
     healthcheck:
-      test: ["CMD", "cast", "block-number", "--rpc-url", "http://localhost:8545"]
+      test: ["CMD-SHELL", "test \"$(cast chain-id --rpc-url http://127.0.0.1:8545 2>/dev/null)\" = 31337"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -37,12 +37,19 @@ services:
 
   setup:
     build:
-      context: ./contracts
+      context: .
+      dockerfile: contracts/Dockerfile
     image: agenttrust-setup
-    container_name: agenttrust-setup
+    # Named-volume roots are created as root on Linux Docker and Docker Desktop.
+    user: "0:0"
     environment:
       RPC_URL: http://anvil:8545
+      CHAIN_ID: "31337"
+      MANIFEST_PATH: /app/deployments/31337.json
+      READY_FILE: /readiness/contracts-ready
       PRIVATE_KEY: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+    volumes:
+      - deployment-readiness:/readiness
     depends_on:
       anvil:
         condition: service_healthy
@@ -56,15 +63,16 @@ services:
       args:
         NEXT_PUBLIC_CHAIN: anvil
     image: agenttrust-frontend
-    container_name: agenttrust-frontend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - deployment-readiness:/readiness:ro
     depends_on:
       setup:
         condition: service_completed_successfully
     healthcheck:
       # 容器内 localhost 解析到 ::1 (IPv6)，nginx 仅监听 IPv4 0.0.0.0，故用 127.0.0.1
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/healthz || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -75,4 +83,7 @@ services:
 
 networks:
   agenttrust:
-    name: agenttrust-net
+
+volumes:
+  anvil-data:
+  deployment-readiness:

@@ -1,0 +1,5 @@
+# The Synpress profile contains the disposable mnemonic and must stay local.
+.cache-synpress/
+
+# Keep all browser diagnostics local unless explicitly inspected.
+.artifacts/

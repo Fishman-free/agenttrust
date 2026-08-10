@@ -1,0 +1,9 @@
+**
+!contracts/
+!contracts/**
+!deployments/
+!deployments/**
+contracts/broadcast/
+contracts/cache/
+contracts/out/
+contracts/.env

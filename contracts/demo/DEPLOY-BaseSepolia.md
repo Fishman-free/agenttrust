@@ -59,20 +59,25 @@ NO_PROXY="127.0.0.1,localhost,::1" \
 
 ### 步骤 3：记录四合约地址
 
-部署输出（`broadcast/Deploy.s.sol/8453/run-latest.json` 或终端回显）会给出四地址。**立即复制保存**。
+部署记录位于 `broadcast/Deploy.s.sol/84532/run-latest.json`（Base Sepolia Chain ID 是 **84532**，不是 Base 主网的 8453）。不要手工复制无名称的地址列表；由 manifest 工具按 `contractName` 提取四个具名部署。
 
-### 步骤 4：更新前端 base-sepolia 分支地址
+### 步骤 4：生成并验证部署 manifest
 
-编辑 `frontend/lib/config.ts`，把 `CHAIN_MODE === "base-sepolia"` 分支的四个 `0x0000...` 占位地址替换为真实地址：
+在仓库根目录执行：
 
-```ts
-agentRegistry: "0x<实际地址>",
-reputationHub: "0x<实际地址>",
-guaranteeEscrow: "0x<实际地址>",
-schellingVoting: "0x<实际地址>",
+```bash
+node scripts/deployment-manifest.mjs --write \
+  --chain-id 84532 \
+  --broadcast contracts/broadcast/Deploy.s.sol/84532/run-latest.json \
+  --rpc-url https://sepolia.base.org
+
+# cast 会检查 runtime hash、部署 receipt、Voting 参数、构造依赖、Hub 授权与 Escrow 所有权
+node scripts/deployment-manifest.mjs --check \
+  --chain-id 84532 \
+  --rpc-url https://sepolia.base.org
 ```
 
-> `frontend/lib/wagmi.ts` 已通过 `activeChain` 动态绑定 RPC，**无需修改**。
+`--write`/`--check` 分别是 `generate`/`check` 的计划兼容别名。写入命令要求 broadcast 对四个合约各有且仅有一条具名 `CREATE`，并要求同时提供 RPC，以捕获和核验 runtime bytecode hash；构造参数、deployer、交易哈希和可用的区块号也会写入 manifest。命令更新 `deployments/84532.json` 并重建 `frontend/lib/deployments.ts`。不要手改生成模块，也不要把地址重新硬编码进 `frontend/lib/config.ts`。
 
 ### 步骤 5：本地验证（可选，建议先做）
 
@@ -84,13 +89,15 @@ NEXT_PUBLIC_CHAIN=base-sepolia npm run build     # 确认无编译错误
 
 ### 步骤 6：GitHub Pages 重新部署
 
-GitHub Actions 工作流 `NEXT_PUBLIC_CHAIN=base-sepolia` 构建并发布到 `/multiagent/`：
+当前 Pages 工作流被刻意限制为 **84532 未部署时的只读研究预览**。完成上面的链上 wiring 校验和审查后，先把 `.github/workflows/deploy-pages.yml` 的只读状态门改为已部署门，再发布：
 
 ```bash
-git add frontend/lib/config.ts
+git add deployments/84532.json frontend/lib/deployments.ts .github/workflows/deploy-pages.yml
 git commit -m "feat: Base Sepolia 部署地址接入前端"
-git push          # 触发 deploy-pages 工作流
+git push
 ```
+
+在门禁修改前，工作流不会把一个已部署 manifest 误标为“只读预览”发布。
 
 ### 步骤 7：链上验证
 
@@ -118,8 +125,8 @@ NO_PROXY="127.0.0.1,localhost,::1" cast call $REGISTRY "nextAgentId()" --rpc-url
 | 风险 | 应对 |
 |---|---|
 | RPC 不可达（大陆网络） | 走代理/VPN；或改用公共 RPC（`https://base-sepolia.public.blastapi.io` 等） |
-| 部署后地址填错 | 用步骤 7 的 cast call 抽查 + 区块浏览器二次确认 |
-| 前端部署后地址未生效 | 检查 GitHub Actions 日志确认 `NEXT_PUBLIC_CHAIN=base-sepolia` 生效；清除 Pages 缓存后强刷 |
+| 部署后地址填错 | manifest 工具按四个 `contractName` 提取，并用可选 RPC 校验拒绝错误 wiring |
+| 前端部署后地址未生效 | 运行 manifest `check`，检查 GitHub Actions 日志确认 `NEXT_PUBLIC_CHAIN=base-sepolia` 生效；清除 Pages 缓存后强刷 |
 | Gas 不足 | faucet 补领后再 `forge script --resume` 或重新部署 |
 | 私钥泄露（测试网） | 影响仅限测试币；更换新私钥重走本流程 |
 

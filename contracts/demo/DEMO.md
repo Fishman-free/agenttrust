@@ -1,128 +1,111 @@
 # AgentTrust 全链路演示手册
 
-> 环境：本地 anvil 演示链（当前已部署），开发者门户 Next.js。真实链部署流程见文末附注。
+> 仅用于 disposable Anvil 本地链。公开的 Anvil 私钥和助记词绝不能用于任何公共或有价值网络。
 
-本手册对应 `contracts/test/E2E.t.sol` 的业务故事（注册 → 担保交易 → 交付 → 争议 → 社区投票 → 罚没 → 信誉更新），供学期答辩 / 社区上线演示。共 38 个合约测试全通过，本手册是把 E2E 故事搬到「钱包 + 浏览器」的逐步可复现指南。
+## 一键启动
 
-## 前置：一次启动（anvil + 前端）
-
-```bash
-# 1. 启动本地链（终端 1）
-# 关键：Windows 代理会导致 cast/forge 502，必须带 NO_PROXY
-NO_PROXY="127.0.0.1,localhost,::1" anvil --chain-id 31337 --port 8545
-
-# 2. 部署合约（终端 2，anvil 确定性地址，重复部署地址不变）
-# 注意：Deploy.s.sol 内部用 vm.envUint("PRIVATE_KEY") 读取，必须同时导出 PRIVATE_KEY
-cd contracts && export PATH="$HOME/.foundry/bin:$PATH" \
-  && export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
-  && NO_PROXY="127.0.0.1,localhost,::1" \
-  forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast \
-  --private-key "$PRIVATE_KEY"
-
-# 3. 启动前端（终端 3）
-cd frontend && npm run dev
-# 打开 http://localhost:3000
-```
-
-> 若部署地址与 `frontend/lib/config.ts` 不一致，更新该文件（当前已填 anvil 标准地址：0x5fBDB231.../0xe7f1725E.../0x9fE46736.../0xCf7Ed3Ac...）。
-> 部署脚本自动完成：Registry → Hub → Escrow → Voting 顺序部署、Hub 授权 Escrow/Voting 写入、Escrow 所有权移交 Voting（社区裁决可驱动 escrow）。`registrationFee` 默认 0，注册免费。
-
-### 演示用钱包（MetaMask 导入）
-
-anvil 提供确定性测试账户，导入私钥即可充当演示钱包（均带 10000 ETH）：
-
-| 角色 | 地址 | 私钥 |
-|---|---|---|
-| 钱包 A（卖家 DataAgent 负责人） | 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 | 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 |
-| 钱包 B（买家 TraderAgent 负责人） | 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 | 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d |
-| 钱包 C（担保人/陪审员） | 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC | 0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a |
-
-MetaMask 添加网络：RPC http://127.0.0.1:8545、Chain ID 31337、符号 ETH。然后「导入账户」粘贴私钥。
-
-## 演示流程（5 分钟版）
-
-### 1. 注册智能体（钱包 A）
-- 门户 → 智能体 → 连接钱包 A（MetaMask 切到 anvil 本地网络 http://127.0.0.1:8545）
-- 注册 "DataAgent"，描述 "链上数据分析服务"，端点填 `https://a.example/mcp` → Agent ID = 0
-
-### 2. 注册买方智能体（钱包 B）
-- 切换 MetaMask 到钱包 B → 注册 "TraderAgent"（描述 "交易策略智能体"）→ Agent ID = 1
-
-### 3. 创建担保交易（钱包 B）
-- 交易页 → 买家 ID=1、卖家 ID=0、金额 0.1 ETH → 创建 → ① 付款（0.1 ETH 进 escrow）
-
-### 4. 担保人担保（钱包 C，需 0.1+ ETH）
-- 切换钱包 C → ② 担保：覆盖率 100%、保费 0.005 ETH → 质押 0.1（= 覆盖率 × 金额，T5 语义：保费仅报价记录，释放时由卖家承担）
-
-### 5. 交付与确认（钱包 A → ③ 交付；钱包 B → ④ 确认）
-- 观察：卖家收 0.1 − 0.005 = 0.095，担保人拿回 0.1 + 0.005 = 0.105
-
-### 6. 争议演示（复现 E2E 违约场景）
-- 再建一笔交易（买家 1、卖家 0、金额 0.1 ETH）→ 付款 → 担保 → ③ 交付 → 买家发起争议（交易页④旁或争议页）
-- 争议页 → 开设投票案（窗口 1 天；若需压缩演示，用文末 cast 命令把窗口缩短到 1 分钟再开案）
-- 三个演示钱包各投一票（A、B、C 任取三：2 票支持买家、1 票支持卖家，每票质押 0.05 ETH）
-- 结算 → 观察：买家拿回本金 + 罚没担保金，担保人 0.1 质押全失（判断失误代价），少数派陪审员质押被罚没均分给多数派
-
-### 7. 信誉变化（信誉页）
-- 输入卖家 Agent ID（0）：此时卖家已有 1 次完成（第 5 步确认）+ 1 次争议败诉（第 6 步结算），total=2
-- 信誉分公式计算 = 100 − 100·0/2 − 50·1/2 = **75**（构成：完成 1、败诉 1；1 次败诉只扣 25，仍高于新智能体默认 50，多次败诉/违约才会跌破 50）
-
-## 快速验证（不用前端）
+推荐使用干净状态启动，合约变更后必须删除旧 volume：
 
 ```bash
-cd contracts && NO_PROXY="127.0.0.1,localhost,::1" forge test --match-contract E2ETest -vvv
+docker compose down -v --remove-orphans
+docker compose up -d --build
 ```
 
-E2E 全链路（自动化基线）：注册两智能体 → 2 ETH 交易担保 → 交付 → 买家争议 → 3 票 Schelling（2 买 1 卖）→ 结算买家胜 → 罚没均分 → 信誉败诉 +1 → 对照组正常交易完成 +1 → 终态资金守恒断言（escrow/voting 双归零）。
-
-## 机制说明（给观众的话术）
-
-- **担保人质押** = 智能体保险的诚实形态：违约自动罚没。担保人判断失误（保了违约方）质押全失，因此只有评估过卖家信誉的理性担保人才会接单——质押即信号。
-- **Schelling 投票** = 社区说真话的激励：与多数一致者拿回质押+奖金，少数派被罚。正确判案是占优策略（随大流也说真话，否则罚没），实现多数人诚实的纳什均衡。
-- **信誉** = 链上 attestation：不可篡改、禁止自评（仅 Escrow/Voting 合约可写入）、供担保准入定价（新智能体默认 50 分，需担保人担保才能承接高价值订单）。
-
-## 附注：真实链部署（Base Sepolia）
+本机没有 Docker 时，可以分别启动 Anvil、部署并运行前端：
 
 ```bash
-cd contracts && NO_PROXY="127.0.0.1,localhost,::1" \
-  forge script script/Deploy.s.sol --rpc-url https://sepolia.base.org --broadcast --verify \
-  --private-key "$PRIVATE_KEY"   # 需先设置测试网私钥（勿提交 git，可用 .env 由 foundry 自动加载）
-# 部署后将 4 地址填入 frontend/lib/config.ts，并把 wagmi.ts 链切回 baseSepolia
+anvil --host 127.0.0.1 --chain-id 31337 --port 8545
+
+RPC_URL=http://127.0.0.1:8545 \
+PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+sh contracts/scripts/deploy.sh
+
+npm --prefix frontend ci
+npm --prefix frontend run dev
 ```
 
-前置：MetaMask 切 Base Sepolia；钱包领测试 ETH（faucet：https://faucet.quicknode.com/base/sepolia）。
+部署地址来自 `deployments/31337.json`。`deploy.sh` 会验证四个合约的 bytecode、依赖、ACL 和 ownership。不要在非 31337 或非本地 RPC 上使用公开 Anvil key。
 
-## 演示快捷 cast 命令（缩短投票窗口 / 结算）
+## 正常交易
 
-争议页 openCase 固定窗口 86400s（1 天），演示可用 cast 直接开 60s 窗口的案并手动推进区块时间：
+至少准备三个不同责任主体：
+
+1. 买方注册 Agent；
+2. 卖方注册 Agent；
+3. 担保人注册 Agent；
+4. 买方创建交易，填写 amount 和 maxPremium；
+5. 卖方接受交易；
+6. 买方托管本金；
+7. 担保人填写自己的 Agent ID、coverage 和 premium，按链上 `requiredStake` 质押；
+8. 卖方接受担保；
+9. 卖方交付；
+10. 买方确认；
+11. 卖方和担保人通过 pull-payment 提取余额；
+12. 在信誉页检查卖方 completed 计数。
+
+新 Agent 默认信誉 50，当前平滑公式对应最低 coverage 75%，参考保费率 7.5%。页面会直接读取链上报价和精确 stake。
+
+## 争议交易
+
+有效裁决至少需要六个不同责任主体：
+
+- 买方、卖方、担保人；
+- 三名独立 juror。
+
+三名 juror 必须在交易创建前注册，因为 jury 资格数量在创建交易时快照。买方、卖方和担保人不能为自己的交易投票。
+
+流程：
+
+1. 六个主体全部注册；
+2. 完成交易到 `DELIVERED`；
+3. 买方或卖方支付链上读取的精确 2% dispute bond；
+4. 任意人调用 permissionless `openCase(tradeId)`；
+5. 三名 juror 各自生成并备份 salt，提交 commitment 和固定 case stake；
+6. 推进到 reveal 阶段；
+7. 使用原 side/salt reveal；
+8. reveal 窗口结束后调用 `settle`；
+9. 有权参与者统一调用 `claim`，再 `withdraw`；
+10. permissionless 调用 `finalizeJurorMetrics`；
+11. 检查 Escrow 资金、卖方业务信誉和 juror reveal/consensus 指标。
+
+清理浏览器 localStorage 会丢失 reveal secret，并可能导致 stake 被罚没。页面提供 secret 备份功能。
+
+## 自动验证
 
 ```bash
-export NO_PROXY="127.0.0.1,localhost,::1"
-RPC=http://127.0.0.1:8545
-VOTING=0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
-PK=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80   # 平台 owner（部署者）
-STAKE=$(cast --to-wei 0.05 ether)
-
-# 开案：trade=1（第 6 步"再建的那笔"已 DISPUTED；trade=0 已 RELEASED 不可开案）, buyer=1, seller=0, stake=0.05, window=60s
-cast send $VOTING "openCase(uint256,uint256,uint256,uint256,uint256)" 1 1 0 $STAKE 60 \
-  --rpc-url $RPC --private-key $PK
-
-# 三个钱包投票（case=0；BUYER=0, SELLER=1），A、B 支持买家，C 支持卖家
-# 完整私钥见上方"演示用钱包"表：A=钱包A、B=钱包B、C=钱包C，直接粘贴对应私钥即可
-cast send $VOTING "vote(uint256,uint8)" 0 0 --value $STAKE --rpc-url $RPC --private-key <钱包A私钥>
-cast send $VOTING "vote(uint256,uint8)" 0 0 --value $STAKE --rpc-url $RPC --private-key <钱包B私钥>
-cast send $VOTING "vote(uint256,uint8)" 0 1 --value $STAKE --rpc-url $RPC --private-key <钱包C私钥>
-
-# 推进 61s 后结算（solo 链无竞争者，可跳时间）
-cast rpc anvil_setNextBlockTimestamp $(( $(date +%s) + 61 )) --rpc-url $RPC
-cast rpc anvil_mine --rpc-url $RPC
-cast send $VOTING "settle(uint256)" 0 --rpc-url $RPC --private-key <钱包A私钥>
+forge test --root contracts --match-contract E2ETest -vvv
+npm --prefix frontend run e2e
 ```
 
-## 已知限制（MVP 诚实说明）
+Playwright 主门禁会自动启动并重置 Anvil，覆盖：
 
-- 质押/罚没/保费使用测试网模拟（无真实价值，合规）
-- SchellingVoting 未做随机抽选陪审员（论文版补 ZK 抽选）
-- claimReward/claimRefund 凭据领取制（论文版改 merkle 批量结算）
-- 投票窗口为链上时间戳，solo 链演示需 cast 跳时间（见上）
-- 演示若用 cast 缩短投票窗口，需记录实际操作（cast rpc anvil_setNextBlockTimestamp / anvil_mine）
+- 静态深链和真实 404；
+- 三身份正常交易、提取和信誉；
+- 六身份 dispute、commit/reveal、时间推进、settle、claim、withdraw 和 juror metrics。
+
+MetaMask/Synpress smoke 是独立、非阻塞测试，仅验证真实扩展连接、切换 31337 和本地注册。Synpress 4 不支持原生 Windows cache CLI，需 Linux/WSL 或手动 GitHub Actions：
+
+```bash
+npm --prefix frontend run e2e:metamask:cache
+npm --prefix frontend run e2e:metamask
+```
+
+## 本地推进链上时间
+
+部署参数固定为一天 commit 加一天 reveal。仅在本地 Anvil 使用：
+
+```bash
+cast rpc evm_increaseTime 86401 --rpc-url http://127.0.0.1:8545
+cast rpc evm_mine --rpc-url http://127.0.0.1:8545
+```
+
+不要对公共 RPC 使用 Anvil 时间操纵方法。
+
+## 已知限制
+
+- 当前不是随机 jury；
+- 交易创建前预置的 Sybil 仍可能参与；
+- consensus aligned 只表示与协议有效裁决一致，不证明现实真相；
+- juror metric 依赖结算后的 permissionless finalization；
+- Base Sepolia manifest 当前为 `undeployed`，Pages 仅发布明确的只读研究预览；
+- 未经独立审计，不应视为生产合约。

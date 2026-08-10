@@ -14,7 +14,7 @@ AgentTrust 协议的四层 Solidity 合约实现，使用 Foundry 开发、测�
 ## 测试
 
 ```bash
-# 38 个测试全通过（含 E2E 全链路）
+# 94 个测试全通过（含 unit、fuzz、E2E 与 invariant 套件）
 export PATH="$HOME/.foundry/bin:$PATH"
 NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 

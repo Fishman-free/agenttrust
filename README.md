@@ -29,7 +29,7 @@ AgentTrust 用区块链智能合约实现一套完整闭环：
 | 合约 | Solidity 0.8.24 + Foundry + OpenZeppelin v5 |
 | 前端 | Next.js 16 + wagmi v3 + viem v2 + Tailwind v4 |
 | 链 | 本地 anvil（演示）/ Base Sepolia（测试网） |
-| 测试 | Foundry 38 个合约测试（TDD） |
+| 测试 | Foundry 94 个合约测试（unit、fuzz、E2E、invariant） |
 
 ---
 
@@ -53,7 +53,7 @@ docker compose up -d --build     # 一条命令启动 anvil 链 + 部署合约 +
 
 #### 环境要求
 
-- **Node.js ≥ 20**（前端）
+- **Node.js ≥ 20.9**（前端）
 - **Foundry**（合约；[安装教程](https://book.getfoundry.sh/getting-started/installation)，含 `forge`/`cast`/`anvil`）
 - **MetaMask** 或其他钱包（演示需要，可导入 anvil 测试账户）
 
@@ -65,7 +65,7 @@ export PATH="$HOME/.foundry/bin:$PATH"          # Windows：foundry 不在 PATH 
 NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 ```
 
-✅ 预期：**38 tests passed, 0 failed**（5 个测试套件）
+✅ 当前基线：**94 tests passed, 0 failed**（包含 unit、fuzz、E2E 与 invariant 套件）
 
 #### 第二步：启动本地演示链 + 部署合约
 
@@ -73,22 +73,15 @@ NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 # 终端 1：启动本地链（保持运行）
 NO_PROXY="127.0.0.1,localhost,::1" anvil --chain-id 31337 --port 8545
 
-# 终端 2：部署四合约（anvil 确定性地址，重复部署地址不变）
-cd contracts
+# 终端 2：在干净 Anvil 上部署并验证四合约 wiring
 export PATH="$HOME/.foundry/bin:$PATH"
-export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+RPC_URL=http://127.0.0.1:8545 \
+PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
 NO_PROXY="127.0.0.1,localhost,::1" \
-  forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY
+sh contracts/scripts/deploy.sh
 ```
 
-部署后四合约地址（anvil 标准地址，已填入 `frontend/lib/config.ts`）：
-
-| 合约 | 地址 |
-|---|---|
-| AgentRegistry | `0x5fBDB2315678afecb367f032d93F642f64180aa3` |
-| ReputationHub | `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512` |
-| GuaranteeEscrow | `0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0` |
-| SchellingVoting | `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9` |
+规范 Anvil 地址、runtime bytecode hash、部署元数据与 Voting 参数记录在 `deployments/31337.json`，并通过 `node scripts/deployment-manifest.mjs --write`（`generate` 的别名）生成前端模块；`frontend/lib/config.ts` 不再硬编码地址。可用 `node scripts/deployment-manifest.mjs --check`（`check` 的别名）检查 manifest 与生成文件是否同步。
 
 #### 第三步：启动前端门户
 
@@ -115,11 +108,11 @@ npm run dev
 |---|---|---|
 | 1️⃣ | 钱包 A 注册智能体 **DataAgent** | Agent ID = 0 |
 | 2️⃣ | 钱包 B 注册智能体 **TraderAgent** | Agent ID = 1 |
-| 3️⃣ | 钱包 B 创建担保交易（买家=1，卖家=0，金额 0.1 ETH）→ 付款 | 交易进入"已付款" |
-| 4️⃣ | 任一钱包做**担保人**：覆盖率 100%、保费 0.005 ETH → 质押 0.1 | 交易进入"已担保" |
-| 5️⃣ | 钱包 A 交付 → 钱包 B 确认 | 卖家收 **0.095**，担保人收 **0.105** |
-| 6️⃣ | 再建一笔交易 → 争议 → 开设投票案 → 3 钱包投票（2 支持买家 / 1 支持卖家）→ 结算 | 买家拿回本金+罚没担保金，少数派投票质押被罚没 |
-| 7️⃣ | 信誉页输入卖家 Agent ID | 看到信誉分变化（1 完成 + 1 败诉 = 75） |
+| 3️⃣ | 买方创建交易（含 maxPremium）→ 卖方接受 → 买方托管 | 交易进入 `FUNDED` |
+| 4️⃣ | 独立担保人按链上报价提供担保 → 卖方接受 | 交易进入 `GUARANTEED` |
+| 5️⃣ | 卖方交付 → 买方确认 → 各方 withdraw | 交易进入 `RELEASED`，业务信誉更新 |
+| 6️⃣ | 争议交易支付 2% bond；由三个交易外 juror commit/reveal（至少六个预注册主体） | 精确 2/3 裁决、claim/withdraw、juror metrics |
+| 7️⃣ | 信誉页输入 Agent ID | 同时查看卖方业务信誉与责任主体 juror 信誉 |
 
 ---
 
@@ -128,9 +121,9 @@ npm run dev
 | 页面 | 路径 | 功能 |
 |---|---|---|
 | **智能体** | `/agents` | 连接钱包 → 填名称/描述/端点 → 注册（付注册费）；查看已注册列表 |
-| **交易** | `/trade` | 创建交易 → ① 付款 → ② 担保（覆盖率+保费）→ ③ 交付 → ④ 确认 |
-| **争议** | `/disputes` | 发起争议 → 开设投票案（平台）→ 社区投票（支持买家/卖家）→ 结算 → 领取奖励/退款 |
-| **信誉** | `/reputation` | 输入 Agent ID → 查看信誉分 + 多维档案（完成/违约/胜诉/败诉） |
+| **交易** | `/trade` | 创建/接受/托管/担保报价/接受担保/交付/确认、timeout、retry outcome、withdraw |
+| **争议** | `/disputes` | 精确 bond → permissionless 开案 → commit/reveal/settle → claim/withdraw → 固化 juror metrics |
+| **信誉** | `/reputation` | 输入 Agent ID → 查看业务信誉、责任主体 juror 信誉与资格 |
 
 ---
 
@@ -143,16 +136,16 @@ npm run dev
 Foundry 装在 `~/.foundry/bin`，不在 PATH。先执行 `export PATH="$HOME/.foundry/bin:$PATH"`。
 
 **Q3: 前端连不上合约（交易失败/revert）？**
-确认 anvil 在运行 + `frontend/lib/config.ts` 的四个地址与部署输出一致。若改了链，同步改 `frontend/lib/wagmi.ts`。
+确认 Anvil 在运行，并执行 manifest `check`。切换链使用 `NEXT_PUBLIC_CHAIN`；部署地址只能通过 `deployments/<chainId>.json` + 生成脚本更新。
 
 **Q4: 担保按钮失败？**
 担保人质押额 = 交易金额 × 覆盖率，必须与表单输入一致。保费由**卖家**承担（交易成功时从卖家所得扣除），担保人只质押本金。
 
-**Q5: 投票质押额不一致导致 revert？**
-`SchellingVoting.vote` 要求质押额 == 案件 `stake` 精确一致。开设投票案和投票时保持同一质押额。
+**Q5: commit 质押或 reveal 失败？**
+`commitVote` 必须发送链上不可变 `caseStake`，且 juror 必须在交易创建前注册并非交易相关方。Reveal 必须使用 commit 前保存的同一 side/salt；请先导出页面中的 secret 备份。
 
 **Q6: 部署到真实链（Base Sepolia）？**
-见 [`contracts/demo/DEMO.md`](contracts/demo/DEMO.md) 附注：设置测试网私钥（勿提交 git）→ `forge script ... --rpc-url https://sepolia.base.org --broadcast --verify` → 填地址 + 切回 baseSepolia。
+见 [`contracts/demo/DEPLOY-BaseSepolia.md`](contracts/demo/DEPLOY-BaseSepolia.md)：设置测试网私钥（勿提交 git）→ 部署到 Chain ID **84532** → 从具名 broadcast 生成 manifest → 用可选 RPC wiring 校验 → 审查后解除 Pages 只读门。
 
 ---
 
@@ -178,7 +171,7 @@ MVP 使用本地链/测试网代币模拟质押/罚没（**无真实价值**）�
 |---|---|
 | Docker 一键启动 | [`DOCKER.md`](DOCKER.md) |
 | 设计规格 | `docs/superpowers/specs/2026-08-08-agenttrust-design.md` |
-| 实现计划 | `docs/superpowers/plans/2026-08-08-agenttrust-mvp.md` |
+| 历史实现计划（已被当前实现取代） | `docs/superpowers/plans/2026-08-08-agenttrust-mvp.md` |
 | 演示手册 | `contracts/demo/DEMO.md` |
 | 论文研究笔记 | `docs/research/2026-08-09-paper-analysis.md` |
 | 调研论文库 | `papers/README.md` |

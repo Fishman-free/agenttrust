@@ -6,6 +6,7 @@ import {
   ZERO_ADDRESS,
   type AddressMap,
 } from "@/lib/config";
+import { DEPLOYMENTS } from "@/lib/deployments";
 
 const deployed: AddressMap = {
   agentRegistry: "0x1111111111111111111111111111111111111111",
@@ -23,6 +24,13 @@ describe("chain configuration", () => {
 
   it("rejects unknown modes instead of silently selecting a chain", () => {
     expect(() => resolveChainMode("mainnet")).toThrow(/不支持/);
+  });
+
+  it("uses generated manifests with an explicit testnet deployment state", () => {
+    expect(DEPLOYMENTS[31337].status).toBe("deployed");
+    expect(areContractAddressesConfigured(DEPLOYMENTS[31337].contracts)).toBe(true);
+    expect(DEPLOYMENTS[84532].status).toBe("undeployed");
+    expect(areContractAddressesConfigured(DEPLOYMENTS[84532].contracts)).toBe(false);
   });
 });
 

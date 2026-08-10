@@ -49,7 +49,7 @@ export function WalletState({
         <>
           <div className="wallet-details">
             <span className="wallet-label">当前账户</span>
-            <span className="wallet-value" title={address}>{address ? shortAddress(address) : "未知"}</span>
+            <span className="wallet-value" title={address} aria-label={address ? `当前账户 ${address}` : "当前账户未知"}>{address ? shortAddress(address) : "未知"}</span>
             <span className="wallet-label">当前网络</span>
             <span className={wrongNetwork ? "wallet-value network-error" : "wallet-value"}>
               {chainName ?? `Chain ${chainId ?? "未知"}`}

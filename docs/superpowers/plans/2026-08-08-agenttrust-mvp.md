@@ -1,6 +1,6 @@
-# AgentTrust MVP 实现计划
+# AgentTrust MVP 实现计划（历史文档，已废止）
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **状态：已被当前实现取代。** 本文仅保留为早期规划记录，其中的版本、路径、命令和未勾选任务均不再是实施依据，也不应按本文继续执行。请以当前代码、根目录 `README.md` 和 `docs/superpowers/specs/2026-08-08-agenttrust-design.md` 为准。
 
 **Goal:** 实现 AgentTrust 全链上 MVP——智能体身份注册、担保托管交易、Schelling 争议投票、信誉记录四合约 + 开发者门户前端 + 全链路演示（规格见 `docs/superpowers/specs/2026-08-08-agenttrust-design.md` §5-§9）。
 

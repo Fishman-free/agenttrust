@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "zcode/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Contracts
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - run: forge fmt --check
+      - run: forge build
+      - run: forge test
+      - run: forge coverage
+
+  frontend:
+    name: Frontend, ABI, and manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: forge build --root contracts
+      - run: node scripts/gen-abi.mjs --check
+      - run: node scripts/deployment-manifest.mjs --check
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_CHAIN: anvil
+      - run: npm run build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_CHAIN: base-sepolia
+
+  browser-e2e:
+    name: Playwright Anvil E2E
+    needs: [contracts, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run e2e
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-failure
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 7
+
+  docker:
+    name: Docker Compose smoke test
+    needs: [contracts, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Validate Compose model
+        run: docker compose config --quiet
+      - name: Build and start clean stack
+        run: |
+          docker compose down --volumes --remove-orphans
+          docker compose up -d --build
+      - name: Wait for combined frontend and contract readiness
+        run: |
+          curl --fail --retry 30 --retry-delay 2 --retry-connrefused http://127.0.0.1:3000/healthz
+          docker compose exec -T frontend test -s /readiness/contracts-ready
+      - name: Verify Anvil chain id and four runtime contracts
+        run: |
+          rpc() {
+            curl --fail --silent --show-error \
+              -H 'content-type: application/json' \
+              --data "$1" http://127.0.0.1:8545
+          }
+          test "$(rpc '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' | jq -r .result)" = '0x7a69'
+          for address in \
+            0x5fbdb2315678afecb367f032d93f642f64180aa3 \
+            0xe7f1725e7734ce288f8367e1bb143e90bb3f0512 \
+            0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0 \
+            0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9
+          do
+            code=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getCode\",\"params\":[\"$address\",\"latest\"]}" | jq -r .result)
+            test -n "$code" && test "$code" != '0x'
+          done
+      - name: Prove ordinary down and up reuses validated Anvil state
+        run: |
+          docker compose down --remove-orphans
+          docker compose up -d
+          curl --fail --retry 30 --retry-delay 2 --retry-connrefused http://127.0.0.1:3000/healthz
+          setup_id=$(docker compose ps -aq setup)
+          test -n "$setup_id"
+          test "$(docker inspect -f '{{.State.ExitCode}}' "$setup_id")" = 0
+      - name: Prove stale runtime bytecode is rejected and readiness withdrawn
+        run: |
+          curl --fail --silent --show-error \
+            -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"anvil_setCode","params":["0x5fbdb2315678afecb367f032d93f642f64180aa3","0x00"]}' \
+            http://127.0.0.1:8545 | jq -e 'has("result") and (.error == null)'
+          if docker compose run --rm setup; then
+            echo 'setup unexpectedly accepted stale runtime bytecode' >&2
+            exit 1
+          fi
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3000/healthz)" = 503
+      - name: Show service status and logs
+        if: always()
+        run: docker compose ps && docker compose logs anvil setup frontend
+      - name: Stop stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  metamask-smoke:
+    name: MetaMask smoke (manual, non-blocking)
+    if: github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Start disposable Anvil and deploy
+        shell: bash
+        run: |
+          anvil --host 127.0.0.1 --chain-id 31337 --port 8545 > /tmp/anvil.log 2>&1 &
+          for i in {1..30}; do
+            cast chain-id --rpc-url http://127.0.0.1:8545 && break
+            sleep 1
+          done
+          RPC_URL=http://127.0.0.1:8545 \
+          PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+          sh contracts/scripts/deploy.sh
+      - run: npm run e2e:metamask:cache
+        working-directory: frontend
+      - run: npm run e2e:metamask
+        working-directory: frontend

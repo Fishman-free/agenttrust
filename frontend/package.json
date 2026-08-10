@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "e2e:serve": "next build && node e2e/static-server.mjs",
+    "e2e:metamask:cache": "cd e2e-metamask && synpress wallet-setup --headless",
+    "e2e:metamask": "cd e2e-metamask && playwright test --config ../playwright.metamask.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
@@ -21,6 +25,8 @@
     "wagmi": "^3.7.6"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@synthetixio/synpress": "4.1.2",
     "@tailwindcss/postcss": "^4",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.1",

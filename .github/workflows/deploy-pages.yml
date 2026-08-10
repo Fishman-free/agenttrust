@@ -1,13 +1,11 @@
-# GitHub Pages 静态部署：构建 frontend（Base Sepolia 模式）并发布到 Pages。
-# 前置：仓库 Settings → Pages → Source 选择 "GitHub Actions"。
-# 子路径部署：默认 basePath=/<repo>（如 /multiagent），若用自定义域名或根路径部署，
-# 可删除 NEXT_PUBLIC_BASE_PATH 环境变量（需同时改 next.config.ts 的 basePath 来源）。
-name: Deploy to GitHub Pages
+# GitHub Pages publishes an explicit read-only Base Sepolia research preview.
+# A writable build remains disabled until deployments/84532.json contains a verified deployment.
+name: Deploy read-only research preview
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 permissions:
   contents: read
@@ -20,24 +18,43 @@ concurrency:
 
 jobs:
   deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
-        run: cd frontend && npm ci
+      - name: Check generated deployment configuration
+        run: node scripts/deployment-manifest.mjs check
 
-      - name: Build (Base Sepolia mode)
-        run: cd frontend && npm run build
+      - name: Enforce explicit read-only Base Sepolia preview
+        run: node -e "const d=require('./deployments/84532.json'); if(d.status!=='undeployed') throw new Error('Pages is intentionally read-only; update this workflow only after a separately approved and verified deployment')"
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Test configuration guard
+        run: npm test -- __tests__/config.test.ts
+        working-directory: frontend
+
+      - name: Build read-only Base Sepolia preview
+        run: npm run build
+        working-directory: frontend
         env:
           NEXT_PUBLIC_CHAIN: base-sepolia
           NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
@@ -47,3 +64,4 @@ jobs:
         with:
           path: frontend/out
       - uses: actions/deploy-pages@v4
+        id: deployment
