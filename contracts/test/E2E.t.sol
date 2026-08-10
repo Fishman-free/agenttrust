@@ -12,16 +12,19 @@ contract E2ETest is Test {
         AgentRegistry registry = new AgentRegistry();
         ReputationHub hub = new ReputationHub();
         GuaranteeEscrow escrow = new GuaranteeEscrow(address(registry), address(hub));
-        SchellingVoting voting = new SchellingVoting(address(escrow), address(registry));
-        hub.setAuthorizedCaller(address(escrow), true);
+        SchellingVoting voting =
+            new SchellingVoting(address(escrow), address(registry), address(hub), 0.1 ether, 1 days, 1 days);
+        hub.setOutcomeWriter(address(escrow), true);
+        hub.setJurorMetricWriter(address(voting), true);
         escrow.transferOwnership(address(voting));
 
         address buyer = makeAddr("buyer");
         address seller = makeAddr("seller");
         address guarantor = makeAddr("guarantor");
         address[3] memory jurors = [makeAddr("j1"), makeAddr("j2"), makeAddr("j3")];
-        vm.deal(buyer, 1 ether);
-        vm.deal(guarantor, 1 ether);
+        vm.deal(buyer, 3 ether);
+        vm.deal(seller, 1 ether);
+        vm.deal(guarantor, 2 ether);
         vm.prank(buyer);
         uint256 buyerId = registry.registerAgent("Buyer", "", "");
         vm.prank(seller);
@@ -29,27 +32,28 @@ contract E2ETest is Test {
         vm.prank(guarantor);
         uint256 guarantorId = registry.registerAgent("Guarantor", "", "");
         for (uint256 i; i < 3; ++i) {
-            vm.deal(jurors[i], 0.1 ether);
+            vm.deal(jurors[i], 0.2 ether);
             vm.prank(jurors[i]);
             registry.registerAgent("Juror", "", "");
         }
 
         vm.prank(buyer);
-        uint256 tradeId = escrow.createTrade(buyerId, sellerId, 1 ether);
+        uint256 tradeId = escrow.createTrade(buyerId, sellerId, 1 ether, 0.2 ether);
         vm.prank(seller);
         escrow.acceptTrade(tradeId);
         vm.prank(buyer);
         escrow.fund{value: 1 ether}(tradeId);
         vm.prank(guarantor);
-        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0);
+        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.1 ether);
         vm.prank(seller);
         escrow.acceptGuarantee(tradeId);
         vm.prank(seller);
         escrow.deliver(tradeId);
         vm.prank(buyer);
-        escrow.dispute(tradeId);
+        escrow.dispute{value: 0.02 ether}(tradeId);
 
-        uint256 caseId = voting.openCase(tradeId, 0.1 ether, 1 days, 1 days);
+        vm.prank(makeAddr("case opener"));
+        uint256 caseId = voting.openCase(tradeId);
         bytes32 salt = keccak256("e2e");
         for (uint256 i; i < 3; ++i) {
             SchellingVoting.Side side = i < 2 ? SchellingVoting.Side.BUYER : SchellingVoting.Side.SELLER;
@@ -66,11 +70,22 @@ contract E2ETest is Test {
         vm.warp(block.timestamp + 1 days);
         voting.settle(caseId);
 
-        assertEq(escrow.pendingWithdrawals(buyer), 2 ether);
+        for (uint256 i; i < 3; ++i) {
+            voting.finalizeJurorMetrics(caseId, jurors[i]);
+            bytes32 jurorCaseId =
+                keccak256(abi.encode("AGENTTRUST_JUROR_CASE_V1", address(voting), block.chainid, caseId, jurors[i]));
+            assertTrue(hub.recordedJurorCases(jurorCaseId));
+        }
+        vm.expectRevert(unicode"ReputationHub: 陪审记录已存在");
+        voting.finalizeJurorMetrics(caseId, jurors[0]);
+
+        uint256 buyerCredit = escrow.pendingWithdrawals(buyer);
+        assertEq(buyerCredit, 2.02 ether);
         (,,, uint256 lost) = hub.reputation(sellerId);
         assertEq(lost, 1);
+        uint256 balanceBefore = buyer.balance;
         vm.prank(buyer);
         escrow.withdraw(payable(buyer));
-        assertEq(buyer.balance, 2 ether);
+        assertEq(buyer.balance - balanceBefore, buyerCredit);
     }
 }

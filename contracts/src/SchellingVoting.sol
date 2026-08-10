@@ -5,6 +5,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {GuaranteeEscrow} from "./GuaranteeEscrow.sol";
 import {AgentRegistry} from "./AgentRegistry.sol";
+import {ReputationHub} from "./ReputationHub.sol";
 
 /// @notice Commit-reveal dispute voting over a verifiable registration-count snapshot.
 /// This is not random jury selection: every eligible registered subject may participate,
@@ -42,6 +43,10 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
 
     GuaranteeEscrow public immutable escrow;
     AgentRegistry public immutable registry;
+    ReputationHub public immutable hub;
+    uint256 public immutable caseStake;
+    uint256 public immutable commitWindow;
+    uint256 public immutable revealWindow;
     uint256 public nextCaseId;
     uint256 public totalLiability;
     mapping(uint256 => Case) private _cases;
@@ -61,11 +66,40 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     event CaseSettled(uint256 indexed caseId, Side winner, uint256 validVotes, bool effective);
     event WithdrawalCredited(address indexed account, uint256 amount);
     event Withdrawal(address indexed account, address indexed recipient, uint256 amount);
+    event JurorMetricsFinalized(
+        uint256 indexed caseId,
+        address indexed subject,
+        bytes32 indexed jurorCaseId,
+        bool revealed,
+        bool abstained,
+        bool effective,
+        bool aligned
+    );
 
-    constructor(address escrow_, address registry_) Ownable(msg.sender) {
-        require(escrow_ != address(0) && registry_ != address(0), unicode"SchellingVoting: 依赖地址为零");
+    constructor(
+        address escrow_,
+        address registry_,
+        address hub_,
+        uint256 caseStake_,
+        uint256 commitWindow_,
+        uint256 revealWindow_
+    ) Ownable(msg.sender) {
+        require(
+            escrow_ != address(0) && registry_ != address(0) && hub_ != address(0),
+            unicode"SchellingVoting: 依赖地址为零"
+        );
+        require(caseStake_ != 0, unicode"SchellingVoting: 质押必须大于零");
+        require(commitWindow_ != 0 && revealWindow_ != 0, unicode"SchellingVoting: 窗口必须大于零");
+        require(
+            commitWindow_ <= MAX_PHASE_WINDOW && revealWindow_ <= MAX_PHASE_WINDOW,
+            unicode"SchellingVoting: 窗口过长"
+        );
         escrow = GuaranteeEscrow(escrow_);
         registry = AgentRegistry(registry_);
+        hub = ReputationHub(hub_);
+        caseStake = caseStake_;
+        commitWindow = commitWindow_;
+        revealWindow = revealWindow_;
     }
 
     modifier existingCase(uint256 caseId) {
@@ -73,17 +107,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         _;
     }
 
-    function openCase(uint256 tradeId, uint256 stake, uint256 commitSeconds, uint256 revealSeconds)
-        external
-        onlyOwner
-        returns (uint256 caseId)
-    {
-        require(stake != 0, unicode"SchellingVoting: 质押必须大于零");
-        require(commitSeconds != 0 && revealSeconds != 0, unicode"SchellingVoting: 窗口必须大于零");
-        require(
-            commitSeconds <= MAX_PHASE_WINDOW && revealSeconds <= MAX_PHASE_WINDOW,
-            unicode"SchellingVoting: 窗口过长"
-        );
+    function openCase(uint256 tradeId) external nonReentrant returns (uint256 caseId) {
         require(!tradeHasCase[tradeId], unicode"SchellingVoting: 该交易已有案件");
         escrow.openArbitration(tradeId);
         tradeHasCase[tradeId] = true;
@@ -91,11 +115,11 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         Case storage c = _cases[caseId];
         c.exists = true;
         c.tradeId = tradeId;
-        c.stake = stake;
-        c.commitDeadline = block.timestamp + commitSeconds;
-        c.revealDeadline = c.commitDeadline + revealSeconds;
-        c.eligibilityAgentCount = registry.agentCount();
-        emit CaseOpened(caseId, tradeId, stake, c.commitDeadline, c.revealDeadline, c.eligibilityAgentCount);
+        c.stake = caseStake;
+        c.commitDeadline = block.timestamp + commitWindow;
+        c.revealDeadline = c.commitDeadline + revealWindow;
+        c.eligibilityAgentCount = escrow.eligibilityAgentCount(tradeId);
+        emit CaseOpened(caseId, tradeId, c.stake, c.commitDeadline, c.revealDeadline, c.eligibilityAgentCount);
     }
 
     function caseResult(uint256 caseId) external view existingCase(caseId) returns (bool effective, Side winner) {
@@ -114,6 +138,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
             registry.isRegisteredSubjectAtCount(msg.sender, c.eligibilityAgentCount),
             unicode"SchellingVoting: 不在资格快照中"
         );
+        require(hub.isJurorEligible(msg.sender), unicode"SchellingVoting: 陪审员信誉不合格");
         (address buyer, address seller, address guarantor) = escrow.tradeActors(c.tradeId);
         require(
             msg.sender != buyer && msg.sender != seller && msg.sender != guarantor,
@@ -173,6 +198,22 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
             escrow.voidDispute(c.tradeId);
         }
         emit CaseSettled(caseId, c.winner, validVotes, c.effective);
+    }
+
+    /// @notice Permissionlessly records one committed juror's metrics after settlement.
+    /// Metrics are intentionally finalized out of band so ReputationHub cannot block settlement.
+    function finalizeJurorMetrics(uint256 caseId, address subject) external nonReentrant existingCase(caseId) {
+        Case storage c = _cases[caseId];
+        require(c.settled, unicode"SchellingVoting: 未结算");
+        require(c.hasCommitted[subject], unicode"SchellingVoting: 主体未提交");
+        bool revealed = c.revealed[subject];
+        bool abstained = revealed && c.side[subject] == Side.ABSTAIN;
+        bool effective = c.effective;
+        bool aligned = effective && revealed && !abstained && c.side[subject] == c.winner;
+        bytes32 jurorCaseId =
+            keccak256(abi.encode("AGENTTRUST_JUROR_CASE_V1", address(this), block.chainid, caseId, subject));
+        hub.recordJurorCase(jurorCaseId, subject, revealed, abstained, effective, aligned);
+        emit JurorMetricsFinalized(caseId, subject, jurorCaseId, revealed, abstained, effective, aligned);
     }
 
     /// @notice Credits a pull-payment. Effective-case losers and non-revealers are slashed.

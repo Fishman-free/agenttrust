@@ -24,6 +24,7 @@ contract VotingHandler is Test {
     mapping(address => uint256) public revealSuccesses;
     mapping(address => uint256) public claimSuccesses;
     mapping(address => uint256) public withdrawSuccesses;
+    mapping(address => uint256) public metricFinalizationSuccesses;
     mapping(address => SchellingVoting.Side) internal committedSide;
     mapping(address => bytes32) internal committedSalt;
 
@@ -100,6 +101,13 @@ contract VotingHandler is Test {
         } catch {}
     }
 
+    function finalizeMetrics(uint256 jurorSeed) external {
+        address juror = _juror(jurorSeed);
+        try voting.finalizeJurorMetrics(caseId, juror) {
+            metricFinalizationSuccesses[juror]++;
+        } catch {}
+    }
+
     function jurorCount() external view returns (uint256) {
         return jurors.length;
     }
@@ -129,6 +137,7 @@ contract VotingInvariantTest is StdInvariant, Test {
     address internal buyer = makeAddr("buyer");
     address internal seller = makeAddr("seller");
     address internal guarantor = makeAddr("guarantor");
+    address internal postCreationJuror = makeAddr("invariant post-dispute juror");
     address[] internal jurors;
     uint256 internal buyerId;
     uint256 internal sellerId;
@@ -144,11 +153,13 @@ contract VotingInvariantTest is StdInvariant, Test {
         registry = new AgentRegistry();
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
-        voting = new SchellingVoting(address(escrow), address(registry));
-        hub.setAuthorizedCaller(address(escrow), true);
+        voting = new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 1 days, 1 days);
+        hub.setOutcomeWriter(address(escrow), true);
+        hub.setJurorMetricWriter(address(voting), true);
         escrow.transferOwnership(address(voting));
 
-        vm.deal(buyer, 2 ether);
+        vm.deal(buyer, 3 ether);
+        vm.deal(seller, 1 ether);
         vm.deal(guarantor, 2 ether);
         vm.prank(buyer);
         buyerId = registry.registerAgent("Buyer", "", "");
@@ -165,26 +176,30 @@ contract VotingInvariantTest is StdInvariant, Test {
         }
 
         vm.prank(buyer);
-        tradeId = escrow.createTrade(buyerId, sellerId, 1 ether);
+        tradeId = escrow.createTrade(buyerId, sellerId, 1 ether, 0.2 ether);
+        vm.deal(postCreationJuror, 2 ether);
+        vm.prank(postCreationJuror);
+        registry.registerAgent("Post-creation Juror", "", "");
         vm.prank(seller);
         escrow.acceptTrade(tradeId);
         vm.prank(buyer);
         escrow.fund{value: 1 ether}(tradeId);
         vm.prank(guarantor);
-        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.05 ether);
+        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.1 ether);
         vm.prank(seller);
         escrow.acceptGuarantee(tradeId);
         vm.prank(seller);
         escrow.deliver(tradeId);
         vm.prank(buyer);
-        escrow.dispute(tradeId);
+        escrow.dispute{value: 0.02 ether}(tradeId);
 
         openedAt = block.timestamp;
-        caseId = voting.openCase(tradeId, STAKE, 1 days, 1 days);
+        vm.prank(makeAddr("invariant opener"));
+        caseId = voting.openCase(tradeId);
         address[] memory handlerJurors = jurors;
         handler = new VotingHandler(voting, caseId, STAKE, openedAt + 1 days, openedAt + 2 days, handlerJurors);
 
-        bytes4[] memory selectors = new bytes4[](7);
+        bytes4[] memory selectors = new bytes4[](8);
         selectors[0] = handler.commit.selector;
         selectors[1] = handler.advanceToReveal.selector;
         selectors[2] = handler.reveal.selector;
@@ -192,6 +207,7 @@ contract VotingInvariantTest is StdInvariant, Test {
         selectors[4] = handler.settle.selector;
         selectors[5] = handler.claim.selector;
         selectors[6] = handler.withdraw.selector;
+        selectors[7] = handler.finalizeMetrics.selector;
         targetContract(address(handler));
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
@@ -221,6 +237,7 @@ contract VotingInvariantTest is StdInvariant, Test {
             assertLe(handler.revealSuccesses(juror), 1);
             assertLe(handler.claimSuccesses(juror), 1);
             assertLe(handler.withdrawSuccesses(juror), 1);
+            assertLe(handler.metricFinalizationSuccesses(juror), 1);
         }
         assertLe(handler.settleSuccesses(), 1);
     }
@@ -231,9 +248,18 @@ contract VotingInvariantTest is StdInvariant, Test {
         assertTrue(voting.tradeHasCase(tradeId));
     }
 
+    function test_creationSnapshotCannotBeExpandedBeforePermissionlessOpening() public {
+        bytes32 lateCommitment = voting.voteCommitment(caseId, postCreationJuror, SchellingVoting.Side.BUYER, SALT);
+        vm.prank(postCreationJuror);
+        vm.expectRevert(unicode"SchellingVoting: 不在资格快照中");
+        voting.commitVote{value: STAKE}(caseId, lateCommitment);
+
+        _commit(jurors[0], SchellingVoting.Side.BUYER);
+    }
+
     function test_oneTradeCannotOpenTwoCases() public {
         vm.expectRevert(unicode"SchellingVoting: 该交易已有案件");
-        voting.openCase(tradeId, STAKE, 1 days, 1 days);
+        voting.openCase(tradeId);
     }
 
     function test_unrevealedVotesAreExcludedFromQuorumAndThreshold() public {

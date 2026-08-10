@@ -72,7 +72,7 @@ contract EscrowHandler is Test {
     function create(uint96 rawAmount) external {
         uint256 amount = bound(uint256(rawAmount), 1, 10 ether);
         vm.prank(buyer);
-        uint256 tradeId = escrow.createTrade(buyerId, sellerId, amount);
+        uint256 tradeId = escrow.createTrade(buyerId, sellerId, amount, amount * 20 / 100);
         tradeIds.push(tradeId);
     }
 
@@ -92,8 +92,9 @@ contract EscrowHandler is Test {
             } catch {}
         } else if (beforeState == GuaranteeEscrow.State.FUNDED) {
             uint256 amount = _amount(tradeId);
+            uint256 premium = escrow.getTrade(tradeId).referencePremium;
             vm.prank(guarantor);
-            try escrow.guarantee{value: amount}(tradeId, guarantorId, 1e18, amount / 10) {
+            try escrow.guarantee{value: amount}(tradeId, guarantorId, 1e18, premium) {
                 ghostDeposited += amount;
             } catch {}
         } else if (beforeState == GuaranteeEscrow.State.GUARANTEE_OFFERED) {
@@ -107,8 +108,11 @@ contract EscrowHandler is Test {
                 vm.prank(buyer);
                 try escrow.confirm(tradeId) {} catch {}
             } else {
+                uint256 bond = escrow.requiredDisputeBond(tradeId);
                 vm.prank(buyer);
-                try escrow.dispute(tradeId) {} catch {}
+                try escrow.dispute{value: bond}(tradeId) {
+                    ghostDeposited += bond;
+                } catch {}
             }
         } else if (beforeState == GuaranteeEscrow.State.DISPUTED) {
             vm.prank(escrow.owner());
@@ -161,6 +165,17 @@ contract EscrowHandler is Test {
         }
     }
 
+    function setOutcomeAclAndRetry(uint256 seed, bool authorize) external {
+        vm.prank(hub.owner());
+        hub.setOutcomeWriter(address(escrow), authorize);
+        if (!authorize || tradeIds.length == 0) return;
+        uint256 tradeId = tradeIds[seed % tradeIds.length];
+        bytes32 outcomeId = keccak256(abi.encode(address(escrow), tradeId));
+        bool recordedBefore = hub.recordedOutcomes(outcomeId);
+        try escrow.retryOutcome(tradeId) {} catch {}
+        if (!recordedBefore && hub.recordedOutcomes(outcomeId)) reputationTransitions[tradeId]++;
+    }
+
     function attemptSecondSettlement(uint256 seed) external {
         if (tradeIds.length == 0) return;
         uint256 tradeId = tradeIds[seed % tradeIds.length];
@@ -211,15 +226,16 @@ contract EscrowInvariantTest is StdInvariant, Test {
         registry = new AgentRegistry();
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
-        hub.setAuthorizedCaller(address(escrow), true);
+        hub.setOutcomeWriter(address(escrow), true);
         handler = new EscrowHandler(registry, hub, escrow);
 
-        bytes4[] memory selectors = new bytes4[](5);
+        bytes4[] memory selectors = new bytes4[](6);
         selectors[0] = handler.create.selector;
         selectors[1] = handler.advance.selector;
         selectors[2] = handler.timeout.selector;
         selectors[3] = handler.withdraw.selector;
         selectors[4] = handler.attemptSecondSettlement.selector;
+        selectors[5] = handler.setOutcomeAclAndRetry.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -241,12 +257,25 @@ contract EscrowInvariantTest is StdInvariant, Test {
             bytes32 outcomeId = keccak256(abi.encode(address(escrow), tradeId));
             GuaranteeEscrow.State state = escrow.tradeState(tradeId);
             bool recorded = hub.recordedOutcomes(outcomeId);
+            GuaranteeEscrow.Trade memory trade = escrow.getTrade(tradeId);
             if (state == GuaranteeEscrow.State.RELEASED || state == GuaranteeEscrow.State.RESOLVED) {
-                assertTrue(recorded);
+                assertTrue(trade.outcomeRecorded || trade.outcomePending);
+                assertFalse(trade.outcomeRecorded && trade.outcomePending);
             } else if (state == GuaranteeEscrow.State.VOIDED) {
                 assertFalse(recorded);
+                assertFalse(trade.outcomePending);
             }
+            assertEq(trade.outcomeRecorded, recorded);
             if (recorded) assertEq(handler.reputationTransitions(tradeId), 1);
+        }
+    }
+
+    function invariant_eligibilityAgentCountIsAnImmutableCreationSnapshot() public view {
+        uint256 count = handler.tradeCount();
+        for (uint256 i; i < count; ++i) {
+            GuaranteeEscrow.Trade memory trade = escrow.getTrade(handler.tradeIds(i));
+            assertGt(trade.eligibilityAgentCount, 0);
+            assertLe(trade.eligibilityAgentCount, registry.agentCount());
         }
     }
 
@@ -270,7 +299,7 @@ contract EscrowLivenessScenarioTest is Test {
         registry = new AgentRegistry();
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
-        hub.setAuthorizedCaller(address(escrow), true);
+        hub.setOutcomeWriter(address(escrow), true);
         vm.deal(buyer, 100 ether);
         vm.deal(guarantor, 100 ether);
         vm.prank(buyer);
@@ -359,7 +388,7 @@ contract EscrowLivenessScenarioTest is Test {
 
     function _create() private returns (uint256 tradeId) {
         vm.prank(buyer);
-        tradeId = escrow.createTrade(buyerId, sellerId, 1 ether);
+        tradeId = escrow.createTrade(buyerId, sellerId, 1 ether, 0.2 ether);
     }
 
     function _funded() private returns (uint256 tradeId) {
@@ -372,8 +401,9 @@ contract EscrowLivenessScenarioTest is Test {
 
     function _offered() private returns (uint256 tradeId) {
         tradeId = _funded();
+        uint256 premium = escrow.getTrade(tradeId).referencePremium;
         vm.prank(guarantor);
-        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.1 ether);
+        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, premium);
     }
 
     function _guaranteed() private returns (uint256 tradeId) {
@@ -391,6 +421,6 @@ contract EscrowLivenessScenarioTest is Test {
     function _disputed() private returns (uint256 tradeId) {
         tradeId = _delivered();
         vm.prank(buyer);
-        escrow.dispute(tradeId);
+        escrow.dispute{value: 0.02 ether}(tradeId);
     }
 }
