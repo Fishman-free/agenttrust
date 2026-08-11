@@ -47,9 +47,10 @@ trap 'clear_readiness; exit 1' HUP INT TERM
 
 manifest_hash() {
   key=$1
+  # 用 0x[0-9a-fA-F]+（无区间量词）：busybox awk 不支持 {64} 区间量词，导致哈希匹配不到
   awk -v key="\"$key\"" '
     index($0, "\"runtimeBytecodeHashes\"") { in_hashes = 1 }
-    in_hashes && index($0, key) && match($0, /0x[0-9a-fA-F]{64}/) {
+    in_hashes && index($0, key) && match($0, /0x[0-9a-fA-F]+/) {
       print substr($0, RSTART, RLENGTH)
       exit
     }
