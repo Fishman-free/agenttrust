@@ -1,6 +1,6 @@
-# Enable auto-merge only for the trusted collaborator's same-repository zcode/* PRs.
-# GitHub branch protection remains responsible for required reviews and status checks.
-name: Auto Merge Trusted Collaborator PR
+# Auto-approve and enable auto-merge only for KerryChia's same-repository zcode/* PRs.
+# The event actor is also pinned so another collaborator cannot refresh approval by pushing to the branch.
+name: Auto Approve and Merge Trusted Collaborator PR
 
 on:
   pull_request:
@@ -13,10 +13,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  enable-auto-merge:
+  auto-approve-and-merge:
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.user.login == 'KerryChia' &&
+      github.event.sender.login == 'KerryChia' &&
       github.event.pull_request.author_association == 'COLLABORATOR' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.base.ref == 'main' &&
@@ -26,7 +27,13 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Enable auto-merge after protected checks and reviews
+      - name: Approve the trusted collaborator revision
+        run: gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Enable auto-merge after protected checks
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
