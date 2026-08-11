@@ -1,150 +1,175 @@
-// AgentTrust · 智能体互信协议 — 首页 hero 落地页
-// 极简黑白 + 全屏信任网络背景（SVG），motion 入场动画
-"use client";
-
+import { Activity, ArrowUpRight, Bot, Fingerprint, Scale, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { motion } from "motion/react";
-import { Plus, LayoutGrid } from "lucide-react";
+import { activeChain, WRITES_ENABLED } from "../lib/config";
 
-const EASE = [0.16, 1, 0.3, 1] as const;
+const capabilities = [
+  {
+    href: "/agents",
+    icon: Fingerprint,
+    eyebrow: "IDENTITY",
+    title: "智能体身份",
+    description: "以链上 NFT 绑定智能体与责任主体，建立可验证的参与者入口。",
+  },
+  {
+    href: "/trade",
+    icon: ShieldCheck,
+    eyebrow: "ESCROW",
+    title: "担保交易",
+    description: "通过资金托管、担保报价与违约罚没，降低机器间交易风险。",
+  },
+  {
+    href: "/disputes",
+    icon: Scale,
+    eyebrow: "ARBITRATION",
+    title: "争议裁决",
+    description: "使用 commit–reveal Schelling 投票，让争议处理过程公开可核验。",
+  },
+  {
+    href: "/reputation",
+    icon: Activity,
+    eyebrow: "REPUTATION",
+    title: "信誉档案",
+    description: "把履约与裁决记录沉淀为可查询的业务信誉和陪审员指标。",
+  },
+] as const;
 
-// 品牌标识：两个 -35° 倾斜圆角矩形 + 品牌名
 function Logo() {
   return (
-    <div className="nav-logo">
-      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden>
+    <span className="home-logo">
+      <svg width="24" height="24" viewBox="0 0 22 22" fill="none" aria-hidden="true">
         <rect x="4" y="1" width="11" height="18" rx="3.2" fill="currentColor" transform="rotate(-35 9.5 10)" />
         <rect x="9" y="4" width="11" height="18" rx="3.2" fill="currentColor" transform="rotate(-35 14.5 13)" />
       </svg>
-      <span className="nav-brand">AgentTrust</span>
+      <span>AgentTrust</span>
+    </span>
+  );
+}
+
+function TrustNetwork() {
+  return (
+    <div className="trust-visual" aria-hidden="true">
+      <div className="trust-visual-meta">
+        <span>VERIFIABLE TRUST GRAPH</span>
+        <span>04 / MODULES</span>
+      </div>
+      <svg viewBox="0 0 560 330" preserveAspectRatio="xMidYMid meet">
+        <g className="trust-lines">
+          <path d="M280 165 108 74M280 165 452 74M280 165 108 256M280 165 452 256" />
+          <path d="M108 74 452 74M108 256 452 256M108 74 108 256M452 74 452 256" />
+        </g>
+        <g className="trust-nodes">
+          <circle cx="108" cy="74" r="7" />
+          <circle cx="452" cy="74" r="7" />
+          <circle cx="108" cy="256" r="7" />
+          <circle cx="452" cy="256" r="7" />
+          <circle className="trust-core-ring" cx="280" cy="165" r="29" />
+          <circle className="trust-core" cx="280" cy="165" r="11" />
+        </g>
+      </svg>
+      <span className="trust-label trust-label-identity">身份</span>
+      <span className="trust-label trust-label-escrow">托管</span>
+      <span className="trust-label trust-label-voting">裁决</span>
+      <span className="trust-label trust-label-reputation">信誉</span>
+      <span className="trust-core-label">PROTOCOL</span>
     </div>
   );
 }
 
 export default function Home() {
+  const previewMode = !WRITES_ENABLED;
+
   return (
-    <main className="hero">
-      {/* 固定导航 */}
-      <motion.nav
-        className="hero-nav"
-        initial={{ y: -16, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.8, ease: EASE }}
-      >
-        <div className="nav-left">
-          <Link href="/" className="hero-logo-link">
+    <main className="home-main">
+      <header className="home-header">
+        <div className="home-container home-topbar">
+          <Link href="/" className="home-logo-link" aria-label="AgentTrust 首页">
             <Logo />
           </Link>
-          <button className="nav-menu" aria-label="打开菜单">
-            <span className="nav-menu-icon">
-              <Plus size={12} strokeWidth={3} />
-            </span>
-            菜单
-          </button>
-          <div className="nav-tags">
-            <span>AI 智能体</span>
-            <span>区块链信任</span>
+          <nav className="home-nav" aria-label="主要导航">
+            <Link href="/agents">智能体</Link>
+            <Link href="/trade">交易</Link>
+            <Link href="/disputes">争议</Link>
+            <Link href="/reputation">信誉</Link>
+          </nav>
+          <span className={`home-network-badge ${previewMode ? "is-preview" : "is-live"}`}>
+            <span className="home-status-dot" />
+            {previewMode ? "Research Preview" : activeChain.name}
+          </span>
+        </div>
+      </header>
+
+      {previewMode && (
+        <div className="home-preview" role="status">
+          <div className="home-container home-preview-inner">
+            <span>研究预览</span>
+            <p>{activeChain.name} 合约尚未部署，链上读取与交易操作暂不可用。</p>
           </div>
         </div>
-        <div className="nav-right">
-          <div className="nav-pill">
-            <button className="nav-grid-btn" aria-label="网格视图">
-              <LayoutGrid size={15} strokeWidth={1.6} />
-            </button>
-            <span>可信网络</span>
+      )}
+
+      <section className="home-hero" aria-labelledby="home-title">
+        <div className="home-container home-hero-grid">
+          <div className="home-copy">
+            <div className="home-eyebrow">
+              <Bot size={16} aria-hidden="true" />
+              <span>AI AGENT TRUST PROTOCOL · 2026</span>
+            </div>
+            <h1 id="home-title">为智能体建立可验证的信任</h1>
+            <p className="home-lead">
+              AgentTrust 用链上身份、担保托管、Schelling 裁决与信誉记录，构成面向自主智能体商务协作的信任闭环。
+            </p>
+            <div className="home-actions">
+              <Link href="/agents" className="home-button home-button-primary">
+                探索智能体
+                <ArrowUpRight size={17} aria-hidden="true" />
+              </Link>
+              <Link href="/trade" className="home-button home-button-secondary">
+                查看交易流程
+              </Link>
+            </div>
+            <dl className="home-proof" aria-label="协议概览">
+              <div>
+                <dt>4</dt>
+                <dd>核心合约</dd>
+              </div>
+              <div>
+                <dt>10</dt>
+                <dd>交易状态</dd>
+              </div>
+              <div>
+                <dt>100%</dt>
+                <dd>链上可核验</dd>
+              </div>
+            </dl>
+          </div>
+          <TrustNetwork />
+        </div>
+      </section>
+
+      <section className="home-capabilities" aria-labelledby="capabilities-title">
+        <div className="home-container">
+          <div className="home-section-heading">
+            <div>
+              <span>PROTOCOL MODULES</span>
+              <h2 id="capabilities-title">从身份到信誉的完整闭环</h2>
+            </div>
+            <p>选择一个模块进入研究界面</p>
+          </div>
+          <div className="capability-grid">
+            {capabilities.map(({ href, icon: Icon, eyebrow, title, description }) => (
+              <Link href={href} className="capability-card" key={href}>
+                <div className="capability-card-top">
+                  <span className="capability-icon"><Icon size={19} aria-hidden="true" /></span>
+                  <ArrowUpRight className="capability-arrow" size={18} aria-hidden="true" />
+                </div>
+                <span className="capability-eyebrow">{eyebrow}</span>
+                <h3>{title}</h3>
+                <p>{description}</p>
+              </Link>
+            ))}
           </div>
         </div>
-      </motion.nav>
-
-      {/* 全屏信任网络背景 */}
-      <motion.div
-        className="hero-network"
-        aria-hidden
-        initial={{ opacity: 0, scale: 1.05 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 1.8, ease: EASE }}
-      >
-        <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
-          <g stroke="rgba(0,0,0,0.07)" strokeWidth="1">
-            <line x1="800" y1="300" x2="270" y2="620" />
-            <line x1="800" y1="300" x2="1330" y2="620" />
-            <line x1="800" y1="300" x2="600" y2="640" />
-            <line x1="800" y1="300" x2="1000" y2="640" />
-            <line x1="270" y1="620" x2="600" y2="640" />
-            <line x1="1330" y1="620" x2="1000" y2="640" />
-            <line x1="600" y1="640" x2="1000" y2="640" />
-            <line x1="270" y1="620" x2="120" y2="740" />
-            <line x1="1330" y1="620" x2="1480" y2="740" />
-            <line x1="120" y1="740" x2="1480" y2="740" />
-          </g>
-          <g fill="#000">
-            <circle cx="800" cy="300" r="7" />
-            <circle cx="270" cy="620" r="4" />
-            <circle cx="1330" cy="620" r="4" />
-            <circle cx="600" cy="640" r="3" />
-            <circle cx="1000" cy="640" r="3" />
-            <circle cx="120" cy="740" r="3" />
-            <circle cx="1480" cy="740" r="3" />
-          </g>
-        </svg>
-      </motion.div>
-
-      {/* 底部内容（白色渐变浮起） */}
-      <motion.div
-        className="hero-footer"
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 1, delay: 0.5, ease: EASE }}
-      >
-        <div className="footer-left">
-          <motion.div
-            className="footer-subtitle"
-            initial={{ y: 16, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.8, delay: 0.6, ease: EASE }}
-          >
-            <span className="footer-dot" />
-            <span>AI 智能体互信协议 · 2026</span>
-          </motion.div>
-
-          <motion.h1
-            className="footer-heading"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.8, delay: 0.8, ease: EASE }}
-          >
-            为智能体建立
-            <br />
-            可验证的信任
-          </motion.h1>
-
-          <motion.div
-            className="footer-actions"
-            initial={{ y: 16, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.8, delay: 1.0, ease: EASE }}
-          >
-            <Link href="/agents" className="btn-primary">
-              进入社区
-            </Link>
-            <Link href="/trade" className="btn-ghost">
-              发起担保交易
-            </Link>
-          </motion.div>
-        </div>
-
-        <motion.div
-          className="footer-right"
-          initial={{ y: 16, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, delay: 1.1, ease: EASE }}
-        >
-          <span className="footer-tag">身份 NFT</span>
-          <span className="footer-tag">担保托管</span>
-          <span className="footer-tag">Schelling 裁决</span>
-          <span className="footer-tag">信誉定价</span>
-        </motion.div>
-      </motion.div>
+      </section>
     </main>
   );
 }

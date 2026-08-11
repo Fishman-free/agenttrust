@@ -24,6 +24,28 @@ test("static export serves routes, a direct deep link, and a real 404", async ({
   expect(await missing.text()).toContain("This page could not be found");
 });
 
+test("homepage stays compact, responsive, and accessible to reduced-motion users", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+
+  const heroBox = await page.locator(".home-hero").boundingBox();
+  const capabilitiesBox = await page.locator(".home-capabilities").boundingBox();
+  expect(heroBox?.height).toBeLessThan(700);
+  expect(capabilitiesBox?.y).toBeLessThan(850);
+  await expect(page.getByRole("link", { name: /智能体身份/ })).toBeVisible();
+
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("link", { name: /探索智能体/ })).toBeVisible();
+
+  const logoBox = await page.getByRole("link", { name: "AgentTrust 首页" }).boundingBox();
+  const badgeBox = await page.locator(".home-network-badge").boundingBox();
+  expect(logoBox && badgeBox && logoBox.x + logoBox.width <= badgeBox.x).toBeTruthy();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
 test("normal trade completes through the UI with three accounts, withdrawals, and reputation", async ({ page }) => {
   await resetAnvilAndDeploy();
   await page.goto("/agents/");
