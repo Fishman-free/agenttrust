@@ -2,8 +2,14 @@
 # One-shot Compose setup: deploy or safely reuse four contracts, then publish readiness.
 set -eu
 
+# 定位合约工程根目录。优先用 $0 推导（本地 scripts/deploy.sh 调用）；
+# 但 Docker ENTRYPOINT 把脚本 COPY 到 /usr/local/bin，$0 推导会得到错误目录，
+# 此时回退到当前工作目录（Dockerfile WORKDIR=/app/contracts）。
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 CONTRACTS_DIR=$(dirname "$SCRIPT_DIR")
+if [ ! -f "$CONTRACTS_DIR/script/Deploy.s.sol" ]; then
+  CONTRACTS_DIR=$PWD
+fi
 cd "$CONTRACTS_DIR"
 
 RPC_URL="${RPC_URL:-http://anvil:8545}"
@@ -47,7 +53,7 @@ trap 'clear_readiness; exit 1' HUP INT TERM
 
 manifest_hash() {
   key=$1
-  # 用 0x[0-9a-fA-F]+（无区间量词）：busybox awk 不支持 {64} 区间量词，导致哈希匹配不到
+  # 用 0x[0-9a-fA-F]+（无区间量词）：busybox awk 不支持 {64}/{40} 等 {n} 区间量词，会导致匹配不到
   awk -v key="\"$key\"" '
     index($0, "\"runtimeBytecodeHashes\"") { in_hashes = 1 }
     in_hashes && index($0, key) && match($0, /0x[0-9a-fA-F]+/) {
@@ -160,10 +166,8 @@ extract_named_addresses() {
       type = substr($0, RSTART, RLENGTH)
     }
     type ~ /"CREATE"/ && index($0, "\"contractName\": \"" name "\"") { named_create = 1 }
-    named_create && match($0, /"contractAddress"[[:space:]]*:[[:space:]]*"0x[0-9a-fA-F]{40}"/) {
+    named_create && index($0, "\"contractAddress\"") && match($0, /0x[0-9a-fA-F]+/) {
       value = substr($0, RSTART, RLENGTH)
-      sub(/^.*"0x/, "0x", value)
-      sub(/"$/, "", value)
       print value
       named_create = 0
       type = ""
