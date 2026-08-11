@@ -1,0 +1,41 @@
+# Auto Approve + Auto Merge collaborator PRs (zcode/* branches)
+#
+# 需求：collaborator（KerryChia）从 zcode/* 分支提交 PR 后，自动审批 + 开启 auto-merge。
+# 安全约束：
+#   - 仅对 zcode/* 来源分支生效（collaborator 专用工作流）
+#   - 仓库所有者自己（Fishman-free）的 PR 不自动审批
+#   - 只有 CI 全部通过后才真正合并（依赖分支保护 + auto-merge 机制）
+#   - GITHUB_TOKEN 是 github-actions[bot] 身份，可审批他人 PR
+
+name: Auto Approve and Merge Collaborator PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  auto-approve-and-merge:
+    runs-on: ubuntu-latest
+    # 过滤：仅 collaborator 的 zcode/* 分支，且非仓库所有者（bot 不能审批自己的 PR）
+    if: |
+      github.event.pull_request.user.login != 'Fishman-free' &&
+      startsWith(github.event.pull_request.head.ref, 'zcode/')
+
+    steps:
+      # 1. 自动 Approve
+      - name: Auto Approve PR
+        run: gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2. 开启 Auto-Merge（等待 CI 状态检查通过后自动合并）
+      - name: Enable Auto-Merge
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
