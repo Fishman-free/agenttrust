@@ -26,7 +26,7 @@ jobs:
       - run: forge fmt --check
       - run: forge build
       - run: forge test
-      - run: forge coverage
+      - run: forge coverage --ir-minimum
 
   frontend:
     name: Frontend, ABI, and manifests
