@@ -2,8 +2,14 @@
 # One-shot Compose setup: deploy or safely reuse four contracts, then publish readiness.
 set -eu
 
+# 定位合约工程根目录。优先用 $0 推导（本地 scripts/deploy.sh 调用）；
+# 但 Docker ENTRYPOINT 把脚本 COPY 到 /usr/local/bin，$0 推导会得到错误目录，
+# 此时回退到当前工作目录（Dockerfile WORKDIR=/app/contracts）。
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 CONTRACTS_DIR=$(dirname "$SCRIPT_DIR")
+if [ ! -f "$CONTRACTS_DIR/script/Deploy.s.sol" ]; then
+  CONTRACTS_DIR=$PWD
+fi
 cd "$CONTRACTS_DIR"
 
 RPC_URL="${RPC_URL:-http://anvil:8545}"
