@@ -108,7 +108,17 @@ jobs:
           docker compose up -d --build
       - name: Wait for combined frontend and contract readiness
         run: |
-          curl --fail --retry 30 --retry-delay 2 --retry-connrefused http://127.0.0.1:3000/healthz
+          # frontend/nginx 启动有竞态：连接可能在 nginx 监听前被 RST（curl --retry-connrefused
+          # 不会对 connection reset 重试）。循环重试直到 healthz 返回 200。
+          ok=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/healthz >/dev/null 2>&1; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+          [ "$ok" -eq 1 ] || { echo "frontend /healthz never became ready" >&2; exit 1; }
           docker compose exec -T frontend test -s /readiness/contracts-ready
       - name: Verify Anvil chain id and four runtime contracts
         run: |
@@ -131,7 +141,15 @@ jobs:
         run: |
           docker compose down --remove-orphans
           docker compose up -d
-          curl --fail --retry 30 --retry-delay 2 --retry-connrefused http://127.0.0.1:3000/healthz
+          ok=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/healthz >/dev/null 2>&1; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+          [ "$ok" -eq 1 ] || { echo "frontend /healthz never became ready after down/up" >&2; exit 1; }
           setup_id=$(docker compose ps -aq setup)
           test -n "$setup_id"
           test "$(docker inspect -f '{{.State.ExitCode}}' "$setup_id")" = 0
