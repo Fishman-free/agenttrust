@@ -1,0 +1,10 @@
+# 统一行尾：可执行脚本必须 LF（Windows 上 CRLF 会导致 Linux 容器 "no such file or directory"）
+*.sh text eol=lf
+*.mjs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.sol text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.md text eol=lf
