@@ -32,10 +32,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="footer-inner">
           <span>AgentTrust · 智能体互信协议</span>
           <nav className="footer-links" aria-label="文档与仓库">
-            <Link href="/agents">智能体</Link>
-            <Link href="/trade">交易</Link>
-            <Link href="/disputes">争议</Link>
-            <Link href="/reputation">信誉</Link>
             <a href={DOCS_URL} target="_blank" rel="noopener noreferrer">
               使用文档
             </a>
