@@ -462,65 +462,65 @@ export default function DisputesPage() {
   }[pendingOperation.kind] : undefined;
 
   return (
-    <main className="max-w-3xl mx-auto p-6 space-y-4">
+    <main className="page page-narrow space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div><h1 className="text-2xl font-bold">争议与裁决</h1><p className="text-sm text-gray-500">承诺—揭示投票；钱包连接与切链请使用页首钱包栏。</p></div>
+        <div className="page-head"><h1 className="page-title">争议与裁决</h1><p className="page-sub">承诺—揭示投票；钱包连接与切链请使用页首钱包栏。</p></div>
         <button className="button button-secondary" onClick={refresh}>重新加载链上状态</button>
       </div>
 
-      <section className="border rounded p-4 space-y-3">
-        <h2 className="font-semibold">1. 交易争议与无许可开案</h2>
-        <input aria-label="Trade ID" placeholder="Trade ID" value={tradeIdInput} onChange={(event) => setTradeIdInput(event.target.value)} className="w-full border rounded p-2" />
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+      <section className="card space-y-3">
+        <h2 className="card-title">1. 交易争议与无许可开案</h2>
+        <input aria-label="Trade ID" placeholder="Trade ID" value={tradeIdInput} onChange={(event) => setTradeIdInput(event.target.value)} className="field-input" />
+        <dl className="detail-grid">
           <div><dt className="text-gray-500">精确争议保证金</dt><dd>{bondRead.data === undefined ? "—" : `${formatEther(bondRead.data)} ETH`}</dd></div>
           <div><dt className="text-gray-500">交易状态</dt><dd>{trade?.exists ? String(trade.state) : "—"}</dd></div>
           <div><dt className="text-gray-500">当前不可变 caseStake</dt><dd>{caseStakeRead.data === undefined ? "—" : `${formatEther(caseStakeRead.data)} ETH`}</dd></div>
           <div><dt className="text-gray-500">交易案件</dt><dd>{hasCaseRead.data === true ? `Case #${mappedCaseRead.data?.toString() ?? "加载中"}` : "尚未开案"}</dd></div>
         </dl>
-        <div className="flex gap-2 flex-wrap">
+        <div className="action-row">
           <GuardedButton label="支付精确保证金并发起争议" ready={disputeReady} onClick={dispute} primary />
           <GuardedButton label="openCase（任何人可调用）" ready={openReady} onClick={openCase} />
         </div>
       </section>
 
-      <section className="border rounded p-4 space-y-3">
-        <h2 className="font-semibold">2. 案件状态</h2>
-        <input aria-label="Case ID" placeholder="Case ID（开案后自动填入）" value={caseIdInput} onChange={(event) => setCaseIdInput(event.target.value)} className="w-full border rounded p-2" />
+      <section className="card space-y-3">
+        <h2 className="card-title">2. 案件状态</h2>
+        <input aria-label="Case ID" placeholder="Case ID（开案后自动填入）" value={caseIdInput} onChange={(event) => setCaseIdInput(event.target.value)} className="field-input" />
         {details ? (
-          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+          <dl className="detail-grid">
             <Metric label="阶段" value={phase} /><Metric label="Trade ID" value={details[0].toString()} /><Metric label="案件质押" value={`${formatEther(details[1])} ETH`} />
             <Metric label="提交截止" value={formatDeadline(details[2])} /><Metric label="揭示截止" value={formatDeadline(details[3])} /><Metric label="资格快照 Agent 数" value={details[4].toString()} />
             <Metric label="已提交" value={details[5].toString()} /><Metric label="买家票" value={details[6].toString()} /><Metric label="卖家票" value={details[7].toString()} />
             <Metric label="弃权" value={details[8].toString()} /><Metric label="有效裁决" value={details[9] ? (details[10] ? "是" : "否") : "未结算"} /><Metric label="胜方" value={details[9] ? SIDE_LABELS[details[11] as VoteSide] : "—"} />
           </dl>
-        ) : <p className="text-sm text-gray-500">输入有效 Case ID 以加载 caseDetails。</p>}
-        <div className="text-sm border rounded p-3">
+        ) : <p className="form-hint">输入有效 Case ID 以加载 caseDetails。</p>}
+        <div className="callout text-sm">
           <strong>当前账户 jurorStatus：</strong>{juror ? ` committed=${juror[0]} · revealed=${juror[1]} · side=${SIDE_LABELS[juror[2] as VoteSide]} · claimed=${juror[3]}` : " —"}
           <div className="text-gray-500">资格快照：{String(snapshotEligibleRead.data ?? "—")} · 信誉资格：{String(reputationEligibleRead.data ?? "—")} · 交易主体：{String(isActor)}</div>
         </div>
       </section>
 
-      <section className="border rounded p-4 space-y-3">
-        <h2 className="font-semibold">3. 承诺—揭示投票</h2>
+      <section className="card space-y-3">
+        <h2 className="card-title">3. 承诺—揭示投票</h2>
         <fieldset className="flex gap-4 flex-wrap" disabled={!commitReady.ready}>
-          <legend className="text-sm text-gray-500 mb-1">选择一项；选择只会写入加密承诺</legend>
+          <legend className="form-hint mb-1">选择一项；选择只会写入加密承诺</legend>
           {SIDE_LABELS.map((label, side) => <label key={label} className="flex gap-2 items-center"><input type="radio" name="vote-side" checked={selectedSide === side} onChange={() => setSelectedSide(side as VoteSide)} />{label}</label>)}
         </fieldset>
-        <div className="flex gap-2 flex-wrap">
+        <div className="action-row">
           <GuardedButton label="生成秘密并提交承诺" ready={commitReady} onClick={commitVote} primary />
           <GuardedButton label="用已保存秘密揭示" ready={revealReady} onClick={revealVote} />
         </div>
-        <div className="border rounded p-3 text-sm space-y-2">
-          <p className="font-semibold text-orange-700">重要：浏览器数据丢失将导致无法揭示并可能损失质押。提交前会先安全生成并保存 salt；请立即备份。</p>
-          {secret ? <><p>本地秘密：{SIDE_LABELS[secret.side]} · 状态 {secret.status}</p><code className="block break-all">salt: {secret.salt}</code><code className="block break-all">commitment: {secret.commitment}</code><button className="button button-secondary" onClick={copySecret}>复制秘密备份（JSON）</button></> : <p className="text-gray-500">当前链、账户与案件没有可用秘密。</p>}
+        <div className="callout text-sm space-y-2">
+          <p className="warning-text font-semibold">重要：浏览器数据丢失将导致无法揭示并可能损失质押。提交前会先安全生成并保存 salt；请立即备份。</p>
+          {secret ? <><p>本地秘密：{SIDE_LABELS[secret.side]} · 状态 {secret.status}</p><code className="block break-all">salt: {secret.salt}</code><code className="block break-all">commitment: {secret.commitment}</code><button className="button button-secondary" onClick={copySecret}>复制秘密备份（JSON）</button></> : <p className="form-hint">当前链、账户与案件没有可用秘密。</p>}
           {secretMessage && <p role="status">{secretMessage}</p>}
         </div>
       </section>
 
-      <section className="border rounded p-4 space-y-3">
-        <h2 className="font-semibold">4. 结算、领取与指标</h2>
+      <section className="card space-y-3">
+        <h2 className="card-title">4. 结算、领取与指标</h2>
         <p className="text-sm">待提取余额：<strong>{formatEther(withdrawalRead.data ?? BigInt(0))} ETH</strong></p>
-        <div className="flex gap-2 flex-wrap">
+        <div className="action-row">
           <GuardedButton label="结算案件" ready={settleReady} onClick={() => simpleCaseWrite("settle")} />
           <GuardedButton label="统一领取 claim" ready={claimReady} onClick={() => simpleCaseWrite("claim")} />
           <GuardedButton label="提取到当前账户" ready={withdrawReady} onClick={withdraw} />
@@ -538,5 +538,5 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function GuardedButton({ label, ready, onClick, primary = false }: { label: string; ready: WriteReadiness; onClick: () => void; primary?: boolean }) {
-  return <div><button className={primary ? "button button-primary" : "button button-secondary"} disabled={!ready.ready} onClick={onClick}>{label}</button>{!ready.ready && <p className="text-xs text-gray-500 mt-1 max-w-xs">{ready.reason}</p>}</div>;
+  return <div><button className={primary ? "button button-primary" : "button button-secondary"} disabled={!ready.ready} onClick={onClick}>{label}</button>{!ready.ready && <p className="form-hint mt-1 max-w-xs">{ready.reason}</p>}</div>;
 }

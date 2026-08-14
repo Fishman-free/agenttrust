@@ -1,6 +1,7 @@
-import { Activity, ArrowUpRight, Bot, Fingerprint, Scale, ShieldCheck } from "lucide-react";
+import { Activity, ArrowUpRight, BookOpen, Bot, Fingerprint, Scale, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { activeChain, WRITES_ENABLED } from "../lib/config";
+import { DOCS_URL } from "../lib/docs";
 
 const capabilities = [
   {
@@ -90,6 +91,7 @@ export default function Home() {
             <Link href="/trade">交易</Link>
             <Link href="/disputes">争议</Link>
             <Link href="/reputation">信誉</Link>
+            <a href={DOCS_URL} target="_blank" rel="noopener noreferrer">使用文档</a>
           </nav>
           <span className={`home-network-badge ${previewMode ? "is-preview" : "is-live"}`}>
             <span className="home-status-dot" />
@@ -126,6 +128,15 @@ export default function Home() {
               <Link href="/trade" className="home-button home-button-secondary">
                 查看交易流程
               </Link>
+              <a
+                href={DOCS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="home-button home-button-secondary"
+              >
+                <BookOpen size={17} aria-hidden="true" />
+                阅读使用文档
+              </a>
             </div>
             <dl className="home-proof" aria-label="协议概览">
               <div>

@@ -109,55 +109,58 @@ export default function AgentsPage() {
       : undefined;
 
   return (
-    <main className="max-w-2xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-4">智能体注册</h1>
+    <main className="page">
+      <div className="page-head">
+        <h1 className="page-title">智能体注册</h1>
+        <p className="page-sub">以链上 NFT 绑定智能体与责任主体，建立可验证的参与者入口。</p>
+      </div>
       {!isConnected && (
         <button
-          className="border px-4 py-2 rounded disabled:opacity-50"
+          className="button button-primary mt-4"
           onClick={() => connectors[0] && connect({ connector: connectors[0] })}
           disabled={!connectors[0] || isConnecting}
         >
           {isConnecting ? "连接中…" : "连接钱包"}
         </button>
       )}
-      {!registryConfigured && <p className="text-sm text-amber-700 mt-3" role="status">当前网络的 AgentRegistry 尚未部署，读取与注册均已禁用。</p>}
+      {!registryConfigured && <p className="form-warning mt-3" role="status">当前网络的 AgentRegistry 尚未部署，读取与注册均已禁用。</p>}
       {isConnected && chainId !== CHAIN_ID && (
-        <p className="text-sm text-red-600 mb-4" role="alert">
+        <p className="form-error mb-4" role="alert">
           网络错误：请切换到 {activeChain.name}（Chain ID {CHAIN_ID}）。
         </p>
       )}
       {isConnected && (
         <>
-          <p className="text-sm text-gray-500 mb-4">当前责任主体：{address}</p>
-          <div className="space-y-3">
+          <p className="form-hint mb-4">当前责任主体：{address}</p>
+          <div className="card space-y-3">
             <input aria-label="智能体名称（如 DataAgent）" placeholder="智能体名称（如 DataAgent）" value={name} onChange={(e) => setName(e.target.value)}
-              className="w-full border rounded p-2" />
+              className="field-input" />
             <input aria-label="能力描述（如：链上数据分析服务）" placeholder="能力描述（如：链上数据分析服务）" value={desc} onChange={(e) => setDesc(e.target.value)}
-              className="w-full border rounded p-2" />
+              className="field-input" />
             <input aria-label="MCP/A2A 端点（https://…）" placeholder="MCP/A2A 端点（https://…）" value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
-              className="w-full border rounded p-2" />
+              className="field-input" />
             <button
               onClick={register}
               disabled={!readiness.ready}
               title={readiness.ready ? undefined : readiness.reason}
-              className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              className="button button-primary"
             >
               {busy ? "注册中…" : feeData === undefined ? "加载中…" : `注册（注册费 ${fee} ETH）`}
             </button>
             {!readiness.ready && readiness.code !== "invalid-input" && (
-              <p className="text-xs text-amber-700" role="status">{readiness.reason}</p>
+              <p className="form-warning" role="status">{readiness.reason}</p>
             )}
             <TransactionStatus feedback={feedback} successLabel={successLabel} />
           </div>
-          <h2 className="text-xl font-semibold mt-8 mb-2">已注册智能体（{String(agentCount ?? 0)}）</h2>
+          <h2 className="section-title mt-8 mb-2">已注册智能体（{String(agentCount ?? 0)}）</h2>
           {count === 0 ? (
-            <p className="text-sm text-gray-500">暂无智能体，注册第一个吧</p>
+            <p className="form-hint">暂无智能体，注册第一个吧</p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="agent-list space-y-2">
               {agentList?.map((item, i) => {
                 const agent = item?.status === "success" ? (item.result as unknown as AgentMetadata) : undefined;
                 return (
-                  <li key={i} className="border rounded p-3 text-sm break-all">
+                  <li key={i} className="list-row text-sm break-all">
                     <span className="font-semibold">#{i}</span>
                     {agent ? (
                       <> · {agent[0]}（{agent[1]}） · {agent[2]} · {agent[3]}</>
