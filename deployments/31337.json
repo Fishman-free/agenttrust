@@ -11,16 +11,16 @@
     "schellingVoting": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9"
   },
   "runtimeBytecodeHashes": {
-    "agentRegistry": "0x7aacd9d7df97a3f3b412b3e6e4354559bc0e2306c7e50e41e42ce2596c56739f",
+    "agentRegistry": "0x1794e593701b339a2164899dc66f7064fb92336f57de65351f646985a3f05ac1",
     "reputationHub": "0x97d8f0ea00a4213196ec249cf24fd4fc8a9381074ecebcae010f3ce669f8c4c2",
-    "guaranteeEscrow": "0x69898b3019f14410e8e788ceff867c1dd02da16b3f0b36adce495cc2b4e6b1ef",
-    "schellingVoting": "0x80604a2dbe2f4659d6be2cf643d539c36f21c1281c50e271351df9184c47fb01"
+    "guaranteeEscrow": "0x1d76040be94080c940adcd22a7c97cda8349ef02e7dca8800df783a9e409be22",
+    "schellingVoting": "0x776c1df051ade8fb7ebbae69d18b39e170e4305834bb2cce36e134e146a1bc95"
   },
   "deploymentMetadata": {
     "agentRegistry": {
       "constructorArgs": [],
       "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-      "transactionHash": "0xf23f058abdee44045691013fb5f642090c2a9213a578ce25e95cc3a4ddd4ae24",
+      "transactionHash": "0x75ad9394fea78144b6b3175ce799d93c0ac273c852f7f7e75ed059b13830cf7c",
       "blockNumber": 1
     },
     "reputationHub": {
@@ -35,8 +35,8 @@
         "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
       ],
       "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-      "transactionHash": "0x66af8208606a08902e611a9aa1ed4211b6f56424eb3f5c49e03363f00d30f027",
-      "blockNumber": 3
+      "transactionHash": "0xd8c82cdfca78e3c9c066d4a6896a726c9bb50d377b6cb1de0ab74b9f781ec142",
+      "blockNumber": 2
     },
     "schellingVoting": {
       "constructorArgs": [
@@ -48,8 +48,8 @@
         "86400"
       ],
       "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-      "transactionHash": "0xc38571a502dd1d28f7820dbf5a34eb6b9977cda9a9694e9cd76edad595701e98",
-      "blockNumber": 3
+      "transactionHash": "0xe8d76947d1de89567700e972decbdba13d206243b213a40a278c53e9b7c577c5",
+      "blockNumber": 2
     }
   },
   "votingParameters": {

@@ -19,6 +19,8 @@ contract Deploy is Script {
         hub.setOutcomeWriter(address(escrow), true);
         hub.setJurorMetricWriter(address(voting), true);
         escrow.transferOwnership(address(voting));
+        // Anti-Sybil registration stake. Default 0.01 ETH; operators set REGISTRATION_FEE explicitly.
+        registry.setRegistrationFee(vm.envOr("REGISTRATION_FEE", uint256(0.01 ether)));
         vm.stopBroadcast();
         return (address(registry), address(hub), address(escrow), address(voting));
     }

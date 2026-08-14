@@ -100,11 +100,11 @@ contract GuaranteeEscrowTest is Test {
     }
 
     function test_samePrincipalTradeAndSelfGuaranteeRejected() public {
+        // 注册表强制一人一社区 ID：同一责任主体无法再领第二个身份，
+        // "同主体买卖"因此在注册入口即被拒绝。
         vm.prank(buyer);
-        uint256 secondBuyerId = registry.registerAgent("AlsoBuyer", "", "");
-        vm.prank(buyer);
-        vm.expectRevert(unicode"GuaranteeEscrow: 买卖方主体必须不同");
-        escrow.createTrade(buyerId, secondBuyerId, 1 ether, 0.1 ether);
+        vm.expectRevert(unicode"AgentRegistry: 主体已注册");
+        registry.registerAgent("AlsoBuyer", "", "");
 
         vm.prank(seller);
         escrow.acceptTrade(tradeId);

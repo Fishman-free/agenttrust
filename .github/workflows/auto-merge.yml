@@ -23,11 +23,11 @@ jobs:
       (
         (
           github.event.pull_request.user.login == 'KerryChia' &&
-          github.event.pull_request.sender.login == 'KerryChia' &&
+          github.event.sender.login == 'KerryChia' &&
           github.event.pull_request.author_association == 'COLLABORATOR'
         ) || (
           github.event.pull_request.user.login == 'Fishman-free' &&
-          github.event.pull_request.sender.login == 'Fishman-free' &&
+          github.event.sender.login == 'Fishman-free' &&
           github.event.pull_request.author_association == 'OWNER'
         )
       )
