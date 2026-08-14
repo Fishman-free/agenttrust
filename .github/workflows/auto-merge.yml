@@ -1,6 +1,7 @@
-# Auto-approve and enable auto-merge only for KerryChia's same-repository zcode/* PRs.
-# The event actor is also pinned so another collaborator cannot refresh approval by pushing to the branch.
-name: Auto Approve and Merge Trusted Collaborator PR
+# Auto-approve and enable auto-merge for trusted same-repository zcode/* PRs
+# (repository owner and the trusted collaborator).
+# The event actor is pinned so another collaborator cannot refresh approval by pushing to the branch.
+name: Auto Approve and Merge Trusted PR
 
 on:
   pull_request:
@@ -16,18 +17,26 @@ jobs:
   auto-approve-and-merge:
     if: >-
       github.event.pull_request.draft == false &&
-      github.event.pull_request.user.login == 'KerryChia' &&
-      github.event.sender.login == 'KerryChia' &&
-      github.event.pull_request.author_association == 'COLLABORATOR' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.base.ref == 'main' &&
-      startsWith(github.event.pull_request.head.ref, 'zcode/')
+      startsWith(github.event.pull_request.head.ref, 'zcode/') &&
+      (
+        (
+          github.event.pull_request.user.login == 'KerryChia' &&
+          github.event.pull_request.sender.login == 'KerryChia' &&
+          github.event.pull_request.author_association == 'COLLABORATOR'
+        ) || (
+          github.event.pull_request.user.login == 'Fishman-free' &&
+          github.event.pull_request.sender.login == 'Fishman-free' &&
+          github.event.pull_request.author_association == 'OWNER'
+        )
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - name: Approve the trusted collaborator revision
+      - name: Approve the trusted revision
         run: gh pr review --approve "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
