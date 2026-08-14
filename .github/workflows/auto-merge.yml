@@ -1,7 +1,10 @@
-# Auto-approve and enable auto-merge for trusted same-repository zcode/* PRs
+# Enable auto-merge for trusted same-repository zcode/* PRs
 # (repository owner and the trusted collaborator).
-# The event actor is pinned so another collaborator cannot refresh approval by pushing to the branch.
-name: Auto Approve and Merge Trusted PR
+# Merging still requires every protected status check to pass. The event actor is
+# pinned so another collaborator cannot refresh auto-merge by pushing to the branch.
+# Note: the Actions bot cannot approve PRs (GitHub restriction), so the required-review
+# protection rule is removed by owner decision; CI gates remain mandatory.
+name: Auto Merge Trusted PR
 
 on:
   pull_request:
@@ -14,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  auto-approve-and-merge:
+  auto-merge-trusted:
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
@@ -36,12 +39,6 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Approve the trusted revision
-        run: gh pr review --approve "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ github.token }}
-
       - name: Enable auto-merge after protected checks
         run: gh pr merge --auto --squash "$PR_URL"
         env:
