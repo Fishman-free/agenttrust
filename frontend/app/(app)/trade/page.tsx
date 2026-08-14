@@ -366,26 +366,26 @@ export default function TradePage() {
   const retryReady = actionReady("retryOutcome", true, Boolean(trade?.outcomePending));
 
   return (
-    <main className="max-w-5xl mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">担保交易闭环</h1>
-        <p className="text-sm text-gray-500 mt-1">创建、接受、托管、担保、交付、确认、超时与提现均以链上状态和责任主体为准。</p>
+    <main className="page page-wide space-y-6">
+      <div className="page-head">
+        <h1 className="page-title">担保交易闭环</h1>
+        <p className="page-sub">创建、接受、托管、担保、交付、确认、超时与提现均以链上状态和责任主体为准。</p>
         {!isConnected && <p className="text-sm mt-2" role="status">请使用页首钱包控件连接钱包；本页不会创建重复连接器。</p>}
-        {isConnected && !rightChain && <p className="text-sm text-red-600 mt-2" role="alert">请在页首切换至 {activeChain.name}（Chain ID {activeChain.id}）。</p>}
+        {isConnected && !rightChain && <p className="form-error mt-2" role="alert">请在页首切换至 {activeChain.name}（Chain ID {activeChain.id}）。</p>}
       </div>
 
-      <section className="border rounded p-4 space-y-3">
-        <h2 className="font-semibold">1. 创建交易（买家）</h2>
+      <section className="card space-y-3">
+        <h2 className="card-title">1. 创建交易（买家）</h2>
         <div className="grid md:grid-cols-2 gap-3">
-          <label className="text-sm">买家 Agent ID<input aria-label="买家 Agent ID" value={buyerId} onChange={(event) => setBuyerId(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
-          <label className="text-sm">卖家 Agent ID<input aria-label="卖家 Agent ID" value={sellerId} onChange={(event) => setSellerId(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
-          <label className="text-sm">交易金额（ETH）<input aria-label="交易金额（ETH）" value={amount} onChange={(event) => setAmount(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
-          <label className="text-sm">最高保费（ETH）<input aria-label="最高保费（ETH）" value={maxPremium} onChange={(event) => setMaxPremium(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
+          <label className="field-label">买家 Agent ID<input aria-label="买家 Agent ID" value={buyerId} onChange={(event) => setBuyerId(event.target.value)} className="field-input" /></label>
+          <label className="field-label">卖家 Agent ID<input aria-label="卖家 Agent ID" value={sellerId} onChange={(event) => setSellerId(event.target.value)} className="field-input" /></label>
+          <label className="field-label">交易金额（ETH）<input aria-label="交易金额（ETH）" value={amount} onChange={(event) => setAmount(event.target.value)} className="field-input" /></label>
+          <label className="field-label">最高保费（ETH）<input aria-label="最高保费（ETH）" value={maxPremium} onChange={(event) => setMaxPremium(event.target.value)} className="field-input" /></label>
         </div>
-        <div className="rounded border p-3 text-sm bg-gray-50" aria-label="担保条款预览">
+        <div className="callout text-sm" aria-label="担保条款预览">
           <strong>quoteGuaranteeTerms 预览</strong>
           {quote ? (
-            <dl className="grid sm:grid-cols-4 gap-2 mt-2">
+            <dl className="detail-grid mt-2">
               <div><dt className="text-gray-500">最低覆盖率</dt><dd>{percent(quote[0])}</dd></div>
               <div><dt className="text-gray-500">最低质押</dt><dd>{eth(quote[1])}</dd></div>
               <div><dt className="text-gray-500">参考保费</dt><dd>{eth(quote[2])}</dd></div>
@@ -394,20 +394,20 @@ export default function TradePage() {
           ) : <p className="text-gray-500 mt-1">填写有效参数后显示链上报价。</p>}
         </div>
         <ActionButton label="创建交易" readiness={createReady} onClick={createTrade} primary />
-        {!createReady.ready && <p className="text-xs text-gray-500">{createReady.reason}</p>}
+        {!createReady.ready && <p className="form-hint">{createReady.reason}</p>}
       </section>
 
-      <section className="border rounded p-4 space-y-4">
+      <section className="card space-y-4">
         <div>
-          <h2 className="font-semibold">2. 查询并推进交易</h2>
-          <label className="text-sm block mt-2">Trade ID<input aria-label="Trade ID" placeholder="输入或创建后自动载入" value={tradeId} onChange={(event) => setTradeId(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
-          {tradeRead.isLoading && <p className="text-sm text-gray-500 mt-2">正在调用 getTrade…</p>}
-          {tradeRead.error && parsedTradeId !== undefined && <p className="text-sm text-red-600 mt-2" role="alert">无法读取该交易：{tradeRead.error.message}</p>}
+          <h2 className="card-title">2. 查询并推进交易</h2>
+          <label className="field-label mt-2">Trade ID<input aria-label="Trade ID" placeholder="输入或创建后自动载入" value={tradeId} onChange={(event) => setTradeId(event.target.value)} className="field-input" /></label>
+          {tradeRead.isLoading && <p className="form-hint mt-2">正在调用 getTrade…</p>}
+          {tradeRead.error && parsedTradeId !== undefined && <p className="form-error mt-2" role="alert">无法读取该交易：{tradeRead.error.message}</p>}
         </div>
 
-        <ol className="grid sm:grid-cols-2 lg:grid-cols-5 gap-2" aria-label="全部交易状态">
+        <ol className="state-track" aria-label="全部交易状态">
           {TRADE_STATE_META.map((item) => (
-            <li key={item.value} className={`border rounded p-2 text-xs ${stateMeta?.value === item.value ? "ring-2 ring-blue-500" : ""}`} aria-current={stateMeta?.value === item.value ? "step" : undefined}>
+            <li key={item.value} className="state-step" aria-current={stateMeta?.value === item.value ? "step" : undefined}>
               <span className="font-mono">{item.value}</span> · <strong>{item.label}</strong><br />
               <span className="text-gray-500">{item.key}{item.terminal ? " · 终态" : ""}</span>
             </li>
@@ -416,12 +416,12 @@ export default function TradePage() {
 
         {trade && stateMeta && (
           <>
-            <div className="border rounded p-3 text-sm">
+            <div className="callout text-sm">
               <div className="flex flex-wrap justify-between gap-2">
                 <strong>Trade #{trade.id.toString()} · {stateMeta.label}</strong>
                 <span className="font-mono text-gray-500">{stateMeta.key}</span>
               </div>
-              <dl className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+              <dl className="detail-grid mt-3">
                 <div><dt className="text-gray-500">金额 / 最高保费</dt><dd>{eth(trade.amount)} / {eth(trade.maxPremium)}</dd></div>
                 <div><dt className="text-gray-500">买家 Agent / 主体</dt><dd>#{trade.buyerAgentId.toString()} · {shortAddress(trade.buyerSubject)}</dd></div>
                 <div><dt className="text-gray-500">卖家 Agent / 主体</dt><dd>#{trade.sellerAgentId.toString()} · {shortAddress(trade.sellerSubject)}</dd></div>
@@ -434,19 +434,19 @@ export default function TradePage() {
             </div>
 
             <div className="space-y-3">
-              <h3 className="font-semibold">当前状态操作</h3>
-              <div className="flex flex-wrap gap-2">
+              <h3 className="section-title">当前状态操作</h3>
+              <div className="action-row">
                 {simpleActions.map((item) => (
                   <ActionButton key={item.action} label={item.label} readiness={item.guard} onClick={() => runSimpleAction(item.action, `${item.label}成功。`, item.guard)} primary={item.guard.ready} />
                 ))}
               </div>
 
-              <div className="border rounded p-3 space-y-3">
-                <h3 className="font-semibold">担保人报价</h3>
+              <div className="callout space-y-3">
+                <h3 className="section-title">担保人报价</h3>
                 <div className="grid md:grid-cols-3 gap-3">
-                  <label className="text-sm">担保 Agent ID<input aria-label="担保 Agent ID" value={guarantorAgentId} onChange={(event) => setGuarantorAgentId(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
-                  <label className="text-sm">覆盖率（%）<input aria-label="覆盖率（%）" value={coverage} onChange={(event) => setCoverage(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
-                  <label className="text-sm">保费（ETH）<input aria-label="保费（ETH）" value={premium} onChange={(event) => setPremium(event.target.value)} className="w-full border rounded p-2 mt-1" /></label>
+                  <label className="field-label">担保 Agent ID<input aria-label="担保 Agent ID" value={guarantorAgentId} onChange={(event) => setGuarantorAgentId(event.target.value)} className="field-input" /></label>
+                  <label className="field-label">覆盖率（%）<input aria-label="覆盖率（%）" value={coverage} onChange={(event) => setCoverage(event.target.value)} className="field-input" /></label>
+                  <label className="field-label">保费（ETH）<input aria-label="保费（ETH）" value={premium} onChange={(event) => setPremium(event.target.value)} className="field-input" /></label>
                 </div>
                 <p className="text-sm">requiredStake 链上精确值：<strong>{eth(stakeRead.data)}</strong></p>
                 <ActionButton label={`提供担保并质押 ${eth(stakeRead.data)}`} readiness={guaranteeReady} onClick={offerGuarantee} primary />
@@ -454,17 +454,17 @@ export default function TradePage() {
               </div>
 
               {stateMeta.value === 5 && (
-                <div className="border rounded p-3">
+                <div className="callout">
                   <strong>需要争议？</strong>
-                  <p className="text-sm text-gray-500 mt-1">争议保证金由争议页读取并精确提交。本页只传递 Trade ID，避免重复实现 bond 流程。</p>
+                  <p className="form-hint mt-1">争议保证金由争议页读取并精确提交。本页只传递 Trade ID，避免重复实现 bond 流程。</p>
                   {buyer || seller ? <Link className="button button-warning inline-block mt-2 no-underline" href={`/disputes?tradeId=${trade.id.toString()}`}>前往争议页（Trade #{trade.id.toString()}）</Link> : <p className="text-sm mt-2">仅买卖双方责任主体可发起争议。</p>}
                 </div>
               )}
 
               {timeout && (
-                <div className="border rounded p-3">
+                <div className="callout">
                   <strong>无人值守超时动作</strong>
-                  <p className="text-xs text-gray-500 my-2">任何账户均可在合约窗口实际到期后调用；若尚未到期，链上会拒绝。</p>
+                  <p className="form-hint my-2">任何账户均可在合约窗口实际到期后调用；若尚未到期，链上会拒绝。</p>
                   {(() => {
                     const guard = actionReady(timeout.action as TradeAction);
                     return <ActionButton label={timeout.label} readiness={guard} onClick={() => runSimpleAction(timeout.action, `${timeout.label}成功。`, guard)} />;
@@ -473,9 +473,9 @@ export default function TradePage() {
               )}
 
               {trade.outcomePending && (
-                <div className="border rounded p-3">
+                <div className="callout">
                   <strong>信誉结果仍待写入</strong>
-                  <p className="text-sm text-gray-500 my-2">结算本身已完成，可安全调用 retryOutcome 重试信誉结果。</p>
+                  <p className="form-hint my-2">结算本身已完成，可安全调用 retryOutcome 重试信誉结果。</p>
                   <ActionButton label="重试记录结果" readiness={retryReady} onClick={() => runSimpleAction("retryOutcome", "信誉结果重试已确认。", retryReady)} />
                 </div>
               )}
@@ -484,10 +484,10 @@ export default function TradePage() {
         )}
       </section>
 
-      <section className="border rounded p-4 space-y-3">
-        <h2 className="font-semibold">3. 提取当前账户余额</h2>
+      <section className="card space-y-3">
+        <h2 className="card-title">3. 提取当前账户余额</h2>
         <p className="text-sm">pendingWithdrawals：<strong>{eth(withdrawalRead.data)}</strong></p>
-        <p className="text-xs text-gray-500">收款地址固定为当前连接账户 {address ?? "—"}。</p>
+        <p className="form-hint">收款地址固定为当前连接账户 {address ?? "—"}。</p>
         <ActionButton label="提取全部余额" readiness={withdrawReady} onClick={withdraw} primary />
       </section>
 

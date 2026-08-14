@@ -169,6 +169,7 @@ MVP 使用本地链/测试网代币模拟质押/罚没（**无真实价值**）�
 
 | 文档 | 路径 |
 |---|---|
+| 使用说明（官方入口） | [`docs/USAGE.md`](docs/USAGE.md) |
 | Docker 一键启动 | [`DOCKER.md`](DOCKER.md) |
 | 设计规格 | `docs/superpowers/specs/2026-08-08-agenttrust-design.md` |
 | 历史实现计划（已被当前实现取代） | `docs/superpowers/plans/2026-08-08-agenttrust-mvp.md` |
