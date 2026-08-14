@@ -293,7 +293,10 @@ contract SchellingVotingTest is Test {
         vm.expectRevert(unicode"SchellingVoting: 不在资格快照中");
         voting.commitVote{value: STAKE}(caseId, bytes32(uint256(1)));
 
+        // 一人一社区 ID：同一主体注册第二个身份被注册表拒绝，
+        // 因此不存在"第二身份投票"路径；同一主体重复投票仍被拒绝。
         vm.prank(jurors[0]);
+        vm.expectRevert(unicode"AgentRegistry: 主体已注册");
         registry.registerAgent("SecondIdentity", "", "");
         _commit(jurors[0], SchellingVoting.Side.BUYER);
         vm.prank(jurors[0]);
