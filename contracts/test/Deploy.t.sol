@@ -18,6 +18,8 @@ contract DeployTest is Test {
         hub.setOutcomeWriter(address(escrow), true);
         hub.setJurorMetricWriter(address(voting), true);
         escrow.transferOwnership(address(voting));
+        registry.setObligationOracles(address(escrow), address(voting));
+        registry.setRegistrationDeposit(0.01 ether);
 
         assertEq(address(escrow.registry()), address(registry));
         assertEq(address(escrow.hub()), address(hub));
@@ -30,5 +32,8 @@ contract DeployTest is Test {
         assertTrue(hub.outcomeWriters(address(escrow)));
         assertTrue(hub.jurorMetricWriters(address(voting)));
         assertEq(escrow.owner(), address(voting));
+        assertEq(registry.escrowOracle(), address(escrow));
+        assertEq(registry.votingOracle(), address(voting));
+        assertEq(registry.registrationDeposit(), 0.01 ether);
     }
 }

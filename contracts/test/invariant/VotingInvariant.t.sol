@@ -128,6 +128,12 @@ contract RevertingRecipient {
 }
 
 contract VotingInvariantTest is StdInvariant, Test {
+    function _guardians() internal returns (address[] memory list) {
+        list = new address[](2);
+        list[0] = makeAddr("guardian-a");
+        list[1] = makeAddr("guardian-b");
+    }
+
     AgentRegistry internal registry;
     ReputationHub internal hub;
     GuaranteeEscrow internal escrow;
@@ -162,24 +168,24 @@ contract VotingInvariantTest is StdInvariant, Test {
         vm.deal(seller, 1 ether);
         vm.deal(guarantor, 2 ether);
         vm.prank(buyer);
-        buyerId = registry.registerAgent("Buyer", "", "");
+        buyerId = registry.registerAgent("Buyer", "", "", _guardians());
         vm.prank(seller);
-        sellerId = registry.registerAgent("Seller", "", "");
+        sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        guarantorId = registry.registerAgent("Guarantor", "", "");
+        guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
         for (uint256 i; i < 6; ++i) {
             address juror = makeAddr(string.concat("invariant juror ", vm.toString(i)));
             jurors.push(juror);
             vm.deal(juror, 2 ether);
             vm.prank(juror);
-            registry.registerAgent("Juror", "", "");
+            registry.registerAgent("Juror", "", "", _guardians());
         }
 
         vm.prank(buyer);
         tradeId = escrow.createTrade(buyerId, sellerId, 1 ether, 0.2 ether);
         vm.deal(postCreationJuror, 2 ether);
         vm.prank(postCreationJuror);
-        registry.registerAgent("Post-creation Juror", "", "");
+        registry.registerAgent("Post-creation Juror", "", "", _guardians());
         vm.prank(seller);
         escrow.acceptTrade(tradeId);
         vm.prank(buyer);

@@ -39,6 +39,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         mapping(address => bool) revealed;
         mapping(address => Side) side;
         mapping(address => bool) claimed;
+        mapping(address => bool) obligationCleared;
     }
 
     struct CaseDetailsView {
@@ -68,6 +69,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     mapping(uint256 => bool) public tradeHasCase;
     mapping(uint256 => uint256) public tradeCaseIdPlusOne;
     mapping(address => uint256) public pendingWithdrawals;
+    mapping(address => uint256) public openCommitmentCount;
 
     event CaseOpened(
         uint256 indexed caseId,
@@ -201,6 +203,23 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         return (c.effective, c.winner);
     }
 
+    function subjectHasOpenCommitments(address subject) external view returns (bool) {
+        return openCommitmentCount[subject] != 0;
+    }
+
+    function subjectHasOpenObligations(address subject) external view returns (bool) {
+        return openCommitmentCount[subject] != 0;
+    }
+
+    function jurorObligationCleared(uint256 caseId, address subject)
+        external
+        view
+        existingCase(caseId)
+        returns (bool)
+    {
+        return _cases[caseId].obligationCleared[subject];
+    }
+
     function voteCommitment(uint256 caseId, address subject, Side side, bytes32 salt) public view returns (bytes32) {
         return keccak256(abi.encode(address(this), block.chainid, caseId, subject, side, salt));
     }
@@ -224,6 +243,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         c.hasCommitted[msg.sender] = true;
         c.commitment[msg.sender] = commitment;
         c.committedCount++;
+        openCommitmentCount[msg.sender]++;
         totalLiability += msg.value;
         emit VoteCommitted(caseId, msg.sender, commitment);
     }
@@ -287,6 +307,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         bytes32 jurorCaseId =
             keccak256(abi.encode("AGENTTRUST_JUROR_CASE_V1", address(this), block.chainid, caseId, subject));
         hub.recordJurorCase(jurorCaseId, subject, revealed, abstained, effective, aligned);
+        _clearObligation(c, subject);
         emit JurorMetricsFinalized(caseId, subject, jurorCaseId, revealed, abstained, effective, aligned);
     }
 
@@ -309,8 +330,27 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         } else {
             revert(unicode"SchellingVoting: 质押已罚没");
         }
+        _clearObligation(c, msg.sender);
         pendingWithdrawals[msg.sender] += amount;
         emit WithdrawalCredited(msg.sender, amount);
+    }
+
+    /// @notice Permissionlessly clears the identity-recovery obligation after settlement,
+    /// independently from claimability or ReputationHub availability.
+    function clearCommitmentObligation(uint256 caseId, address subject)
+        external
+        existingCase(caseId)
+    {
+        Case storage c = _cases[caseId];
+        require(c.settled, unicode"SchellingVoting: 未结算");
+        require(c.hasCommitted[subject], unicode"SchellingVoting: 主体未提交");
+        _clearObligation(c, subject);
+    }
+
+    function _clearObligation(Case storage c, address subject) private {
+        if (c.obligationCleared[subject]) return;
+        c.obligationCleared[subject] = true;
+        openCommitmentCount[subject]--;
     }
 
     function withdraw(address payable recipient) external nonReentrant {

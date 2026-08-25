@@ -8,6 +8,12 @@ import {GuaranteeEscrow} from "../src/GuaranteeEscrow.sol";
 import {SchellingVoting} from "../src/SchellingVoting.sol";
 
 contract E2ETest is Test {
+    function _guardians() internal returns (address[] memory list) {
+        list = new address[](2);
+        list[0] = makeAddr("guardian-a");
+        list[1] = makeAddr("guardian-b");
+    }
+
     function test_fullAcceptedTradeCommitRevealAndPullSettlement() public {
         AgentRegistry registry = new AgentRegistry();
         ReputationHub hub = new ReputationHub();
@@ -17,6 +23,7 @@ contract E2ETest is Test {
         hub.setOutcomeWriter(address(escrow), true);
         hub.setJurorMetricWriter(address(voting), true);
         escrow.transferOwnership(address(voting));
+        registry.setObligationOracles(address(escrow), address(voting));
 
         address buyer = makeAddr("buyer");
         address seller = makeAddr("seller");
@@ -26,15 +33,15 @@ contract E2ETest is Test {
         vm.deal(seller, 1 ether);
         vm.deal(guarantor, 2 ether);
         vm.prank(buyer);
-        uint256 buyerId = registry.registerAgent("Buyer", "", "");
+        uint256 buyerId = registry.registerAgent("Buyer", "", "", _guardians());
         vm.prank(seller);
-        uint256 sellerId = registry.registerAgent("Seller", "", "");
+        uint256 sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        uint256 guarantorId = registry.registerAgent("Guarantor", "", "");
+        uint256 guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
         for (uint256 i; i < 3; ++i) {
             vm.deal(jurors[i], 0.2 ether);
             vm.prank(jurors[i]);
-            registry.registerAgent("Juror", "", "");
+            registry.registerAgent("Juror", "", "", _guardians());
         }
 
         vm.prank(buyer);

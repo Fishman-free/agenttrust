@@ -57,6 +57,9 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         uint256 deliveredAt;
         uint256 disputedAt;
         bool caseOpened;
+        bool buyerObligationOpen;
+        bool sellerObligationOpen;
+        bool guarantorObligationOpen;
     }
 
     uint256 public constant ACCEPT_WINDOW = 1 days;
@@ -76,6 +79,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     uint256 public totalLiability;
     mapping(uint256 => Trade) private _trades;
     mapping(address => uint256) public pendingWithdrawals;
+    mapping(address => uint256) public openTradeCount;
 
     event TradeCreated(uint256 indexed tradeId, uint256 buyerAgentId, uint256 sellerAgentId, uint256 amount);
     event TradeAccepted(uint256 indexed tradeId, address indexed sellerSubject);
@@ -131,6 +135,8 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         t.buyerSubject = buyerSubject;
         t.sellerSubject = sellerSubject;
         t.createdAt = block.timestamp;
+        t.buyerObligationOpen = true;
+        openTradeCount[buyerSubject]++;
         emit TradeCreated(tradeId, buyerAgentId, sellerAgentId, amount);
     }
 
@@ -151,6 +157,14 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         return _trades[tradeId].eligibilityAgentCount;
     }
 
+    function subjectHasActiveTrades(address subject) external view returns (bool) {
+        return openTradeCount[subject] != 0;
+    }
+
+    function subjectHasOpenObligations(address subject) external view returns (bool) {
+        return openTradeCount[subject] != 0;
+    }
+
     function retryOutcome(uint256 tradeId) external nonReentrant existingTrade(tradeId) returns (bool recorded) {
         Trade storage t = _trades[tradeId];
         require(t.outcomePending, unicode"GuaranteeEscrow: 无待记录结果");
@@ -164,6 +178,8 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         require(block.timestamp <= t.createdAt + ACCEPT_WINDOW, unicode"GuaranteeEscrow: 接受超时");
         t.state = State.ACCEPTED;
         t.acceptedAt = block.timestamp;
+        t.sellerObligationOpen = true;
+        openTradeCount[t.sellerSubject]++;
         emit TradeAccepted(tradeId, msg.sender);
     }
 
@@ -241,6 +257,8 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         t.premium = premium;
         t.state = State.GUARANTEE_OFFERED;
         t.guaranteeOfferedAt = block.timestamp;
+        t.guarantorObligationOpen = true;
+        openTradeCount[subject]++;
         totalLiability += msg.value;
         emit GuaranteeOffered(tradeId, guarantorAgentId, subject, coverage, premium);
     }
@@ -312,13 +330,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         Trade storage t = _trades[tradeId];
         require(t.state == State.DISPUTED && t.caseOpened, unicode"GuaranteeEscrow: 仅活动案件可裁决");
         uint256 actualBuyerShareBps;
-        if (verdict == Verdict.SELLER_WINS) {
-            t.state = State.RESOLVED;
-            _credit(t.sellerSubject, t.amount - t.premium);
-            _credit(t.guarantorSubject, t.stake + t.premium);
-            _allocateDisputeBond(t, t.sellerSubject);
-            _recordBestEffort(t, ReputationHub.Outcome.WON);
-        } else {
+        if (verdict != Verdict.SELLER_WINS) {
             actualBuyerShareBps = verdict == Verdict.BUYER_WINS ? 10000 : buyerShareBps;
             if (verdict == Verdict.PARTIAL_BUYER) {
                 require(
@@ -326,7 +338,14 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
                     unicode"GuaranteeEscrow: 部分裁决比例非法"
                 );
             }
-            t.state = State.RESOLVED;
+        }
+        _markTerminal(t, State.RESOLVED);
+        if (verdict == Verdict.SELLER_WINS) {
+            _credit(t.sellerSubject, t.amount - t.premium);
+            _credit(t.guarantorSubject, t.stake + t.premium);
+            _allocateDisputeBond(t, t.sellerSubject);
+            _recordBestEffort(t, ReputationHub.Outcome.WON);
+        } else {
             // Both buyer shares round down; the seller and guarantor receive the exact remainders.
             uint256 buyerRefund = Math.mulDiv(t.amount, actualBuyerShareBps, 10000);
             uint256 buyerStake = Math.mulDiv(t.stake, actualBuyerShareBps, 10000);
@@ -357,7 +376,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         Trade storage t = _trades[tradeId];
         require(t.state == State.CREATED, unicode"GuaranteeEscrow: 状态错误");
         require(block.timestamp > t.createdAt + ACCEPT_WINDOW, unicode"GuaranteeEscrow: 未到超时");
-        t.state = State.VOIDED;
+        _markTerminal(t, State.VOIDED);
         emit TradeVoided(tradeId);
     }
 
@@ -365,7 +384,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         Trade storage t = _trades[tradeId];
         require(t.state == State.ACCEPTED, unicode"GuaranteeEscrow: 状态错误");
         require(block.timestamp > t.acceptedAt + FUND_WINDOW, unicode"GuaranteeEscrow: 未到超时");
-        t.state = State.VOIDED;
+        _markTerminal(t, State.VOIDED);
         emit TradeVoided(tradeId);
     }
 
@@ -382,13 +401,13 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         Trade storage t = _trades[tradeId];
         if (t.state == State.FUNDED) {
             require(block.timestamp > t.fundedAt + GUARANTEE_WINDOW, unicode"GuaranteeEscrow: 未到超时");
-            t.state = State.VOIDED;
+            _markTerminal(t, State.VOIDED);
             _credit(t.buyerSubject, t.amount);
             emit TradeVoided(tradeId);
         } else {
             require(t.state == State.GUARANTEED, unicode"GuaranteeEscrow: 状态错误");
             require(block.timestamp > t.guaranteedAt + DELIVER_WINDOW, unicode"GuaranteeEscrow: 未到超时");
-            t.state = State.RESOLVED;
+            _markTerminal(t, State.RESOLVED);
             _credit(t.buyerSubject, t.amount + t.stake);
             _recordBestEffort(t, ReputationHub.Outcome.DEFAULTED);
             emit TradeResolved(tradeId, Verdict.BUYER_WINS, 10000);
@@ -414,17 +433,41 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     }
 
     function _release(Trade storage t) private {
-        t.state = State.RELEASED;
+        _markTerminal(t, State.RELEASED);
         _credit(t.sellerSubject, t.amount - t.premium);
         _credit(t.guarantorSubject, t.stake + t.premium);
     }
 
     function _voidFundedTrade(Trade storage t) private {
-        t.state = State.VOIDED;
+        _markTerminal(t, State.VOIDED);
         _credit(t.buyerSubject, t.amount);
         _credit(t.guarantorSubject, t.stake);
         _allocateDisputeBond(t, t.disputeInitiator);
         emit TradeVoided(t.id);
+    }
+
+    function _markTerminal(Trade storage t, State terminalState) private {
+        require(
+            terminalState == State.RELEASED || terminalState == State.RESOLVED || terminalState == State.VOIDED,
+            unicode"GuaranteeEscrow: 非终态"
+        );
+        require(
+            t.state != State.RELEASED && t.state != State.RESOLVED && t.state != State.VOIDED,
+            unicode"GuaranteeEscrow: 已终结"
+        );
+        if (t.buyerObligationOpen) {
+            t.buyerObligationOpen = false;
+            openTradeCount[t.buyerSubject]--;
+        }
+        if (t.sellerObligationOpen) {
+            t.sellerObligationOpen = false;
+            openTradeCount[t.sellerSubject]--;
+        }
+        if (t.guarantorObligationOpen) {
+            t.guarantorObligationOpen = false;
+            openTradeCount[t.guarantorSubject]--;
+        }
+        t.state = terminalState;
     }
 
     function _allocateDisputeBond(Trade storage t, address recipient) private {

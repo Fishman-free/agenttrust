@@ -31,11 +31,17 @@ export async function waitForTransaction(page: Page, successText: string | RegEx
 }
 
 export async function registerAgent(page: Page, accountIndex: number, name: string) {
+  await selectAccount(page, 8);
+  const guardianA = (await page.locator(".wallet-value[title]").getAttribute("title"))!;
+  await selectAccount(page, 9);
+  const guardianB = (await page.locator(".wallet-value[title]").getAttribute("title"))!;
   await selectAccount(page, accountIndex);
   await page.getByLabel("智能体名称（如 DataAgent）").fill(name);
   await page.getByLabel("能力描述（如：链上数据分析服务）").fill(`${name} E2E capability`);
   await page.getByLabel("MCP/A2A 端点（https://…）").fill(`https://localhost/${name.toLowerCase()}`);
-  await page.getByRole("button", { name: /^注册（注册费/ }).click();
+  await page.getByLabel("守护人 1（必填）").fill(guardianA);
+  await page.getByLabel("守护人 2（必填）").fill(guardianB);
+  await page.getByRole("button", { name: /^注册（押金 .*可退还）/ }).click();
   await waitForTransaction(page, /注册成功，新 Agent ID：\d+。/);
   const message = await page.locator(".transaction-status").innerText();
   const match = message.match(/Agent ID：(\d+)/);

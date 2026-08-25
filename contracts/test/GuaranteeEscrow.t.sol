@@ -15,6 +15,12 @@ contract RejectingEscrowReceiver {
 contract GuaranteeEscrowTest is Test {
     event TradeResolved(uint256 indexed tradeId, GuaranteeEscrow.Verdict verdict, uint256 buyerShareBps);
 
+    function _guardians() internal returns (address[] memory list) {
+        list = new address[](2);
+        list[0] = makeAddr("guardian-a");
+        list[1] = makeAddr("guardian-b");
+    }
+
     AgentRegistry registry;
     ReputationHub hub;
     GuaranteeEscrow escrow;
@@ -36,11 +42,11 @@ contract GuaranteeEscrowTest is Test {
         vm.deal(buyer, 10 ether);
         vm.deal(guarantor, 10 ether);
         vm.prank(buyer);
-        buyerId = registry.registerAgent("Buyer", "", "");
+        buyerId = registry.registerAgent("Buyer", "", "", _guardians());
         vm.prank(seller);
-        sellerId = registry.registerAgent("Seller", "", "");
+        sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        guarantorId = registry.registerAgent("Guarantor", "", "");
+        guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
         vm.prank(buyer);
         tradeId = escrow.createTrade(buyerId, sellerId, 1 ether, 0.1 ether);
     }
@@ -72,6 +78,53 @@ contract GuaranteeEscrowTest is Test {
         escrow.createTrade(buyerId, sellerId, 0, 0);
     }
 
+    function test_openTradeCountLifecycleAcrossRelease() public {
+        assertEq(escrow.openTradeCount(buyer), 1, "buyer enrolled at create");
+        assertEq(escrow.openTradeCount(seller), 0, "seller not enrolled until accept");
+
+        vm.prank(seller);
+        escrow.acceptTrade(tradeId);
+        assertEq(escrow.openTradeCount(seller), 1, "seller enrolled at accept");
+
+        vm.prank(buyer);
+        escrow.fund{value: 1 ether}(tradeId);
+        vm.prank(guarantor);
+        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.075 ether);
+        assertEq(escrow.openTradeCount(guarantor), 1, "guarantor enrolled at guarantee");
+
+        vm.prank(seller);
+        escrow.acceptGuarantee(tradeId);
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        vm.prank(buyer);
+        escrow.confirm(tradeId);
+
+        assertEq(escrow.openTradeCount(buyer), 0, "buyer cleared on release");
+        assertEq(escrow.openTradeCount(seller), 0, "seller cleared on release");
+        assertEq(escrow.openTradeCount(guarantor), 0, "guarantor cleared on release");
+        assertFalse(escrow.subjectHasActiveTrades(buyer));
+        assertFalse(escrow.subjectHasActiveTrades(seller));
+        assertFalse(escrow.subjectHasActiveTrades(guarantor));
+    }
+
+    function test_openTradeCountClearsOnGuaranteedTimeoutRefund() public {
+        vm.prank(seller);
+        escrow.acceptTrade(tradeId);
+        vm.prank(buyer);
+        escrow.fund{value: 1 ether}(tradeId);
+        vm.prank(guarantor);
+        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.075 ether);
+        vm.prank(seller);
+        escrow.acceptGuarantee(tradeId);
+
+        vm.warp(block.timestamp + escrow.DELIVER_WINDOW() + 1);
+        escrow.timeoutRefund(tradeId);
+
+        assertEq(escrow.openTradeCount(buyer), 0);
+        assertEq(escrow.openTradeCount(seller), 0);
+        assertEq(escrow.openTradeCount(guarantor), 0);
+    }
+
     function test_sellerMustAcceptBeforeFundsOrDefaultExposure() public {
         vm.prank(buyer);
         vm.expectRevert(unicode"GuaranteeEscrow: 状态错误");
@@ -99,12 +152,11 @@ contract GuaranteeEscrowTest is Test {
         assertEq(uint8(escrow.tradeState(tradeId)), uint8(GuaranteeEscrow.State.DELIVERED));
     }
 
-    function test_samePrincipalTradeAndSelfGuaranteeRejected() public {
-        // 注册表强制一人一社区 ID：同一责任主体无法再领第二个身份，
+    function test_samePrincipalTradeAndSelfGuaranteeRejected() public {        // 注册表强制一人一社区 ID：同一责任主体无法再领第二个身份，
         // "同主体买卖"因此在注册入口即被拒绝。
         vm.prank(buyer);
         vm.expectRevert(unicode"AgentRegistry: 主体已注册");
-        registry.registerAgent("AlsoBuyer", "", "");
+        registry.registerAgent("AlsoBuyer", "", "", _guardians());
 
         vm.prank(seller);
         escrow.acceptTrade(tradeId);
@@ -462,7 +514,7 @@ contract GuaranteeEscrowTest is Test {
         assertEq(escrow.getTrade(tradeId).eligibilityAgentCount, countAtCreation);
 
         vm.prank(stranger);
-        registry.registerAgent("Late Juror", "", "");
+        registry.registerAgent("Late Juror", "", "", _guardians());
         assertEq(registry.agentCount(), countAtCreation + 1);
         assertFalse(registry.isRegisteredSubjectAtCount(stranger, escrow.eligibilityAgentCount(tradeId)));
     }

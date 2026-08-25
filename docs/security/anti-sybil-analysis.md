@@ -82,6 +82,19 @@ ERC-721 可转让，攻击者可以买入或租用高信誉 ID。
 
 验证：`forge test` **97/97 通过**；`npm test` 67/67 通过；manifest `--check` 全绿。
 
+### 4.1 后续演进（注册押金与身份找回，已实现）
+
+按 [`2026-08-14-registration-deposit-and-recovery-design.md`](../superpowers/specs/2026-08-14-registration-deposit-and-recovery-design.md) 落地：
+
+- 注册费改为**可全额退还的注册押金**（`registrationDeposit`，默认 0.01 ETH），注销时自动转入待提取余额；
+- 注销 = 永久退出（burn Agent ID、信誉档案保留可查、终身不可再注册）；
+- **身份找回**：PoH 同人证明（仅验证不消费）+ 任一守护人批准 + 24 小时原钱包否决窗口 + 7 天执行期；
+- 找回迁移：NFT、责任主体、押金、资格快照、守护人、nullifier 锚点全部迁移，信誉不清零；
+- 义务安全门：找回/注销要求 Escrow `openTradeCount` 与 Voting `openCommitmentCount` 均为零；
+- 预留 `slashDeposit` 罚没接口（本次未授权任何来源）。
+
+验证：`forge test` **115/115 通过**（含义务计数不变式）；`npm test` 67/67；manifest/ABI 重新生成。
+
 ---
 
 ## 5. 残余风险（诚实声明）
