@@ -8,13 +8,71 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
-    "name": "accruedFees",
+    "name": "MAX_GUARDIANS",
     "inputs": [],
     "outputs": [
       {
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_GUARDIANS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "RECOVERY_DELAY",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "RECOVERY_EXECUTION_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "activeSubjects",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
@@ -91,6 +149,38 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "approveRecovery",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "authorizedSlashSources",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "balanceOf",
     "inputs": [
       {
@@ -107,6 +197,77 @@ export const agentRegistryAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "deposits",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "deregister",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "deregistered",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "escrowOracle",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "executeRecovery",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -148,6 +309,49 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "guardianApprovedNonce",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "guardiansOf",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address[]",
+        "internalType": "address[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "isApprovedForAll",
     "inputs": [
       {
@@ -157,6 +361,30 @@ export const agentRegistryAbi = [
       },
       {
         "name": "operator",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isGuardian",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "",
         "type": "address",
         "internalType": "address"
       }
@@ -233,6 +461,44 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "nextRecoveryNonce",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "nullifierSubject",
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "owner",
     "inputs": [],
     "outputs": [
@@ -297,6 +563,55 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "recoveryRequests",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "newWallet",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "nullifier",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "executeAfter",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "expiresAt",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "nonce",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "approvals",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "exists",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "registerAgent",
     "inputs": [
       {
@@ -313,6 +628,11 @@ export const agentRegistryAbi = [
         "name": "endpoint",
         "type": "string",
         "internalType": "string"
+      },
+      {
+        "name": "guardianList",
+        "type": "address[]",
+        "internalType": "address[]"
       }
     ],
     "outputs": [
@@ -352,6 +672,11 @@ export const agentRegistryAbi = [
         "name": "proof",
         "type": "bytes",
         "internalType": "bytes"
+      },
+      {
+        "name": "guardianList",
+        "type": "address[]",
+        "internalType": "address[]"
       }
     ],
     "outputs": [
@@ -403,7 +728,7 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
-    "name": "registrationFee",
+    "name": "registrationDeposit",
     "inputs": [],
     "outputs": [
       {
@@ -418,6 +743,29 @@ export const agentRegistryAbi = [
     "type": "function",
     "name": "renounceOwnership",
     "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "requestRecovery",
+    "inputs": [
+      {
+        "name": "nullifier",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "recoveryProof",
+        "type": "bytes",
+        "internalType": "bytes"
+      },
+      {
+        "name": "newWallet",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -511,6 +859,37 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "setGuardians",
+    "inputs": [
+      {
+        "name": "guardianList",
+        "type": "address[]",
+        "internalType": "address[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setObligationOracles",
+    "inputs": [
+      {
+        "name": "escrow",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "voting",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setPoHVerifier",
     "inputs": [
       {
@@ -524,16 +903,95 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
-    "name": "setRegistrationFee",
+    "name": "setRegistrationDeposit",
     "inputs": [
       {
-        "name": "fee",
+        "name": "deposit",
         "type": "uint256",
         "internalType": "uint256"
       }
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setSlashSource",
+    "inputs": [
+      {
+        "name": "source",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "authorized",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "slashDeposit",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "subjectHasOpenObligations",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "subjectNullifier",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -582,6 +1040,19 @@ export const agentRegistryAbi = [
         "name": "",
         "type": "string",
         "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalLiability",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -643,6 +1114,32 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "vetoRecovery",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "votingOracle",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "withdraw",
     "inputs": [
       {
@@ -651,13 +1148,6 @@ export const agentRegistryAbi = [
         "internalType": "address payable"
       }
     ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "withdrawFees",
-    "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -681,6 +1171,12 @@ export const agentRegistryAbi = [
         "name": "name",
         "type": "string",
         "internalType": "string",
+        "indexed": false
+      },
+      {
+        "name": "deposit",
+        "type": "uint256",
+        "internalType": "uint256",
         "indexed": false
       }
     ],
@@ -738,6 +1234,69 @@ export const agentRegistryAbi = [
   },
   {
     "type": "event",
+    "name": "DepositSlashed",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "GuardiansUpdated",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "guardians",
+        "type": "address[]",
+        "internalType": "address[]",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ObligationOraclesSet",
+    "inputs": [
+      {
+        "name": "escrow",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "voting",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OwnershipTransferred",
     "inputs": [
       {
@@ -770,10 +1329,178 @@ export const agentRegistryAbi = [
   },
   {
     "type": "event",
-    "name": "RegistrationFeeUpdated",
+    "name": "RecoveryCompleted",
     "inputs": [
       {
-        "name": "fee",
+        "name": "oldSubject",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "newSubject",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "nullifier",
+        "type": "bytes32",
+        "internalType": "bytes32",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RecoveryGuardianApproved",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "guardian",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "nonce",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RecoveryRequested",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "newWallet",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "nullifier",
+        "type": "bytes32",
+        "internalType": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "executeAfter",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "expiresAt",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "nonce",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RecoveryVetoed",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "newWallet",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "nonce",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RegistrationDepositUpdated",
+    "inputs": [
+      {
+        "name": "deposit",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "SlashSourceSet",
+    "inputs": [
+      {
+        "name": "source",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "authorized",
+        "type": "bool",
+        "internalType": "bool",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "SubjectDeregistered",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "refundedDeposit",
         "type": "uint256",
         "internalType": "uint256",
         "indexed": false
@@ -1897,6 +2624,21 @@ export const guaranteeEscrowAbi = [
             "name": "caseOpened",
             "type": "bool",
             "internalType": "bool"
+          },
+          {
+            "name": "buyerObligationOpen",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "sellerObligationOpen",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "guarantorObligationOpen",
+            "type": "bool",
+            "internalType": "bool"
           }
         ]
       }
@@ -1988,6 +2730,25 @@ export const guaranteeEscrowAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "openTradeCount",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -2169,6 +2930,44 @@ export const guaranteeEscrowAbi = [
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "subjectHasActiveTrades",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "subjectHasOpenObligations",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -2888,6 +3687,24 @@ export const schellingVotingAbi = [
   },
   {
     "type": "function",
+    "name": "clearCommitmentObligation",
+    "inputs": [
+      {
+        "name": "caseId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "commitVote",
     "inputs": [
       {
@@ -2963,6 +3780,30 @@ export const schellingVotingAbi = [
   },
   {
     "type": "function",
+    "name": "jurorObligationCleared",
+    "inputs": [
+      {
+        "name": "caseId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "jurorStatus",
     "inputs": [
       {
@@ -3031,6 +3872,25 @@ export const schellingVotingAbi = [
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "openCommitmentCount",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -3132,6 +3992,44 @@ export const schellingVotingAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "subjectHasOpenCommitments",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "subjectHasOpenObligations",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",

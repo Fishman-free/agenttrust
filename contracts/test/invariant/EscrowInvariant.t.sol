@@ -27,6 +27,12 @@ contract LiabilityObserver {
 }
 
 contract EscrowHandler is Test {
+    function _guardians() internal returns (address[] memory list) {
+        list = new address[](2);
+        list[0] = makeAddr("guardian-a");
+        list[1] = makeAddr("guardian-b");
+    }
+
     AgentRegistry public immutable registry;
     ReputationHub public immutable hub;
     GuaranteeEscrow public immutable escrow;
@@ -58,11 +64,11 @@ contract EscrowHandler is Test {
         vm.deal(buyer, type(uint128).max);
         vm.deal(guarantor, type(uint128).max);
         vm.prank(buyer);
-        buyerId = registry.registerAgent("Buyer", "", "");
+        buyerId = registry.registerAgent("Buyer", "", "", _guardians());
         vm.prank(seller);
-        sellerId = registry.registerAgent("Seller", "", "");
+        sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        guarantorId = registry.registerAgent("Guarantor", "", "");
+        guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
     }
 
     function tradeCount() external view returns (uint256) {
@@ -282,9 +288,30 @@ contract EscrowInvariantTest is StdInvariant, Test {
     function invariant_failedMaliciousWithdrawPreservesCredit() public view {
         assertTrue(handler.failedWithdrawalPreservationHolds());
     }
+
+    function invariant_openTradeCountMatchesObligationFlags() public view {
+        uint256 expectedBuyer;
+        uint256 expectedSeller;
+        uint256 expectedGuarantor;
+        for (uint256 i; i < handler.tradeCount(); ++i) {
+            GuaranteeEscrow.Trade memory trade = escrow.getTrade(handler.tradeIds(i));
+            if (trade.buyerObligationOpen) expectedBuyer++;
+            if (trade.sellerObligationOpen) expectedSeller++;
+            if (trade.guarantorObligationOpen) expectedGuarantor++;
+        }
+        assertEq(escrow.openTradeCount(handler.buyer()), expectedBuyer, "buyer open trade count");
+        assertEq(escrow.openTradeCount(handler.seller()), expectedSeller, "seller open trade count");
+        assertEq(escrow.openTradeCount(handler.guarantor()), expectedGuarantor, "guarantor open trade count");
+    }
 }
 
 contract EscrowLivenessScenarioTest is Test {
+    function _guardians() internal returns (address[] memory list) {
+        list = new address[](2);
+        list[0] = makeAddr("guardian-a");
+        list[1] = makeAddr("guardian-b");
+    }
+
     AgentRegistry registry;
     ReputationHub hub;
     GuaranteeEscrow escrow;
@@ -303,11 +330,11 @@ contract EscrowLivenessScenarioTest is Test {
         vm.deal(buyer, 100 ether);
         vm.deal(guarantor, 100 ether);
         vm.prank(buyer);
-        buyerId = registry.registerAgent("Buyer", "", "");
+        buyerId = registry.registerAgent("Buyer", "", "", _guardians());
         vm.prank(seller);
-        sellerId = registry.registerAgent("Seller", "", "");
+        sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        guarantorId = registry.registerAgent("Guarantor", "", "");
+        guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
     }
 
     function test_livenessTimeoutExitsPreDeliveryStates() public {

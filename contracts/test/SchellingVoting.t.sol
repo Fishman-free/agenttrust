@@ -14,6 +14,12 @@ contract RejectingVotingReceiver {
 }
 
 contract SchellingVotingTest is Test {
+    function _guardians() internal returns (address[] memory list) {
+        list = new address[](2);
+        list[0] = makeAddr("guardian-a");
+        list[1] = makeAddr("guardian-b");
+    }
+
     AgentRegistry registry;
     ReputationHub hub;
     GuaranteeEscrow escrow;
@@ -44,22 +50,22 @@ contract SchellingVotingTest is Test {
         vm.deal(seller, 1 ether);
         vm.deal(guarantor, 2 ether);
         vm.prank(buyer);
-        buyerId = registry.registerAgent("Buyer", "", "");
+        buyerId = registry.registerAgent("Buyer", "", "", _guardians());
         vm.prank(seller);
-        sellerId = registry.registerAgent("Seller", "", "");
+        sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        guarantorId = registry.registerAgent("Guarantor", "", "");
+        guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
         for (uint256 i; i < 5; ++i) {
             jurors[i] = makeAddr(string.concat("juror", vm.toString(i)));
             vm.deal(jurors[i], 1 ether);
             vm.prank(jurors[i]);
-            registry.registerAgent("Juror", "", "");
+            registry.registerAgent("Juror", "", "", _guardians());
         }
         vm.prank(buyer);
         tradeId = escrow.createTrade(buyerId, sellerId, 1 ether, 0.2 ether);
         vm.deal(postCreationJuror, 1 ether);
         vm.prank(postCreationJuror);
-        registry.registerAgent("Post-creation Juror", "", "");
+        registry.registerAgent("Post-creation Juror", "", "", _guardians());
         vm.prank(seller);
         escrow.acceptTrade(tradeId);
         vm.prank(buyer);
@@ -85,6 +91,43 @@ contract SchellingVotingTest is Test {
     function _reveal(address juror, SchellingVoting.Side side) internal {
         vm.prank(juror);
         voting.revealVote(caseId, side, SALT);
+    }
+
+    function test_openCommitmentCountClearedExactlyOnce() public {
+        _commit(jurors[0], SchellingVoting.Side.BUYER);
+        _commit(jurors[1], SchellingVoting.Side.BUYER);
+        _commit(jurors[2], SchellingVoting.Side.SELLER);
+        _commit(jurors[3], SchellingVoting.Side.SELLER);
+        assertEq(voting.openCommitmentCount(jurors[0]), 1, "commit increments once");
+        assertEq(voting.openCommitmentCount(jurors[3]), 1);
+
+        vm.warp(block.timestamp + 1 days);
+        _reveal(jurors[0], SchellingVoting.Side.BUYER);
+        _reveal(jurors[1], SchellingVoting.Side.BUYER);
+        _reveal(jurors[2], SchellingVoting.Side.SELLER);
+        // jurors[3] 不揭示
+        vm.warp(block.timestamp + 1 days);
+        voting.settle(caseId);
+
+        // 胜方 claim 清除
+        vm.prank(jurors[0]);
+        voting.claim(caseId);
+        assertEq(voting.openCommitmentCount(jurors[0]), 0, "winner claim clears");
+        assertTrue(voting.jurorObligationCleared(caseId, jurors[0]));
+
+        // 未揭示者被罚没无法 claim，permissionless 清除恰好一次且幂等
+        voting.clearCommitmentObligation(caseId, jurors[3]);
+        voting.clearCommitmentObligation(caseId, jurors[3]);
+        assertEq(voting.openCommitmentCount(jurors[3]), 0, "cleared exactly once");
+        assertTrue(voting.jurorObligationCleared(caseId, jurors[3]));
+
+        // 先 finalize 再 claim 的双路径不重复扣减
+        voting.finalizeJurorMetrics(caseId, jurors[2]);
+        assertEq(voting.openCommitmentCount(jurors[2]), 0, "finalize clears minority juror");
+        voting.clearCommitmentObligation(caseId, jurors[2]);
+        assertEq(voting.openCommitmentCount(jurors[2]), 0, "no double decrement");
+
+        assertEq(voting.openCommitmentCount(jurors[1]), 1, "other winner keeps obligation until claim");
     }
 
     function test_nonexistentCaseRejectedIncludingDefaultCaseZero() public {
@@ -288,7 +331,7 @@ contract SchellingVotingTest is Test {
         vm.deal(late, 1 ether);
         // Even a registration later in the same block is outside the agent-count snapshot.
         vm.prank(late);
-        registry.registerAgent("Late", "", "");
+        registry.registerAgent("Late", "", "", _guardians());
         vm.prank(late);
         vm.expectRevert(unicode"SchellingVoting: 不在资格快照中");
         voting.commitVote{value: STAKE}(caseId, bytes32(uint256(1)));
@@ -297,7 +340,7 @@ contract SchellingVotingTest is Test {
         // 因此不存在"第二身份投票"路径；同一主体重复投票仍被拒绝。
         vm.prank(jurors[0]);
         vm.expectRevert(unicode"AgentRegistry: 主体已注册");
-        registry.registerAgent("SecondIdentity", "", "");
+        registry.registerAgent("SecondIdentity", "", "", _guardians());
         _commit(jurors[0], SchellingVoting.Side.BUYER);
         vm.prank(jurors[0]);
         vm.expectRevert(unicode"SchellingVoting: 主体已提交");

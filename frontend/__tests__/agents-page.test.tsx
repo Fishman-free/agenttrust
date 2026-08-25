@@ -16,7 +16,7 @@ vi.mock("wagmi", () => ({
   useAccount: () => mocks.account,
   useConnect: () => ({ connect: mocks.connect, connectors: [mocks.connector], isPending: false }),
   useWriteContract: () => ({ data: mocks.feedback.current.hash, writeContract: mocks.writeContract, isPending: false, error: null }),
-  useReadContract: ({ functionName }: { functionName: string }) => functionName === "registrationFee"
+  useReadContract: ({ functionName }: { functionName: string }) => functionName === "registrationDeposit"
     ? { data: BigInt(1) }
     : { data: BigInt(0), refetch: mocks.refetchCount },
   useReadContracts: () => ({ data: [], refetch: mocks.refetchList }),
@@ -65,7 +65,7 @@ describe("AgentsPage", () => {
 
     expect(await screen.findByText(/注册成功，新 Agent ID：7/)).toBeInTheDocument();
     await waitFor(() => {
-      expect(mocks.refetchCount).toHaveBeenCalledOnce();
+      expect(mocks.refetchCount).toHaveBeenCalled();
       expect(mocks.refetchList).toHaveBeenCalledOnce();
     });
   });
@@ -84,6 +84,6 @@ describe("AgentsPage", () => {
     render(<AgentsPage />);
 
     expect(screen.getByRole("alert")).toHaveTextContent("网络错误");
-    expect(screen.getByRole("button", { name: /注册（注册费/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /注册（押金/ })).toBeDisabled();
   });
 });

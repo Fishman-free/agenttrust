@@ -37,9 +37,20 @@ describe("generated contract ABIs", () => {
     expectSignatures(signatures(agentRegistryAbi, "function"), [
       "agentCount()",
       "agents(uint256)",
-      "registerAgent(string,string,string)",
-      "registrationFee()",
+      "activeSubjects(address)",
+      "approveRecovery(address)",
+      "deregister()",
+      "deposits(address)",
+      "deregistered(address)",
+      "registerAgent(string,string,string,address[])",
+      "registerAgentVerified(string,string,string,bytes32,bytes,address[])",
+      "registrationDeposit()",
       "responsibleParty(uint256)",
+      "setGuardians(address[])",
+      "slashDeposit(address,address,uint256)",
+      "subjectHasOpenObligations(address)",
+      "vetoRecovery(address)",
+      "requestRecovery(bytes32,bytes,address)",
     ]);
     expectSignatures(signatures(reputationHubAbi, "function"), [
       "isJurorEligible(address)",
@@ -116,6 +127,7 @@ describe("generated contract ABIs", () => {
     expect(escrow).not.toContain("createTrade(uint256,uint256,uint256)");
     expect(escrow).not.toContain("guarantee(uint256,uint256,uint256)");
     expect(escrow).not.toContain("trades(uint256)");
+    expect(escrow).toContain("subjectHasActiveTrades(address)");
 
     const voting = signatures(schellingVotingAbi, "function");
     expect(voting).not.toContain("cases(uint256)");
@@ -123,5 +135,13 @@ describe("generated contract ABIs", () => {
     expect(voting).not.toContain("claimReward(uint256)");
     expect(voting).not.toContain("openCase(uint256,uint256,uint256,uint256,uint256)");
     expect(voting).not.toContain("vote(uint256,uint8)");
+    expect(voting).toContain("subjectHasOpenCommitments(address)");
+    expect(voting).toContain("clearCommitmentObligation(uint256,address)");
+
+    const registry = signatures(agentRegistryAbi, "function");
+    expect(registry).not.toContain("registrationFee()");
+    expect(registry).not.toContain("setRegistrationFee(uint256)");
+    expect(registry).not.toContain("withdrawFees()");
+    expect(registry).not.toContain("accruedFees()");
   });
 });
