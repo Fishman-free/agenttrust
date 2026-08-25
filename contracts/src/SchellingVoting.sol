@@ -211,12 +211,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         return openCommitmentCount[subject] != 0;
     }
 
-    function jurorObligationCleared(uint256 caseId, address subject)
-        external
-        view
-        existingCase(caseId)
-        returns (bool)
-    {
+    function jurorObligationCleared(uint256 caseId, address subject) external view existingCase(caseId) returns (bool) {
         return _cases[caseId].obligationCleared[subject];
     }
 
@@ -337,10 +332,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
 
     /// @notice Permissionlessly clears the identity-recovery obligation after settlement,
     /// independently from claimability or ReputationHub availability.
-    function clearCommitmentObligation(uint256 caseId, address subject)
-        external
-        existingCase(caseId)
-    {
+    function clearCommitmentObligation(uint256 caseId, address subject) external existingCase(caseId) {
         Case storage c = _cases[caseId];
         require(c.settled, unicode"SchellingVoting: 未结算");
         require(c.hasCommitted[subject], unicode"SchellingVoting: 主体未提交");

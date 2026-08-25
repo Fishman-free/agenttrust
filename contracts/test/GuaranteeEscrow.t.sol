@@ -152,8 +152,9 @@ contract GuaranteeEscrowTest is Test {
         assertEq(uint8(escrow.tradeState(tradeId)), uint8(GuaranteeEscrow.State.DELIVERED));
     }
 
-    function test_samePrincipalTradeAndSelfGuaranteeRejected() public {        // 注册表强制一人一社区 ID：同一责任主体无法再领第二个身份，
-        // "同主体买卖"因此在注册入口即被拒绝。
+    function test_samePrincipalTradeAndSelfGuaranteeRejected() public {
+        // 注册表强制一人一社区 ID：同一责任主体无法再领第二个身份，
+    // "同主体买卖"因此在注册入口即被拒绝。
         vm.prank(buyer);
         vm.expectRevert(unicode"AgentRegistry: 主体已注册");
         registry.registerAgent("AlsoBuyer", "", "", _guardians());

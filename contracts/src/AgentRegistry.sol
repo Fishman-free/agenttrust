@@ -219,10 +219,7 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         emit SubjectDeregistered(msg.sender, tokenId, amount);
     }
 
-    function requestRecovery(bytes32 nullifier, bytes calldata recoveryProof, address newWallet)
-        external
-        nonReentrant
-    {
+    function requestRecovery(bytes32 nullifier, bytes calldata recoveryProof, address newWallet) external nonReentrant {
         require(msg.sender == newWallet, unicode"AgentRegistry: 新钱包必须发起");
         require(newWallet != address(0), unicode"AgentRegistry: 新钱包为零");
         require(!registeredSubjects[newWallet], unicode"AgentRegistry: 新钱包已注册");

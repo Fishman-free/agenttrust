@@ -130,7 +130,8 @@ contract SchellingVotingTest is Test {
         assertEq(voting.openCommitmentCount(jurors[1]), 1, "other winner keeps obligation until claim");
     }
 
-    function test_nonexistentCaseRejectedIncludingDefaultCaseZero() public {        SchellingVoting fresh =
+    function test_nonexistentCaseRejectedIncludingDefaultCaseZero() public {
+        SchellingVoting fresh =
             new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 1 days, 1 days);
         vm.prank(jurors[0]);
         vm.expectRevert(unicode"SchellingVoting: 案件不存在");
