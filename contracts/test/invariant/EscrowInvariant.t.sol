@@ -6,6 +6,7 @@ import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {AgentRegistry} from "../../src/AgentRegistry.sol";
 import {ReputationHub} from "../../src/ReputationHub.sol";
 import {GuaranteeEscrow} from "../../src/GuaranteeEscrow.sol";
+import {MockPoHVerifier} from "../mocks/MockPoHVerifier.sol";
 
 contract RejectEther {
     receive() external payable {
@@ -68,7 +69,8 @@ contract EscrowHandler is Test {
         vm.prank(seller);
         sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
+        guarantorId =
+            registry.registerAgentVerified("Guarantor", "", "", keccak256("human-guarantor"), hex"01", _guardians());
     }
 
     function tradeCount() external view returns (uint256) {
@@ -230,6 +232,8 @@ contract EscrowInvariantTest is StdInvariant, Test {
 
     function setUp() public {
         registry = new AgentRegistry();
+        MockPoHVerifier verifier = new MockPoHVerifier();
+        registry.setPoHVerifier(address(verifier));
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
         hub.setOutcomeWriter(address(escrow), true);
@@ -324,6 +328,8 @@ contract EscrowLivenessScenarioTest is Test {
 
     function setUp() public {
         registry = new AgentRegistry();
+        MockPoHVerifier verifier = new MockPoHVerifier();
+        registry.setPoHVerifier(address(verifier));
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
         hub.setOutcomeWriter(address(escrow), true);
@@ -334,7 +340,8 @@ contract EscrowLivenessScenarioTest is Test {
         vm.prank(seller);
         sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
+        guarantorId =
+            registry.registerAgentVerified("Guarantor", "", "", keccak256("human-guarantor"), hex"01", _guardians());
     }
 
     function test_livenessTimeoutExitsPreDeliveryStates() public {

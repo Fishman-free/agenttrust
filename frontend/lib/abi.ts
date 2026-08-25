@@ -34,7 +34,33 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
-    "name": "RECOVERY_DELAY",
+    "name": "PLAIN_DEPOSIT_MULTIPLIER",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "RECOVERY_DELAY_GUARDIAN",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "RECOVERY_DELAY_POH",
     "inputs": [],
     "outputs": [
       {
@@ -197,6 +223,24 @@ export const agentRegistryAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "bindPoH",
+    "inputs": [
+      {
+        "name": "nullifier",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "proof",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -385,6 +429,25 @@ export const agentRegistryAbi = [
       },
       {
         "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isPoHVerified",
+    "inputs": [
+      {
+        "name": "subject",
         "type": "address",
         "internalType": "address"
       }
@@ -601,6 +664,11 @@ export const agentRegistryAbi = [
         "name": "approvals",
         "type": "uint8",
         "internalType": "uint8"
+      },
+      {
+        "name": "proofLevel",
+        "type": "uint8",
+        "internalType": "enum AgentRegistry.ProofLevel"
       },
       {
         "name": "exists",
@@ -1316,6 +1384,31 @@ export const agentRegistryAbi = [
   },
   {
     "type": "event",
+    "name": "PoHBound",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "nullifier",
+        "type": "bytes32",
+        "internalType": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "refundedDeposit",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "PoHVerifierSet",
     "inputs": [
       {
@@ -1421,6 +1514,12 @@ export const agentRegistryAbi = [
         "name": "nonce",
         "type": "uint256",
         "internalType": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "proofLevel",
+        "type": "uint8",
+        "internalType": "enum AgentRegistry.ProofLevel",
         "indexed": false
       }
     ],

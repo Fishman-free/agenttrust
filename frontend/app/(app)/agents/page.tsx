@@ -24,8 +24,11 @@ type RecoveryView = readonly [
   expiresAt: bigint,
   nonce: bigint,
   approvals: number,
+  proofLevel: number,
   exists: boolean,
 ];
+
+const NULLIFIER_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 function shortAddress(value: string) {
   return value ? `${value.slice(0, 6)}…${value.slice(-4)}` : "—";
@@ -42,6 +45,11 @@ export default function AgentsPage() {
   const [guardian1, setGuardian1] = useState("");
   const [guardian2, setGuardian2] = useState("");
   const [guardian3, setGuardian3] = useState("");
+  const [verifiedMode, setVerifiedMode] = useState(false);
+  const [nullifier, setNullifier] = useState("");
+  const [proof, setProof] = useState("0x01");
+  const [bindNullifier, setBindNullifier] = useState("");
+  const [bindProof, setBindProof] = useState("0x01");
   const [recoverySubject, setRecoverySubject] = useState("");
   const [opLabel, setOpLabel] = useState<string>();
   const refreshedReceipt = useRef<string | undefined>(undefined);
@@ -56,6 +64,8 @@ export default function AgentsPage() {
     query: { enabled: registryConfigured },
   });
   const depositEth = depositData === undefined ? "0" : formatEther(depositData);
+  const plainDeposit = depositData === undefined ? undefined : depositData * 3n;
+  const plainDepositEth = plainDeposit === undefined ? "0" : formatEther(plainDeposit);
 
   const { data: lockedDeposit, refetch: refetchDeposit } = useReadContract({
     address: CONTRACT_ADDRESSES.agentRegistry,
@@ -75,6 +85,13 @@ export default function AgentsPage() {
     address: CONTRACT_ADDRESSES.agentRegistry,
     abi: agentRegistryAbi,
     functionName: "activeSubjects",
+    args: address ? [address] : undefined,
+    query: { enabled: registryConfigured && Boolean(address) },
+  });
+  const { data: poHVerified, refetch: refetchPoH } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "isPoHVerified",
     args: address ? [address] : undefined,
     query: { enabled: registryConfigured && Boolean(address) },
   });
@@ -144,13 +161,13 @@ export default function AgentsPage() {
     const receiptKey = registrationFeedback.receipt.transactionHash;
     if (refreshedReceipt.current === receiptKey) return;
     refreshedReceipt.current = receiptKey;
-    void Promise.all([refetchCount(), refetchList(), refetchDeposit(), refetchActive()]);
-  }, [registrationFeedback.phase, registrationFeedback.receipt, refetchCount, refetchList, refetchDeposit, refetchActive]);
+    void Promise.all([refetchCount(), refetchList(), refetchDeposit(), refetchActive(), refetchPoH()]);
+  }, [registrationFeedback.phase, registrationFeedback.receipt, refetchCount, refetchList, refetchDeposit, refetchActive, refetchPoH]);
 
   useEffect(() => {
     if (operationsFeedback.phase !== "success") return;
-    void Promise.all([refetchDeposit(), refetchDeregistered(), refetchActive(), refetchPending(), refetchRecovery()]);
-  }, [operationsFeedback.phase, refetchDeposit, refetchDeregistered, refetchActive, refetchPending, refetchRecovery]);
+    void Promise.all([refetchDeposit(), refetchDeregistered(), refetchActive(), refetchPending(), refetchRecovery(), refetchPoH()]);
+  }, [operationsFeedback.phase, refetchDeposit, refetchDeregistered, refetchActive, refetchPending, refetchRecovery, refetchPoH]);
 
   const filledGuardians = [guardian1.trim(), guardian2.trim(), guardian3.trim()]
     .filter(Boolean)
@@ -166,7 +183,8 @@ export default function AgentsPage() {
             ? "守护人地址重复。"
             : undefined;
 
-  const inputValid = Boolean(name.trim() && desc.trim() && endpoint.trim()) && !guardianError;
+  const verifiedInputsValid = !verifiedMode || (NULLIFIER_PATTERN.test(nullifier.trim()) && proof.trim() !== "");
+  const inputValid = Boolean(name.trim() && desc.trim() && endpoint.trim()) && !guardianError && verifiedInputsValid;
   const busy = registration.isPending || registrationFeedback.phase === "confirming";
   const opsBusy = operations.isPending || operationsFeedback.phase === "confirming";
   const readiness = getWriteReadiness({
@@ -181,11 +199,13 @@ export default function AgentsPage() {
       "not-configured": WRITE_BLOCK_REASON,
       "wrong-chain": `请切换到 ${activeChain.name}（Chain ID ${CHAIN_ID}）。`,
       "invalid-state": "注册押金尚未加载。",
-      "invalid-input": guardianError ?? "请填写完整信息。",
+      "invalid-input":
+        guardianError ?? (verifiedMode && !verifiedInputsValid ? "请填写有效的 World ID nullifier 与非空证明。" : "请填写完整信息。"),
     },
   });
 
-  const hasLiveRecovery = Boolean(ownRecovery && (ownRecovery as RecoveryView)[6]);
+  const ownRecoveryView = ownRecovery as RecoveryView | undefined;
+  const hasLiveRecovery = Boolean(ownRecoveryView?.[7]);
   const obligationReason = hasActiveTrades
     ? "存在未了结的交易（等待对方操作或超时）。"
     : hasOpenCommitments
@@ -195,9 +215,31 @@ export default function AgentsPage() {
     WRITES_ENABLED && isConnected && chainId === CHAIN_ID && !opsBusy && Boolean(activeSubject)
     && !deregistered && !hasLiveRecovery && !obligationReason && Boolean(lockedDeposit !== undefined);
 
+  const bindNullifierValid = NULLIFIER_PATTERN.test(bindNullifier.trim());
+  const bindReady =
+    WRITES_ENABLED && isConnected && chainId === CHAIN_ID && !opsBusy && Boolean(activeSubject)
+    && !deregistered && poHVerified === false && bindNullifierValid && bindProof.trim() !== "";
+
   function register() {
     if (!readiness.ready) {
       alert(readiness.reason);
+      return;
+    }
+    if (verifiedMode) {
+      registration.writeContract({
+        address: CONTRACT_ADDRESSES.agentRegistry,
+        abi: agentRegistryAbi,
+        functionName: "registerAgentVerified",
+        args: [
+          name.trim(),
+          desc.trim(),
+          endpoint.trim(),
+          nullifier.trim() as `0x${string}`,
+          proof.trim() as `0x${string}`,
+          filledGuardians,
+        ],
+        value: depositData,
+      });
       return;
     }
     registration.writeContract({
@@ -205,11 +247,15 @@ export default function AgentsPage() {
       abi: agentRegistryAbi,
       functionName: "registerAgent",
       args: [name.trim(), desc.trim(), endpoint.trim(), filledGuardians],
-      value: depositData,
+      value: plainDeposit,
     });
   }
 
-  function runOperation(functionName: "deregister" | "vetoRecovery" | "approveRecovery" | "withdraw", args: unknown[], label: string) {
+  function runOperation(
+    functionName: "deregister" | "vetoRecovery" | "approveRecovery" | "withdraw" | "bindPoH",
+    args: unknown[],
+    label: string,
+  ) {
     setOpLabel(label);
     operations.writeContract({
       address: CONTRACT_ADDRESSES.agentRegistry,
@@ -225,14 +271,15 @@ export default function AgentsPage() {
       ? "交易已确认，但回执中未找到 AgentRegistered 事件。"
       : undefined;
 
-  const ownRecoveryView = ownRecovery as RecoveryView | undefined;
+  const recoveryWindowHours = ownRecoveryView?.[6] === 0 ? 24 : 48;
+  const recoveryRequiredApprovals = ownRecoveryView?.[6] === 0 ? "1" : "全部";
   const recoverySubjectValid = recoverySubject.trim() !== "" && isAddress(recoverySubject.trim());
 
   return (
     <main className="page">
       <div className="page-head">
         <h1 className="page-title">智能体注册</h1>
-        <p className="page-sub">以链上 NFT 绑定智能体与责任主体；注册押金可全额退还，丢钥可通过 World ID + 守护人找回。</p>
+        <p className="page-sub">以链上 NFT 绑定智能体与责任主体；押金可全额退还。人类验证（World ID）解锁找回、担保与陪审能力。</p>
       </div>
       {!isConnected && (
         <button
@@ -273,14 +320,44 @@ export default function AgentsPage() {
                 守护人 3（可选）
                 <input aria-label="守护人 3（可选）" placeholder="0x…（可选）" value={guardian3} onChange={(e) => setGuardian3(e.target.value)} className="field-input" />
               </label>
-              <p className="form-hint">私钥丢失时，任一守护人批准 + World ID 同人证明即可在 24 小时否决窗口后找回身份。</p>
+              <label className="field-checkbox">
+                <input
+                  type="checkbox"
+                  aria-label="使用 World ID 人类验证注册（测试网模拟）"
+                  checked={verifiedMode}
+                  onChange={(e) => setVerifiedMode(e.target.checked)}
+                />
+                使用 World ID 人类验证注册：解锁找回、担保人、陪审员资格（标准押金）
+              </label>
+              {verifiedMode && (
+                <>
+                  <label className="field-label">
+                    World ID nullifier（0x…64 位十六进制）
+                    <input aria-label="World ID nullifier（0x…64 位）" placeholder="0x…" value={nullifier} onChange={(e) => setNullifier(e.target.value)}
+                      className="field-input" />
+                  </label>
+                  <label className="field-label">
+                    人类证明（hex，测试网可填 0x01 模拟）
+                    <input aria-label="人类证明（hex）" placeholder="0x01" value={proof} onChange={(e) => setProof(e.target.value)}
+                      className="field-input" />
+                  </label>
+                </>
+              )}
+              <p className="form-hint">
+                普通注册押金为标准值 3 倍，且无法找回账号、不能担任担保人或陪审员（可随时升级验证）。
+                找回：同人证明 + 1 守护人（24h 否决窗）；或全守护人批准（48h 否决窗）。
+              </p>
               <button
                 onClick={register}
                 disabled={!readiness.ready}
                 title={readiness.ready ? undefined : readiness.reason}
                 className="button button-primary"
               >
-                {busy ? "注册中…" : depositData === undefined ? "加载中…" : `注册（押金 ${depositEth} ETH，可退还）`}
+                {busy
+                  ? "注册中…"
+                  : depositData === undefined
+                    ? "加载中…"
+                    : `注册（押金 ${verifiedMode ? depositEth : plainDepositEth} ETH，可退还）`}
               </button>
               {!readiness.ready && readiness.code !== "invalid-input" && (
                 <p className="form-warning" role="status">{readiness.reason}</p>
@@ -294,9 +371,36 @@ export default function AgentsPage() {
                 <h2 className="card-title">我的社区身份</h2>
                 <p className="text-sm">
                   状态：{deregistered ? <strong className="warning-text">已注销</strong> : <strong>活跃</strong>} ·
+                  人类验证：{poHVerified ? <strong>✅ 已验证（World ID）</strong> : <strong className="warning-text">未验证</strong>} ·
                   锁定押金：<strong>{lockedDeposit === undefined ? "—" : `${formatEther(lockedDeposit)} ETH`}</strong> ·
                   待提取余额：<strong>{pendingBalance === undefined ? "—" : `${formatEther(pendingBalance)} ETH`}</strong>
                 </p>
+                {activeSubject && !deregistered && poHVerified === false && (
+                  <div className="callout space-y-2" role="alert">
+                    <p className="warning-text">尚未完成人类验证（World ID）</p>
+                    <p className="text-sm">
+                      丢失私钥将<b>无法找回</b>，且不能担任担保人或陪审员。建议尽快验证升级（升级后退回押金差额）。
+                    </p>
+                    <label className="field-label">
+                      绑定 nullifier（0x…64 位十六进制，测试网可随意填写未使用值）
+                      <input aria-label="绑定 nullifier（0x…）" placeholder="0x…" value={bindNullifier}
+                        onChange={(e) => setBindNullifier(e.target.value)} className="field-input" />
+                    </label>
+                    <label className="field-label">
+                      绑定证明（hex，测试网可填 0x01 模拟）
+                      <input aria-label="绑定证明（hex）" placeholder="0x01" value={bindProof}
+                        onChange={(e) => setBindProof(e.target.value)} className="field-input" />
+                    </label>
+                    <button
+                      className="button button-primary"
+                      disabled={!bindReady}
+                      title={bindReady ? undefined : "填写有效的 nullifier（64 位十六进制）与非空证明。"}
+                      onClick={() => runOperation("bindPoH", [bindNullifier.trim(), bindProof.trim()], "已绑定人类证明，押金差额已退回。")}
+                    >
+                      绑定 PoH（升级为已验证身份）
+                    </button>
+                  </div>
+                )}
                 {!deregistered && (
                   <div className="action-row">
                     <button
@@ -330,14 +434,15 @@ export default function AgentsPage() {
 
               <div className="card space-y-3">
                 <h2 className="card-title">找回与守护</h2>
-                {ownRecoveryView?.[6] ? (
+                {hasLiveRecovery ? (
                   <div className="callout space-y-2">
                     <p className="text-sm">
-                      找回请求进行中：新钱包 <code>{shortAddress(ownRecoveryView[0])}</code> ·
-                      守护人批准 <strong>{String(ownRecoveryView[5])}</strong> ·
-                      可执行时间 <code>{new Date(Number(ownRecoveryView[2]) * 1000).toLocaleString()}</code>
+                      找回请求进行中：新钱包 <code>{shortAddress(ownRecoveryView?.[0] ?? "")}</code> ·
+                      守护人批准 <strong>{String(ownRecoveryView?.[5] ?? 0)} / {recoveryRequiredApprovals}</strong> ·
+                      路径：<strong>{ownRecoveryView?.[6] === 0 ? "同人证明（24h 否决窗）" : "全守护人兜底（48h 否决窗）"}</strong> ·
+                      可执行时间 <code>{new Date(Number(ownRecoveryView?.[2] ?? 0) * 1000).toLocaleString()}</code>
                     </p>
-                    <p className="form-hint">若你并未丢失私钥，请在窗口内立即否决，否则 24 小时后身份将被迁移。</p>
+                    <p className="form-hint">若你并未丢失私钥，请在 {recoveryWindowHours} 小时否决窗口内立即否决，否则身份将被迁移。</p>
                     <button
                       className="button button-warning"
                       disabled={!WRITES_ENABLED || opsBusy}
@@ -347,7 +452,10 @@ export default function AgentsPage() {
                     </button>
                   </div>
                 ) : (
-                  <p className="form-hint">当前没有针对你的找回请求。丢失私钥时，新钱包可携带 World ID 证明发起找回（需命令行工具），守护人在下方批准。</p>
+                  <p className="form-hint">
+                    当前没有针对你的找回请求。丢失私钥时，新钱包可携带 World ID 同人证明发起找回（需命令行工具），守护人在下方批准；
+                    无同人证明时需全部守护人批准并等待 48 小时否决窗。
+                  </p>
                 )}
                 <label className="field-label">
                   作为守护人：输入被守护人地址并批准其找回请求

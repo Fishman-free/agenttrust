@@ -4,27 +4,35 @@ pragma solidity ^0.8.24;
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
-interface IAgentProofOfPersonhood {
-    function verifyAndConsume(address subject, bytes32 nullifier, bytes calldata proof) external returns (bool);
-
-    /// @notice Re-verifies the already-bound human for wallet recovery without consuming a new identity.
-    /// The proof must bind the recovery signal to newWallet.
-    function verifySameIdentity(bytes32 nullifier, address newWallet, bytes calldata proof) external returns (bool);
-}
+import {IAgentProofOfPersonhood} from "./interfaces/IAgentProofOfPersonhood.sol";
 
 interface ISubjectObligationOracle {
     function subjectHasOpenObligations(address subject) external view returns (bool);
 }
 
-/// @notice One lifetime community ID per human/responsible subject with a refundable deposit.
-/// NFT transfers do not change responsibility. A PoH-bound identity can recover to a new wallet
-/// using same-human verification, one guardian approval, and a 24-hour veto window.
+/// @notice One lifetime community ID per responsible subject with a refundable deposit.
+/// NFT transfers do not change responsibility.
+///
+/// Dual registration channels:
+///  - Plain: 3x deposit, no recovery anchor, cannot guarantee or serve as juror.
+///  - PoH (World ID): standard deposit, graded recovery, full capabilities.
+/// A plain subject can upgrade anytime via `bindPoH` (refunds the deposit difference).
+///
+/// Graded recovery for PoH-bound identities:
+///  - SAME_IDENTITY (same-device World ID proof): >=1 guardian approval + 24h veto window.
+///  - GUARDIANS (proof missing/failed, e.g. device lost): ALL guardians + 48h veto window.
 contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
     uint256 public constant MIN_GUARDIANS = 2;
     uint256 public constant MAX_GUARDIANS = 3;
-    uint256 public constant RECOVERY_DELAY = 24 hours;
+    uint256 public constant PLAIN_DEPOSIT_MULTIPLIER = 3;
+    uint256 public constant RECOVERY_DELAY_POH = 24 hours;
+    uint256 public constant RECOVERY_DELAY_GUARDIAN = 48 hours;
     uint256 public constant RECOVERY_EXECUTION_WINDOW = 7 days;
+
+    enum ProofLevel {
+        SAME_IDENTITY,
+        GUARDIANS
+    }
 
     struct AgentInfo {
         string name;
@@ -41,6 +49,7 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         uint64 expiresAt;
         uint64 nonce;
         uint8 approvals;
+        ProofLevel proofLevel;
         bool exists;
     }
 
@@ -78,6 +87,7 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
     event AgentRegistered(uint256 indexed tokenId, address indexed owner, string name, uint256 deposit);
     event RegistrationDepositUpdated(uint256 deposit);
     event PoHVerifierSet(address indexed verifier);
+    event PoHBound(address indexed subject, bytes32 indexed nullifier, uint256 refundedDeposit);
     event ObligationOraclesSet(address indexed escrow, address indexed voting);
     event SlashSourceSet(address indexed source, bool authorized);
     event GuardiansUpdated(address indexed subject, address[] guardians);
@@ -88,7 +98,8 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         bytes32 indexed nullifier,
         uint256 executeAfter,
         uint256 expiresAt,
-        uint256 nonce
+        uint256 nonce,
+        ProofLevel proofLevel
     );
     event RecoveryGuardianApproved(address indexed subject, address indexed guardian, uint256 nonce);
     event RecoveryVetoed(address indexed subject, address indexed newWallet, uint256 nonce);
@@ -123,16 +134,20 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         emit SlashSourceSet(source, authorized);
     }
 
+    /// @notice Plain registration: 3x deposit, no recovery anchor, no guarantor/juror roles.
+    /// Stays available even when a PoH verifier is configured (dual channel).
     function registerAgent(
         string memory name,
         string memory description,
         string memory endpoint,
         address[] calldata guardianList
     ) external payable nonReentrant returns (uint256 tokenId) {
-        require(pohVerifier == address(0), unicode"AgentRegistry: 需提供人类证明");
-        tokenId = _registerAgent(name, description, endpoint, guardianList, bytes32(0));
+        uint256 deposit = registrationDeposit * PLAIN_DEPOSIT_MULTIPLIER;
+        require(msg.value >= deposit, unicode"AgentRegistry: 注册押金不足");
+        tokenId = _registerAgent(name, description, endpoint, guardianList, bytes32(0), deposit);
     }
 
+    /// @notice PoH registration: standard deposit, graded recovery, full capabilities.
     function registerAgentVerified(
         string memory name,
         string memory description,
@@ -151,7 +166,39 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         usedPoHNullifiers[nullifier] = true;
         nullifierSubject[nullifier] = msg.sender;
         subjectNullifier[msg.sender] = nullifier;
-        tokenId = _registerAgent(name, description, endpoint, guardianList, nullifier);
+        tokenId = _registerAgent(name, description, endpoint, guardianList, nullifier, registrationDeposit);
+    }
+
+    /// @notice Upgrades a plain subject to PoH: anchors the World ID nullifier, refunds the
+    /// deposit difference (3x -> 1x) and unlocks recovery plus guarantor/juror roles.
+    function bindPoH(bytes32 nullifier, bytes calldata proof) external nonReentrant {
+        require(activeSubjects[msg.sender] && !deregistered[msg.sender], unicode"AgentRegistry: 主体未激活");
+        require(subjectNullifier[msg.sender] == bytes32(0), unicode"AgentRegistry: 已有 PoH 锚点");
+        require(pohVerifier != address(0), unicode"AgentRegistry: 未配置人类证明验证器");
+        require(nullifier != bytes32(0), unicode"AgentRegistry: 无效 nullifier");
+        require(!usedPoHNullifiers[nullifier], unicode"AgentRegistry: nullifier 已使用");
+        require(
+            IAgentProofOfPersonhood(pohVerifier).verifyAndConsume(msg.sender, nullifier, proof),
+            unicode"AgentRegistry: 人类证明无效"
+        );
+        usedPoHNullifiers[nullifier] = true;
+        nullifierSubject[nullifier] = msg.sender;
+        subjectNullifier[msg.sender] = nullifier;
+
+        uint256 locked = deposits[msg.sender];
+        uint256 retained = locked > registrationDeposit ? registrationDeposit : locked;
+        uint256 refund = locked - retained;
+        deposits[msg.sender] = retained;
+        if (refund != 0) {
+            pendingWithdrawals[msg.sender] += refund;
+            emit WithdrawalCredited(msg.sender, refund);
+        }
+        emit PoHBound(msg.sender, nullifier, refund);
+    }
+
+    /// @notice Whether the subject has a PoH anchor and thus recovery plus guarantor/juror roles.
+    function isPoHVerified(address subject) external view returns (bool) {
+        return subjectNullifier[subject] != bytes32(0);
     }
 
     function _registerAgent(
@@ -159,9 +206,9 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         string memory description,
         string memory endpoint,
         address[] calldata guardianList,
-        bytes32 nullifier
+        bytes32 nullifier,
+        uint256 deposit
     ) internal returns (uint256 tokenId) {
-        require(msg.value >= registrationDeposit, unicode"AgentRegistry: 注册押金不足");
         require(!registeredSubjects[msg.sender], unicode"AgentRegistry: 主体已注册");
         _validateGuardians(msg.sender, guardianList);
 
@@ -171,19 +218,19 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         activeSubjects[msg.sender] = true;
         registeredAtBlock[msg.sender] = block.number;
         firstAgentIdPlusOne[msg.sender] = tokenId + 1;
-        deposits[msg.sender] = registrationDeposit;
+        deposits[msg.sender] = deposit;
         totalLiability += msg.value;
 
         _storeGuardians(msg.sender, guardianList);
 
-        uint256 excess = msg.value - registrationDeposit;
+        uint256 excess = msg.value - deposit;
         if (excess != 0) {
             pendingWithdrawals[msg.sender] += excess;
             emit WithdrawalCredited(msg.sender, excess);
         }
         _safeMint(msg.sender, tokenId);
-        emit AgentRegistered(tokenId, msg.sender, name, registrationDeposit);
-        nullifier; // Documents that plain registrations intentionally have no recovery anchor.
+        emit AgentRegistered(tokenId, msg.sender, name, deposit);
+        nullifier; // Plain registrations have no recovery anchor until bindPoH upgrades them.
     }
 
     function setGuardians(address[] calldata guardianList) external {
@@ -219,6 +266,9 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         emit SubjectDeregistered(msg.sender, tokenId, amount);
     }
 
+    /// @notice Graded recovery entry point. The caller MUST be the new wallet.
+    /// A valid same-identity proof selects SAME_IDENTITY (1 guardian, 24h veto);
+    /// otherwise the request downgrades to GUARDIANS (all guardians, 48h veto).
     function requestRecovery(bytes32 nullifier, bytes calldata recoveryProof, address newWallet) external nonReentrant {
         require(msg.sender == newWallet, unicode"AgentRegistry: 新钱包必须发起");
         require(newWallet != address(0), unicode"AgentRegistry: 新钱包为零");
@@ -228,17 +278,24 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         require(activeSubjects[subject] && !deregistered[subject], unicode"AgentRegistry: 身份未激活");
         require(_ownerOf(firstAgentIdPlusOne[subject] - 1) == subject, unicode"AgentRegistry: NFT 已转让");
         require(!isGuardian[subject][newWallet], unicode"AgentRegistry: 新钱包不能是守护人");
-        require(pohVerifier != address(0), unicode"AgentRegistry: 未配置人类证明验证器");
-        require(
-            IAgentProofOfPersonhood(pohVerifier).verifySameIdentity(nullifier, newWallet, recoveryProof),
-            unicode"AgentRegistry: 找回证明无效"
-        );
+
+        ProofLevel level = ProofLevel.GUARDIANS;
+        if (pohVerifier != address(0) && recoveryProof.length != 0) {
+            try IAgentProofOfPersonhood(pohVerifier).verifySameIdentity(nullifier, newWallet, recoveryProof) returns (
+                bool ok
+            ) {
+                if (ok) level = ProofLevel.SAME_IDENTITY;
+            } catch {
+                level = ProofLevel.GUARDIANS;
+            }
+        }
 
         RecoveryRequest storage existing = recoveryRequests[subject];
         require(!existing.exists || block.timestamp > existing.expiresAt, unicode"AgentRegistry: 已有找回请求");
 
         uint64 nonce = ++nextRecoveryNonce[subject];
-        uint64 executeAfter = uint64(block.timestamp + RECOVERY_DELAY);
+        uint64 delay = level == ProofLevel.SAME_IDENTITY ? uint64(RECOVERY_DELAY_POH) : uint64(RECOVERY_DELAY_GUARDIAN);
+        uint64 executeAfter = uint64(block.timestamp + delay);
         uint64 expiresAt = uint64(uint256(executeAfter) + RECOVERY_EXECUTION_WINDOW);
         recoveryRequests[subject] = RecoveryRequest({
             newWallet: newWallet,
@@ -247,9 +304,10 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
             expiresAt: expiresAt,
             nonce: nonce,
             approvals: 0,
+            proofLevel: level,
             exists: true
         });
-        emit RecoveryRequested(subject, newWallet, nullifier, executeAfter, expiresAt, nonce);
+        emit RecoveryRequested(subject, newWallet, nullifier, executeAfter, expiresAt, nonce, level);
     }
 
     function approveRecovery(address subject) external {
@@ -277,7 +335,8 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         require(request.exists, unicode"AgentRegistry: 无找回请求");
         require(block.timestamp >= request.executeAfter, unicode"AgentRegistry: 否决窗口未结束");
         require(block.timestamp <= request.expiresAt, unicode"AgentRegistry: 找回请求已过期");
-        require(request.approvals >= 1, unicode"AgentRegistry: 缺少守护人批准");
+        uint256 requiredApprovals = request.proofLevel == ProofLevel.SAME_IDENTITY ? 1 : _guardians[subject].length;
+        require(request.approvals >= requiredApprovals, unicode"AgentRegistry: 缺少守护人批准");
         require(activeSubjects[subject] && !deregistered[subject], unicode"AgentRegistry: 身份未激活");
         require(!registeredSubjects[request.newWallet], unicode"AgentRegistry: 新钱包已注册");
         require(!isGuardian[subject][request.newWallet], unicode"AgentRegistry: 新钱包不能是守护人");

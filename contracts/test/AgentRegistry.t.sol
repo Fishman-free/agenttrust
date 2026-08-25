@@ -72,6 +72,11 @@ contract AgentRegistryTest is Test {
         id = registry.registerAgentVerified{value: value}("Agent", "desc", "endpoint", nullifier, hex"01", _guardians());
     }
 
+    function _installVerifier() internal returns (MockPoHVerifier verifier) {
+        verifier = new MockPoHVerifier();
+        registry.setPoHVerifier(address(verifier));
+    }
+
     function test_registrationBindsImmutableResponsibleSubjectAndSnapshot() public {
         uint256 id = _registerAs(alice, 0);
         uint256 registeredBlock = block.number;
@@ -87,18 +92,25 @@ contract AgentRegistryTest is Test {
         assertEq(registry.responsibleParty(id), alice, "NFT transfer must not rewrite legal subject");
     }
 
-    function test_registrationLocksExactDepositAndCreditsOverpayment() public {
+    function test_plainRegistrationLocksTripleDepositAndCreditsOverpayment() public {
         registry.setRegistrationDeposit(1 ether);
         RejectEther rejector = new RejectEther();
-        vm.deal(address(rejector), 2 ether);
+        vm.deal(address(rejector), 4 ether);
 
-        rejector.register{value: 2 ether}(registry, _guardians());
-        assertEq(registry.deposits(address(rejector)), 1 ether);
+        rejector.register{value: 4 ether}(registry, _guardians());
+        assertEq(registry.deposits(address(rejector)), 3 ether, "plain channel locks 3x deposit");
         assertEq(registry.pendingWithdrawals(address(rejector)), 1 ether);
 
         address recipient = makeAddr("recipient");
         rejector.withdraw(registry, payable(recipient));
         assertEq(recipient.balance, 1 ether);
+    }
+
+    function test_plainRegistrationRequiresTripleDeposit() public {
+        registry.setRegistrationDeposit(1 ether);
+        vm.prank(alice);
+        vm.expectRevert(unicode"AgentRegistry: 注册押金不足");
+        registry.registerAgent{value: 2 ether}("A", "", "", _guardians());
     }
 
     function test_sameSubjectCannotClaimTwoCommunityIds() public {
@@ -140,13 +152,14 @@ contract AgentRegistryTest is Test {
 
     function test_deregisterRefundsDepositAndRetiresIdentity() public {
         registry.setRegistrationDeposit(1 ether);
-        uint256 id = _registerAs(alice, 1 ether);
+        uint256 id = _registerAs(alice, 3 ether);
         assertEq(registry.agentCount(), 1);
+        assertEq(registry.deposits(alice), 3 ether, "plain channel locks 3x");
 
         vm.prank(alice);
         registry.deregister();
 
-        assertEq(registry.pendingWithdrawals(alice), 1 ether, "deposit refunded via pull payment");
+        assertEq(registry.pendingWithdrawals(alice), 3 ether, "full deposit refunded via pull payment");
         assertEq(registry.deposits(alice), 0);
         assertTrue(registry.deregistered(alice));
         assertFalse(registry.activeSubjects(alice));
@@ -157,10 +170,10 @@ contract AgentRegistryTest is Test {
         assertEq(registry.balanceOf(alice), 0, "NFT burned");
         assertEq(registry.responsibleParty(id), alice, "profile stays readable by ID");
 
-        vm.deal(alice, 1 ether);
+        vm.deal(alice, 3 ether);
         vm.prank(alice);
         vm.expectRevert(unicode"AgentRegistry: 主体已注册");
-        registry.registerAgent{value: 1 ether}("Second", "", "", _guardians());
+        registry.registerAgent{value: 3 ether}("Second", "", "", _guardians());
 
         vm.prank(alice);
         vm.expectRevert(unicode"AgentRegistry: 主体未激活");
@@ -193,13 +206,25 @@ contract AgentRegistryTest is Test {
         registry.deregister();
     }
 
-    function test_verifiedRegistrationBindsOneHumanToOneIdAcrossWallets() public {
-        MockPoHVerifier verifier = new MockPoHVerifier();
-        registry.setPoHVerifier(address(verifier));
+    function test_dualChannelPlainWorksAlongsideVerifier() public {
+        MockPoHVerifier verifier = _installVerifier();
 
-        vm.prank(alice);
-        vm.expectRevert(unicode"AgentRegistry: 需提供人类证明");
-        registry.registerAgent("Agent", "desc", "endpoint", _guardians());
+        // 普通通道在验证器启用后仍然开放，押金 3x
+        vm.prank(bob);
+        uint256 plainId = registry.registerAgent{value: 0}("Bob", "", "", _guardians());
+        assertEq(registry.ownerOf(plainId), bob);
+        assertFalse(registry.isPoHVerified(bob));
+        assertEq(verifier.consumed(keccak256("unused")), false);
+
+        // PoH 通道同样可用
+        bytes32 nullifier = keccak256("human-alice");
+        uint256 id = _registerVerifiedAs(alice, 0, nullifier);
+        assertEq(registry.ownerOf(id), alice);
+        assertTrue(registry.isPoHVerified(alice));
+    }
+
+    function test_verifiedRegistrationBindsOneHumanToOneIdAcrossWallets() public {
+        MockPoHVerifier verifier = _installVerifier();
 
         bytes32 nullifier = keccak256("human-alice");
         uint256 id = _registerVerifiedAs(alice, 0, nullifier);
@@ -207,6 +232,7 @@ contract AgentRegistryTest is Test {
         assertTrue(registry.usedPoHNullifiers(nullifier));
         assertEq(registry.nullifierSubject(nullifier), alice);
         assertEq(registry.subjectNullifier(alice), nullifier);
+        assertTrue(registry.isPoHVerified(alice));
 
         vm.deal(bob, 1 ether);
         vm.prank(bob);
@@ -236,6 +262,50 @@ contract AgentRegistryTest is Test {
         assertEq(registry.pohVerifier(), address(0));
     }
 
+    function test_bindPoHAnchorsRefundsExcessAndUnlocksCapabilities() public {
+        _installVerifier();
+        registry.setRegistrationDeposit(1 ether);
+        _registerAs(alice, 3 ether);
+        assertFalse(registry.isPoHVerified(alice));
+        assertEq(registry.deposits(alice), 3 ether);
+
+        bytes32 nullifier = keccak256("human-alice");
+        vm.prank(alice);
+        registry.bindPoH(nullifier, hex"01");
+
+        assertEq(registry.subjectNullifier(alice), nullifier);
+        assertEq(registry.nullifierSubject(nullifier), alice);
+        assertTrue(registry.usedPoHNullifiers(nullifier));
+        assertTrue(registry.isPoHVerified(alice));
+        assertEq(registry.deposits(alice), 1 ether, "deposit retained at standard level");
+        assertEq(registry.pendingWithdrawals(alice), 2 ether, "difference refunded");
+
+        // 注销时退标准档押金
+        vm.prank(alice);
+        registry.deregister();
+        assertEq(registry.pendingWithdrawals(alice), 3 ether);
+    }
+
+    function test_bindPoHRejectsAlreadyAnchoredInactiveAndReusedNullifier() public {
+        _installVerifier();
+        bytes32 nullifier = keccak256("human-alice");
+        _registerVerifiedAs(alice, 0, nullifier);
+
+        vm.prank(alice);
+        vm.expectRevert(unicode"AgentRegistry: 已有 PoH 锚点");
+        registry.bindPoH(keccak256("human-alice-2"), hex"01");
+
+        _registerAs(bob, 0);
+        vm.prank(bob);
+        vm.expectRevert(unicode"AgentRegistry: nullifier 已使用");
+        registry.bindPoH(nullifier, hex"01");
+
+        address inactive = makeAddr("inactive");
+        vm.prank(inactive);
+        vm.expectRevert(unicode"AgentRegistry: 主体未激活");
+        registry.bindPoH(keccak256("human-inactive"), hex"01");
+    }
+
     function test_recoveryRequiresPoHAnchorAndNewWalletRules() public {
         // 纯质押身份没有 nullifier 锚点，无法找回
         _registerAs(alice, 0);
@@ -244,8 +314,7 @@ contract AgentRegistryTest is Test {
         registry.requestRecovery(keccak256("n"), hex"01", bob);
 
         // 找回请求必须由新钱包自己发起
-        MockPoHVerifier verifier = new MockPoHVerifier();
-        registry.setPoHVerifier(address(verifier));
+        MockPoHVerifier verifier = _installVerifier();
         address carol = makeAddr("carol");
         bytes32 nullifier = keccak256("human-carol");
         vm.deal(carol, 1 ether);
@@ -277,8 +346,7 @@ contract AgentRegistryTest is Test {
     }
 
     function test_recoveryFullFlowMovesIdentityToNewWallet() public {
-        MockPoHVerifier verifier = new MockPoHVerifier();
-        registry.setPoHVerifier(address(verifier));
+        MockPoHVerifier verifier = _installVerifier();
         registry.setRegistrationDeposit(1 ether);
         bytes32 nullifier = keccak256("human-alice");
         uint256 id = _registerVerifiedAs(alice, 1 ether, nullifier);
@@ -288,10 +356,25 @@ contract AgentRegistryTest is Test {
         vm.prank(bob);
         registry.requestRecovery(nullifier, hex"01", bob);
 
-        (address newWallet, bytes32 reqNullifier, uint256 executeAfter,,,,) = registry.recoveryRequests(alice);
+        (
+            address newWallet,
+            bytes32 reqNullifier,
+            uint256 executeAfter,
+            uint256 expiresAt,
+            uint64 nonce,
+            uint8 approvals,
+            AgentRegistry.ProofLevel proofLevel,
+            bool exists
+        ) = registry.recoveryRequests(alice);
         assertEq(newWallet, bob);
         assertEq(reqNullifier, nullifier);
-        assertEq(executeAfter, block.timestamp + 24 hours);
+        assertEq(executeAfter, block.timestamp + 24 hours, "same-identity path uses 24h veto window");
+        assertEq(expiresAt, executeAfter + 7 days);
+        assertEq(nonce, 1);
+        assertEq(approvals, 0);
+        assertEq(uint8(proofLevel), uint8(AgentRegistry.ProofLevel.SAME_IDENTITY));
+        assertTrue(exists);
+        assertTrue(verifier.lastVerifiedWallet() == bob, "same-identity proof consumed by verifier");
 
         vm.prank(guardian1);
         registry.approveRecovery(alice);
@@ -318,9 +401,82 @@ contract AgentRegistryTest is Test {
         assertFalse(registry.isRegisteredSubjectAt(alice, snapshotCount), "old wallet loses voting eligibility");
     }
 
+    function test_guardianPathDowngradesOnFailedProof() public {
+        MockPoHVerifier verifier = _installVerifier();
+        bytes32 nullifier = keccak256("human-alice");
+        _registerVerifiedAs(alice, 0, nullifier);
+        verifier.setSameIdentityFailure(bob, true);
+
+        vm.prank(bob);
+        registry.requestRecovery(nullifier, hex"01", bob);
+
+        (,,,,,, AgentRegistry.ProofLevel proofLevel,) = registry.recoveryRequests(alice);
+        assertEq(uint8(proofLevel), uint8(AgentRegistry.ProofLevel.GUARDIANS));
+        (,, uint256 executeAfter,,,,,) = registry.recoveryRequests(alice);
+        assertEq(executeAfter, block.timestamp + 48 hours, "guardian path uses 48h veto window");
+    }
+
+    function test_guardianPathWhenVerifierRemoved() public {
+        MockPoHVerifier verifier = _installVerifier();
+        bytes32 nullifier = keccak256("human-alice");
+        _registerVerifiedAs(alice, 0, nullifier);
+        registry.setPoHVerifier(address(0));
+
+        vm.prank(bob);
+        registry.requestRecovery(nullifier, hex"01", bob);
+
+        (,,,,,, AgentRegistry.ProofLevel proofLevel,) = registry.recoveryRequests(alice);
+        assertEq(uint8(proofLevel), uint8(AgentRegistry.ProofLevel.GUARDIANS));
+    }
+
+    function test_guardianPathRequiresAllGuardians() public {
+        MockPoHVerifier verifier = _installVerifier();
+        bytes32 nullifier = keccak256("human-alice");
+        _registerVerifiedAs(alice, 0, nullifier);
+        verifier.setSameIdentityFailure(bob, true);
+
+        vm.prank(bob);
+        registry.requestRecovery(nullifier, hex"01", bob);
+        vm.prank(guardian1);
+        registry.approveRecovery(alice);
+
+        vm.warp(block.timestamp + 48 hours);
+        vm.expectRevert(unicode"AgentRegistry: 缺少守护人批准");
+        registry.executeRecovery(alice);
+
+        vm.prank(guardian2);
+        registry.approveRecovery(alice);
+        registry.executeRecovery(alice);
+        assertTrue(registry.activeSubjects(bob), "all guardians unlock the guardian path");
+    }
+
+    function test_guardianPathVetoWindowIs48Hours() public {
+        MockPoHVerifier verifier = _installVerifier();
+        bytes32 nullifier = keccak256("human-alice");
+        _registerVerifiedAs(alice, 0, nullifier);
+        verifier.setSameIdentityFailure(bob, true);
+
+        vm.prank(bob);
+        registry.requestRecovery(nullifier, hex"01", bob);
+        vm.prank(guardian1);
+        registry.approveRecovery(alice);
+        vm.prank(guardian2);
+        registry.approveRecovery(alice);
+
+        vm.warp(block.timestamp + 24 hours);
+        vm.expectRevert(unicode"AgentRegistry: 否决窗口未结束");
+        registry.executeRecovery(alice);
+
+        // 48h 窗口内原钱包仍可否决
+        vm.prank(alice);
+        registry.vetoRecovery(alice);
+        vm.warp(block.timestamp + 24 hours);
+        vm.expectRevert(unicode"AgentRegistry: 无找回请求");
+        registry.executeRecovery(alice);
+    }
+
     function test_recoveryVetoWithinWindowBlocksExecution() public {
-        MockPoHVerifier verifier = new MockPoHVerifier();
-        registry.setPoHVerifier(address(verifier));
+        MockPoHVerifier verifier = _installVerifier();
         bytes32 nullifier = keccak256("human-alice");
         _registerVerifiedAs(alice, 0, nullifier);
 
@@ -341,8 +497,7 @@ contract AgentRegistryTest is Test {
     }
 
     function test_recoveryApprovalNonceDoesNotLeakAcrossRequests() public {
-        MockPoHVerifier verifier = new MockPoHVerifier();
-        registry.setPoHVerifier(address(verifier));
+        MockPoHVerifier verifier = _installVerifier();
         bytes32 nullifier = keccak256("human-alice");
         _registerVerifiedAs(alice, 0, nullifier);
 
@@ -364,8 +519,7 @@ contract AgentRegistryTest is Test {
     }
 
     function test_recoveryExpiryAndDuplicateGuardianApproval() public {
-        MockPoHVerifier verifier = new MockPoHVerifier();
-        registry.setPoHVerifier(address(verifier));
+        MockPoHVerifier verifier = _installVerifier();
         bytes32 nullifier = keccak256("human-alice");
         _registerVerifiedAs(alice, 0, nullifier);
 
@@ -391,8 +545,7 @@ contract AgentRegistryTest is Test {
     }
 
     function test_recoveryRequiresGuardianApproval() public {
-        MockPoHVerifier verifier = new MockPoHVerifier();
-        registry.setPoHVerifier(address(verifier));
+        MockPoHVerifier verifier = _installVerifier();
         bytes32 nullifier = keccak256("human-alice");
         _registerVerifiedAs(alice, 0, nullifier);
 
@@ -404,8 +557,7 @@ contract AgentRegistryTest is Test {
     }
 
     function test_recoveryBlockedByObligationsCanRetryAfterClear() public {
-        MockPoHVerifier verifier = new MockPoHVerifier();
-        registry.setPoHVerifier(address(verifier));
+        MockPoHVerifier verifier = _installVerifier();
         MockObligationOracle voting = new MockObligationOracle();
         registry.setObligationOracles(address(0), address(voting));
         bytes32 nullifier = keccak256("human-alice");
@@ -427,8 +579,7 @@ contract AgentRegistryTest is Test {
     }
 
     function test_recoveryBlockedWhileDeregistered() public {
-        MockPoHVerifier verifier = new MockPoHVerifier();
-        registry.setPoHVerifier(address(verifier));
+        MockPoHVerifier verifier = _installVerifier();
         bytes32 nullifier = keccak256("human-alice");
         _registerVerifiedAs(alice, 0, nullifier);
 
@@ -440,8 +591,7 @@ contract AgentRegistryTest is Test {
     }
 
     function test_deregisterBlockedByLiveRecovery() public {
-        MockPoHVerifier verifier = new MockPoHVerifier();
-        registry.setPoHVerifier(address(verifier));
+        MockPoHVerifier verifier = _installVerifier();
         bytes32 nullifier = keccak256("human-alice");
         _registerVerifiedAs(alice, 0, nullifier);
 
@@ -453,8 +603,7 @@ contract AgentRegistryTest is Test {
     }
 
     function test_secondRecoveryWorksAfterFirst() public {
-        MockPoHVerifier verifier = new MockPoHVerifier();
-        registry.setPoHVerifier(address(verifier));
+        MockPoHVerifier verifier = _installVerifier();
         bytes32 nullifier = keccak256("human-alice");
         uint256 id = _registerVerifiedAs(alice, 0, nullifier);
 
@@ -480,7 +629,8 @@ contract AgentRegistryTest is Test {
 
     function test_slashDepositAclAndAccounting() public {
         registry.setRegistrationDeposit(1 ether);
-        _registerAs(alice, 1 ether);
+        _registerAs(alice, 3 ether);
+        assertEq(registry.deposits(alice), 3 ether);
 
         vm.prank(makeAddr("stranger"));
         vm.expectRevert();
@@ -494,12 +644,12 @@ contract AgentRegistryTest is Test {
         address victim = makeAddr("victim");
         vm.prank(makeAddr("attacker"));
         registry.slashDeposit(alice, victim, 0.5 ether);
-        assertEq(registry.deposits(alice), 0.5 ether);
+        assertEq(registry.deposits(alice), 2.5 ether);
         assertEq(registry.pendingWithdrawals(victim), 0.5 ether);
 
         vm.prank(makeAddr("attacker"));
         vm.expectRevert(unicode"AgentRegistry: 罚没金额无效");
-        registry.slashDeposit(alice, victim, 0.6 ether);
+        registry.slashDeposit(alice, victim, 2.6 ether);
 
         vm.prank(makeAddr("attacker"));
         vm.expectRevert(unicode"AgentRegistry: 罚没收款人为零");
@@ -508,7 +658,7 @@ contract AgentRegistryTest is Test {
 
     function test_withdrawPullPaymentAfterDeregister() public {
         registry.setRegistrationDeposit(1 ether);
-        _registerAs(alice, 1 ether);
+        _registerAs(alice, 3 ether);
         uint256 before = registry.totalLiability();
 
         vm.prank(alice);
@@ -516,7 +666,7 @@ contract AgentRegistryTest is Test {
         address recipient = makeAddr("recipient");
         vm.prank(alice);
         registry.withdraw(payable(recipient));
-        assertEq(recipient.balance, 1 ether);
-        assertEq(registry.totalLiability(), before - 1 ether);
+        assertEq(recipient.balance, 3 ether);
+        assertEq(registry.totalLiability(), before - 3 ether);
     }
 }

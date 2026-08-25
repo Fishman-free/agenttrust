@@ -6,6 +6,7 @@ import {AgentRegistry} from "../src/AgentRegistry.sol";
 import {ReputationHub} from "../src/ReputationHub.sol";
 import {GuaranteeEscrow} from "../src/GuaranteeEscrow.sol";
 import {SchellingVoting} from "../src/SchellingVoting.sol";
+import {MockPoHVerifier} from "./mocks/MockPoHVerifier.sol";
 
 contract RejectingVotingReceiver {
     receive() external payable {
@@ -40,6 +41,8 @@ contract SchellingVotingTest is Test {
 
     function setUp() public {
         registry = new AgentRegistry();
+        MockPoHVerifier verifier = new MockPoHVerifier();
+        registry.setPoHVerifier(address(verifier));
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
         voting = new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 1 days, 1 days);
@@ -54,18 +57,27 @@ contract SchellingVotingTest is Test {
         vm.prank(seller);
         sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
+        guarantorId =
+            registry.registerAgentVerified("Guarantor", "", "", keccak256("human-guarantor"), hex"01", _guardians());
         for (uint256 i; i < 5; ++i) {
             jurors[i] = makeAddr(string.concat("juror", vm.toString(i)));
             vm.deal(jurors[i], 1 ether);
             vm.prank(jurors[i]);
-            registry.registerAgent("Juror", "", "", _guardians());
+            registry.registerAgentVerified(
+                "Juror", "", "", keccak256(abi.encode("human-juror", i)), hex"01", _guardians()
+            );
         }
+        // 早于快照的普通注册陪审员：用于验证 PoH 门禁（快照与信誉均合格，仅缺 PoH）
+        address plainJuror = makeAddr("plain juror");
+        vm.prank(plainJuror);
+        registry.registerAgent("Plain Juror", "", "", _guardians());
         vm.prank(buyer);
         tradeId = escrow.createTrade(buyerId, sellerId, 1 ether, 0.2 ether);
         vm.deal(postCreationJuror, 1 ether);
         vm.prank(postCreationJuror);
-        registry.registerAgent("Post-creation Juror", "", "", _guardians());
+        registry.registerAgentVerified(
+            "Post-creation Juror", "", "", keccak256("human-post-juror"), hex"01", _guardians()
+        );
         vm.prank(seller);
         escrow.acceptTrade(tradeId);
         vm.prank(buyer);
@@ -91,6 +103,15 @@ contract SchellingVotingTest is Test {
     function _reveal(address juror, SchellingVoting.Side side) internal {
         vm.prank(juror);
         voting.revealVote(caseId, side, SALT);
+    }
+
+    function test_commitVoteRequiresPohVerifiedJuror() public {
+        address plainJuror = makeAddr("plain juror");
+        vm.deal(plainJuror, 1 ether);
+        bytes32 commitment = voting.voteCommitment(caseId, plainJuror, SchellingVoting.Side.BUYER, SALT);
+        vm.prank(plainJuror);
+        vm.expectRevert(unicode"SchellingVoting: 陪审员需完成人类验证");
+        voting.commitVote{value: STAKE}(caseId, commitment);
     }
 
     function test_openCommitmentCountClearedExactlyOnce() public {

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {AgentRegistry} from "../src/AgentRegistry.sol";
 import {ReputationHub} from "../src/ReputationHub.sol";
 import {GuaranteeEscrow} from "../src/GuaranteeEscrow.sol";
+import {MockPoHVerifier} from "./mocks/MockPoHVerifier.sol";
 
 contract RejectingEscrowReceiver {
     receive() external payable {
@@ -36,6 +37,8 @@ contract GuaranteeEscrowTest is Test {
 
     function setUp() public {
         registry = new AgentRegistry();
+        MockPoHVerifier verifier = new MockPoHVerifier();
+        registry.setPoHVerifier(address(verifier));
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
         hub.setOutcomeWriter(address(escrow), true);
@@ -46,7 +49,8 @@ contract GuaranteeEscrowTest is Test {
         vm.prank(seller);
         sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
+        guarantorId =
+            registry.registerAgentVerified("Guarantor", "", "", keccak256("human-guarantor"), hex"01", _guardians());
         vm.prank(buyer);
         tradeId = escrow.createTrade(buyerId, sellerId, 1 ether, 0.1 ether);
     }
@@ -76,6 +80,20 @@ contract GuaranteeEscrowTest is Test {
         vm.prank(buyer);
         vm.expectRevert(unicode"GuaranteeEscrow: 金额必须大于零");
         escrow.createTrade(buyerId, sellerId, 0, 0);
+    }
+
+    function test_guaranteeRequiresPohVerifiedGuarantor() public {
+        vm.deal(stranger, 1 ether);
+        vm.prank(stranger);
+        uint256 strangerId = registry.registerAgent("Plain Guarantor", "", "", _guardians());
+        vm.prank(seller);
+        escrow.acceptTrade(tradeId);
+        vm.prank(buyer);
+        escrow.fund{value: 1 ether}(tradeId);
+
+        vm.prank(stranger);
+        vm.expectRevert(unicode"GuaranteeEscrow: 担保人需完成人类验证");
+        escrow.guarantee{value: 1 ether}(tradeId, strangerId, 1e18, 0.075 ether);
     }
 
     function test_openTradeCountLifecycleAcrossRelease() public {

@@ -31,6 +31,22 @@ export async function waitForTransaction(page: Page, successText: string | RegEx
 }
 
 export async function registerAgent(page: Page, accountIndex: number, name: string) {
+  await fillRegistrationForm(page, accountIndex, name);
+  await page.getByRole("button", { name: /^注册（押金 .*可退还）/ }).click();
+  return await readRegisteredAgentId(page);
+}
+
+export async function registerAgentVerified(page: Page, accountIndex: number, name: string) {
+  await fillRegistrationForm(page, accountIndex, name);
+  await page.getByRole("checkbox", { name: /使用 World ID 人类验证注册/ }).check();
+  await page
+    .getByLabel("World ID nullifier（0x…64 位）")
+    .fill(`0x${(accountIndex + 100).toString(16).padStart(64, "0")}`);
+  await page.getByRole("button", { name: /^注册（押金 .*可退还）/ }).click();
+  return await readRegisteredAgentId(page);
+}
+
+async function fillRegistrationForm(page: Page, accountIndex: number, name: string) {
   await selectAccount(page, 8);
   const guardianA = (await page.locator(".wallet-value[title]").getAttribute("title"))!;
   await selectAccount(page, 9);
@@ -41,7 +57,9 @@ export async function registerAgent(page: Page, accountIndex: number, name: stri
   await page.getByLabel("MCP/A2A 端点（https://…）").fill(`https://localhost/${name.toLowerCase()}`);
   await page.getByLabel("守护人 1（必填）").fill(guardianA);
   await page.getByLabel("守护人 2（必填）").fill(guardianB);
-  await page.getByRole("button", { name: /^注册（押金 .*可退还）/ }).click();
+}
+
+async function readRegisteredAgentId(page: Page) {
   await waitForTransaction(page, /注册成功，新 Agent ID：\d+。/);
   const message = await page.locator(".transaction-status").innerText();
   const match = message.match(/Agent ID：(\d+)/);

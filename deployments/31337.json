@@ -3,7 +3,7 @@
   "chainId": 31337,
   "chainName": "Local Anvil",
   "status": "deployed",
-  "rpcUrl": "http://127.0.0.1:8545",
+  "rpcUrl": "http://127.0.0.1:18545",
   "contracts": {
     "agentRegistry": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
     "reputationHub": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
@@ -11,16 +11,16 @@
     "schellingVoting": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9"
   },
   "runtimeBytecodeHashes": {
-    "agentRegistry": "0xb3118f683b4053723909bd5d7226a89db149af31a4a9f1722b28c00a54d05e15",
+    "agentRegistry": "0x49c049bd856426368333a934ba7c6c33b643ed437451a65439d4760161765d70",
     "reputationHub": "0x97d8f0ea00a4213196ec249cf24fd4fc8a9381074ecebcae010f3ce669f8c4c2",
-    "guaranteeEscrow": "0x27b8da42660af9a807492390e2efc5672b4e2b5da6956fc569f1bc8921438fb9",
-    "schellingVoting": "0x50570a2e2f253c114571ae506c56e274eccef33ff394c736367b52a8d26f3087"
+    "guaranteeEscrow": "0xc80e8bf5242ff6cea2bd6173832b4f7bd902eb26e121f357ceefb696b886b937",
+    "schellingVoting": "0x93c51e89b945b190717ac75b1cbfa038f002211cee5cb7811323fc4320681238"
   },
   "deploymentMetadata": {
     "agentRegistry": {
       "constructorArgs": [],
       "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-      "transactionHash": "0xbf7543c7fd81108fd21bf9fc7dc464dba91cff38ec4fc517d02bd7dcf3fc8ab8",
+      "transactionHash": "0xcc61454122ece19a90d5029253bb722a7c1d9341dd6990c679ec1e0aa5170ed0",
       "blockNumber": 1
     },
     "reputationHub": {
@@ -35,8 +35,8 @@
         "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
       ],
       "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-      "transactionHash": "0x404fd7fc5d2dc4a576eee815ac3eaa98661c6a802b5776ab71f4d7456b37bf71",
-      "blockNumber": 3
+      "transactionHash": "0x158395edb913e330a1a48fd5d0f87a0280b99cca14c282f5f6f2ff50498a54cf",
+      "blockNumber": 2
     },
     "schellingVoting": {
       "constructorArgs": [
@@ -48,8 +48,8 @@
         "86400"
       ],
       "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-      "transactionHash": "0xdd23bb274ea83461ba4bb4fbd37f596b1cabcc30bd8da1e3e9a85d34fd452f6d",
-      "blockNumber": 3
+      "transactionHash": "0xd7eb8862a8897d9a85eeacab73ec6f1d5d2daf099affd49acfc99fd545341c14",
+      "blockNumber": 2
     }
   },
   "votingParameters": {

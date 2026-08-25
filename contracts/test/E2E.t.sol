@@ -6,6 +6,7 @@ import {AgentRegistry} from "../src/AgentRegistry.sol";
 import {ReputationHub} from "../src/ReputationHub.sol";
 import {GuaranteeEscrow} from "../src/GuaranteeEscrow.sol";
 import {SchellingVoting} from "../src/SchellingVoting.sol";
+import {MockPoHVerifier} from "./mocks/MockPoHVerifier.sol";
 
 contract E2ETest is Test {
     function _guardians() internal returns (address[] memory list) {
@@ -16,6 +17,8 @@ contract E2ETest is Test {
 
     function test_fullAcceptedTradeCommitRevealAndPullSettlement() public {
         AgentRegistry registry = new AgentRegistry();
+        MockPoHVerifier verifier = new MockPoHVerifier();
+        registry.setPoHVerifier(address(verifier));
         ReputationHub hub = new ReputationHub();
         GuaranteeEscrow escrow = new GuaranteeEscrow(address(registry), address(hub));
         SchellingVoting voting =
@@ -37,11 +40,14 @@ contract E2ETest is Test {
         vm.prank(seller);
         uint256 sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        uint256 guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
+        uint256 guarantorId =
+            registry.registerAgentVerified("Guarantor", "", "", keccak256("human-guarantor"), hex"01", _guardians());
         for (uint256 i; i < 3; ++i) {
             vm.deal(jurors[i], 0.2 ether);
             vm.prank(jurors[i]);
-            registry.registerAgent("Juror", "", "", _guardians());
+            registry.registerAgentVerified(
+                "Juror", "", "", keccak256(abi.encode("human-juror", i)), hex"01", _guardians()
+            );
         }
 
         vm.prank(buyer);

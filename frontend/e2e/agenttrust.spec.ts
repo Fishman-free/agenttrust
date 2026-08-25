@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { DEPLOYMENTS } from "../lib/deployments";
 import { resetAnvilAndDeploy } from "./anvil";
-import { connectWallet, createDeliveredTrade, registerAgent, selectAccount, waitForTransaction } from "./helpers";
+import { connectWallet, createDeliveredTrade, registerAgent, registerAgentVerified, selectAccount, waitForTransaction } from "./helpers";
 import { increaseTime, installAnvilProvider } from "./provider";
 
 test.describe.configure({ mode: "serial" });
@@ -53,8 +53,15 @@ test("normal trade completes through the UI with three accounts, withdrawals, an
   const ids = [
     await registerAgent(page, 0, "NormalBuyer"),
     await registerAgent(page, 1, "NormalSeller"),
-    await registerAgent(page, 2, "NormalGuarantor"),
+    await registerAgentVerified(page, 2, "NormalGuarantor"),
   ];
+  // 未验证用户看到风险警示，并可通过 bindPoH 升级为已验证身份
+  await selectAccount(page, 0);
+  await expect(page.getByRole("alert")).toContainText("尚未完成人类验证");
+  await page.getByLabel("绑定 nullifier（0x…）").fill(`0x${(200).toString(16).padStart(64, "0")}`);
+  await page.getByRole("button", { name: "绑定 PoH（升级为已验证身份）" }).click();
+  await waitForTransaction(page, "已绑定人类证明，押金差额已退回。");
+  await expect(page.getByText(/人类验证：/)).toContainText("已验证（World ID）");
   const tradeId = await createDeliveredTrade(page, ids);
   await selectAccount(page, 0);
   await page.getByRole("button", { name: "买家确认完成" }).click();
@@ -83,7 +90,11 @@ test("disputed trade uses exact bond and six pre-registered identities through c
   await page.goto("/agents/");
   await connectWallet(page);
   const ids: string[] = [];
-  for (let index = 0; index < 6; index++) ids.push(await registerAgent(page, index, `DisputeIdentity${index}`));
+  for (let index = 0; index < 6; index++) {
+    ids.push(index < 2
+      ? await registerAgent(page, index, `DisputeIdentity${index}`)
+      : await registerAgentVerified(page, index, `DisputeIdentity${index}`));
+  }
   const tradeId = await createDeliveredTrade(page, ids);
 
   await selectAccount(page, 0);

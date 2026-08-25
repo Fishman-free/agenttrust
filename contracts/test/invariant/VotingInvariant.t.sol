@@ -7,6 +7,7 @@ import {AgentRegistry} from "../../src/AgentRegistry.sol";
 import {ReputationHub} from "../../src/ReputationHub.sol";
 import {GuaranteeEscrow} from "../../src/GuaranteeEscrow.sol";
 import {SchellingVoting} from "../../src/SchellingVoting.sol";
+import {MockPoHVerifier} from "../mocks/MockPoHVerifier.sol";
 
 contract VotingHandler is Test {
     SchellingVoting public immutable voting;
@@ -157,6 +158,8 @@ contract VotingInvariantTest is StdInvariant, Test {
 
     function setUp() public {
         registry = new AgentRegistry();
+        MockPoHVerifier verifier = new MockPoHVerifier();
+        registry.setPoHVerifier(address(verifier));
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
         voting = new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 1 days, 1 days);
@@ -172,20 +175,25 @@ contract VotingInvariantTest is StdInvariant, Test {
         vm.prank(seller);
         sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
+        guarantorId =
+            registry.registerAgentVerified("Guarantor", "", "", keccak256("human-guarantor"), hex"01", _guardians());
         for (uint256 i; i < 6; ++i) {
             address juror = makeAddr(string.concat("invariant juror ", vm.toString(i)));
             jurors.push(juror);
             vm.deal(juror, 2 ether);
             vm.prank(juror);
-            registry.registerAgent("Juror", "", "", _guardians());
+            registry.registerAgentVerified(
+                "Juror", "", "", keccak256(abi.encode("human-juror", i)), hex"01", _guardians()
+            );
         }
 
         vm.prank(buyer);
         tradeId = escrow.createTrade(buyerId, sellerId, 1 ether, 0.2 ether);
         vm.deal(postCreationJuror, 2 ether);
         vm.prank(postCreationJuror);
-        registry.registerAgent("Post-creation Juror", "", "", _guardians());
+        registry.registerAgentVerified(
+            "Post-creation Juror", "", "", keccak256("human-post-juror"), hex"01", _guardians()
+        );
         vm.prank(seller);
         escrow.acceptTrade(tradeId);
         vm.prank(buyer);
