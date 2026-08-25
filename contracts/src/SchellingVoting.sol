@@ -227,6 +227,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
             unicode"SchellingVoting: 不在资格快照中"
         );
         require(hub.isJurorEligible(msg.sender), unicode"SchellingVoting: 陪审员信誉不合格");
+        require(registry.isPoHVerified(msg.sender), unicode"SchellingVoting: 陪审员需完成人类验证");
         (address buyer, address seller, address guarantor) = escrow.tradeActors(c.tradeId);
         require(
             msg.sender != buyer && msg.sender != seller && msg.sender != guarantor,

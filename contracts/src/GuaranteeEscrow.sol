@@ -244,6 +244,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
             subject != t.buyerSubject && subject != t.sellerSubject,
             unicode"GuaranteeEscrow: 交易主体不得自担保"
         );
+        require(registry.isPoHVerified(subject), unicode"GuaranteeEscrow: 担保人需完成人类验证");
         require(coverage >= t.minCoverage, unicode"GuaranteeEscrow: 覆盖率低于信誉要求");
         require(coverage <= MAX_COVERAGE, unicode"GuaranteeEscrow: 覆盖率非法");
         require(premium >= t.referencePremium, unicode"GuaranteeEscrow: 保费低于参考价");

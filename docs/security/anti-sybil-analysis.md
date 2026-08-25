@@ -45,14 +45,15 @@ AgentTrust 的社区 ID（ERC-721 Agent ID）是智能体参与交易、担保�
 - 注册质押默认 **0.01 ETH**（`Deploy.s.sol` 读取 `REGISTRATION_FEE` 环境变量，默认 0.01 ether），提高攻击成本；
 - **人类证明钩子**（见路径 3）：配置 PoH 预言机后，每个 ID 必须消费一个独一无二的人类证明 nullifier。
 
-### 路径 3：无人类证明（PoH）锚定（结构性缺口，已补钩子）
-纯链上系统无法区分"一个真人"与"一万个钱包"——这是 EVM 的固有限制，任何纯链上方案都只能**提高成本**而不能**证明唯一**。真实唯一性必须来自链下预言机（World ID / Gitcoin Passport / TEE 硬件证明等）。
+### 路径 3：人类证明（PoH）锚定（已落地 World ID 双通道，2026-08-26）
+纯链上系统无法区分"一个真人"与"一万个钱包"——这是 EVM 的固有限制，任何纯链上方案都只能**提高成本**而不能**证明唯一**。真实唯一性来自链上人类证明验证器（World ID，直接链上验证、无链下信任方）。
 
-**修补**：`AgentRegistry` 新增可选 PoH 层：
-- `IAgentProofOfPersonhood` 接口 + `setPoHVerifier`（仅 owner，可设 `address(0)` 关闭）；
-- `registerAgentVerified(name, desc, endpoint, nullifier, proof)`：注册必须消费一个有效且**未使用过**的 nullifier；
-- 注册表本地记录 `usedPoHNullifiers`，作为预言机被绕过的第二道防线；
-- PoH 开启后，普通 `registerAgent` 路径被禁用，强制走人类证明。
+**修补**：`AgentRegistry` 的 PoH 层（详见 [`2026-08-26-world-id-poh-tiered-recovery-design.md`](../superpowers/specs/2026-08-26-world-id-poh-tiered-recovery-design.md)）：
+- `WorldIDPoHVerifier` 适配器：注册/升级走官方 `WorldIDRouter.verifyProof`（一次性消费）；找回走**非消耗式同人校验**（nullifierHash 锚点相等 + signal 绑定新钱包）；
+- **双通道注册**：普通通道（押金 ×3、无找回、不能担保/陪审）与 PoH 通道（标准押金、全能）并存，冷启动不受 World ID 门槛影响；
+- `bindPoH` 随时升级：消费一个未使用 nullifier 即锚定，自动退回押金差额；
+- `registerAgentVerified` 必须消费有效且未使用过的 nullifier；注册表本地记录 `usedPoHNullifiers` 作为第二道防线；
+- **角色门禁**：担保人（`GuaranteeEscrow.guarantee`）与陪审员（`SchellingVoting.commitVote`）必须 PoH 验证——女巫最想渗透的两个角色被 World ID 保护；买卖双方不受限。
 
 ### 路径 4：ID 买卖 / 借用（已由设计缓解）
 ERC-721 可转让，攻击者可以买入或租用高信誉 ID。
@@ -73,43 +74,45 @@ ERC-721 可转让，攻击者可以买入或租用高信誉 ID。
 
 | 文件 | 变更 |
 |---|---|
-| `contracts/src/AgentRegistry.sol` | 一人一 ID `require`；`IAgentProofOfPersonhood` 接口；`pohVerifier`/`usedPoHNullifiers`；`registerAgentVerified`；`setPoHVerifier` |
-| `contracts/script/Deploy.s.sol` | `REGISTRATION_FEE` 环境变量（默认 0.01 ether） |
-| `contracts/test/mocks/MockPoHVerifier.sol` | 测试预言机：非空证明有效、nullifier 只可消费一次 |
-| `contracts/test/AgentRegistry.t.sol` | 新增 3 个测试：同主体二重注册拒绝、人类证明跨钱包唯一、验证器权限 |
-| `contracts/test/GuaranteeEscrow.t.sol`、`SchellingVoting.t.sol` | 适配一人一 ID 语义 |
-| `deployments/31337.json`、`frontend/lib/deployments.ts` | 重新生成（registry runtime bytecode 变化） |
+| `contracts/src/AgentRegistry.sol` | 一人一 ID `require`；PoH 双通道 + `bindPoH` + 分级找回（24h/48h 否决窗）+ `isPoHVerified` |
+| `contracts/src/WorldIDPoHVerifier.sol` | World ID 适配器：消费式验证（注册/升级）与非消耗式同人校验（找回） |
+| `contracts/src/GuaranteeEscrow.sol`、`SchellingVoting.sol` | 担保人/陪审员 PoH 门禁 |
+| `contracts/script/Deploy.s.sol` | `REGISTRATION_DEPOSIT`（默认 0.01 ether）+ `POH_VERIFIER`（0=关闭；anvil 自动部署开发验证器） |
+| `contracts/test/mocks/MockPoHVerifier.sol` | 测试预言机：非空证明有效、nullifier 只可消费一次、同人证明可强制失败（覆盖 G 路径） |
+| `contracts/test/AgentRegistry.t.sol` | 双通道押金、bindPoH、S/G 两路径阈值与窗口、门禁、降级、重放防护 |
+| `contracts/test/WorldIDPoHVerifier.t.sol` | 适配器参数转发、非消耗校验、失败拒绝（假路由/假 Semaphore 验证器） |
+| `deployments/31337.json`、`frontend/lib/*.ts` | 重新生成（registry runtime bytecode 变化） |
 
-验证：`forge test` **97/97 通过**；`npm test` 67/67 通过；manifest `--check` 全绿。
+验证：`forge test` **130/130 通过**（含义务计数不变式）；`npm test` 69/69 通过；manifest/ABI `--check` 全绿。
 
-### 4.1 后续演进（注册押金与身份找回，已实现）
+### 4.2 双通道与分级找回（已实现，2026-08-26）
 
-按 [`2026-08-14-registration-deposit-and-recovery-design.md`](../superpowers/specs/2026-08-14-registration-deposit-and-recovery-design.md) 落地：
+按 [`2026-08-26-world-id-poh-tiered-recovery-design.md`](../superpowers/specs/2026-08-26-world-id-poh-tiered-recovery-design.md) 落地：
 
-- 注册费改为**可全额退还的注册押金**（`registrationDeposit`，默认 0.01 ETH），注销时自动转入待提取余额；
-- 注销 = 永久退出（burn Agent ID、信誉档案保留可查、终身不可再注册）；
-- **身份找回**：PoH 同人证明（仅验证不消费）+ 任一守护人批准 + 24 小时原钱包否决窗口 + 7 天执行期；
+- 普通注册 = 押金 ×3 + 无找回 + 不能担保/陪审；PoH 注册 = 标准押金 + 全能；`bindPoH` 随时升级并退押金差额；
+- **分级找回**：同人证明（同一设备 World ID，非消耗式）→ ≥1 守护人 + 24h 否决窗；证明缺失/失败 → 全守护人 + 48h 否决窗；7 天执行期；
 - 找回迁移：NFT、责任主体、押金、资格快照、守护人、nullifier 锚点全部迁移，信誉不清零；
 - 义务安全门：找回/注销要求 Escrow `openTradeCount` 与 Voting `openCommitmentCount` 均为零；
-- 预留 `slashDeposit` 罚没接口（本次未授权任何来源）。
+- 本地 Anvil 自动部署 `AnvilDevPoHVerifier` 供演示/E2E；生产链用 `POH_VERIFIER` 指向 `WorldIDPoHVerifier`。
 
-验证：`forge test` **115/115 通过**（含义务计数不变式）；`npm test` 67/67；manifest/ABI 重新生成。
+验证：`forge test` **130/130 通过**；`npm test` 69/69；manifest/ABI 重新生成。
 
 ---
 
 ## 5. 残余风险（诚实声明）
 
-1. **质押只能提高成本**：资金充裕的攻击者仍可买大量身份；唯一性的硬保证依赖 PoH 预言机。
-2. **PoH 预言机自身风险**：预言机可信度、隐私（生物特征）、覆盖人群都是外部依赖；`setPoHVerifier` 权限在 owner，属治理风险点。
-3. **链上不可识别关联地址**：同一实体用互不相关钱包（不共享 nullifier 时）仍可绕过 PoH——除非预言机按"人"发证明且一人一证。
-4. **陪审并非随机抽选**（已知限制）：若攻击者绕过 ID 唯一性，仍可定向堆票；长期方向是随机抽选 + 二次质押（见设计规格 §5）。
-5. **注册费与链上币价联动**：固定 0.01 ETH 的威慑力随币价波动，运营者需定期调整。
+1. **World ID 唯一性按设备**：同一人类多台设备可获多个身份，"一人一 ID"在链上实际是"一设备一 ID"；押金 + 信誉 + 守护人为第二道防线（协议边界，写入 [`docs/world-id-integration.md`](../world-id-integration.md)）。
+2. **PoH 验证器自身风险**：`WorldIDPoHVerifier` 依赖官方路由与 Semaphore 验证器；`setPoHVerifier` 权限在 owner，属治理风险点；适配器哈希方案与 IDKit 的最终一致性需在申请 app_id 后做一次 Base Sepolia 集成校验。
+3. **找回的安全边界**：S 路径的"同人"保证仅在注册设备仍可用时成立；G 路径安全 = 守护人可信度 × 48h 在线率，守护人合谋可盗号（与所有社交恢复方案同级的固有风险）。
+4. **链上不可识别关联地址**：同一实体用互不相关钱包仍可走普通通道获得多个买卖身份（不能担保/陪审，攻击面已被角色门禁压缩）。
+5. **陪审并非随机抽选**（已知限制）：即便 PoH 落地，攻击者仍可定向堆票；长期方向是随机抽选 + 二次质押。
+6. **押金与链上币价联动**：固定押金的威慑力随币价波动，运营者需定期调整。
 
 ---
 
 ## 6. 后续方向
 
-- 接入真实 PoH 预言机（World ID / Gitcoin / 政府或机构 DID）；
+- 真实 PoH 已在链上可验证（World ID 适配器）；剩余工作是 Base Sepolia 集成校验与前端 IDKit 一键验证（见 [`docs/world-id-integration.md`](../world-id-integration.md)）；
 - 陪审随机抽选 + 二次质押（quadratic staking）提高堆票成本；
 - 信誉惩罚递进：低信誉主体的注册/投票质押要求更高；
 - 对可疑关联地址做链下聚类分析（同一资金源、同一时间窗注册），作为前端提示层。

@@ -6,6 +6,7 @@ import {AgentRegistry} from "../src/AgentRegistry.sol";
 import {ReputationHub} from "../src/ReputationHub.sol";
 import {GuaranteeEscrow} from "../src/GuaranteeEscrow.sol";
 import {SchellingVoting} from "../src/SchellingVoting.sol";
+import {MockPoHVerifier} from "./mocks/MockPoHVerifier.sol";
 
 contract E2ETest is Test {
     function _guardians() internal returns (address[] memory list) {
@@ -14,8 +15,38 @@ contract E2ETest is Test {
         list[1] = makeAddr("guardian-b");
     }
 
+    function _registerJuror(AgentRegistry registry, address who, bytes32 nullifier) internal returns (uint256 id) {
+        vm.deal(who, 0.2 ether);
+        vm.prank(who);
+        id = registry.registerAgentVerified("Juror", "", "", nullifier, hex"01", _guardians());
+    }
+
+    function _commitVote(SchellingVoting voting, uint256 caseId, address juror, SchellingVoting.Side side, bytes32 salt)
+        internal
+    {
+        bytes32 commitment = voting.voteCommitment(caseId, juror, side, salt);
+        vm.prank(juror);
+        voting.commitVote{value: 0.1 ether}(caseId, commitment);
+    }
+
+    function _revealVote(SchellingVoting voting, uint256 caseId, address juror, SchellingVoting.Side side, bytes32 salt)
+        internal
+    {
+        vm.prank(juror);
+        voting.revealVote(caseId, side, salt);
+    }
+
+    function _finalizeJuror(ReputationHub hub, SchellingVoting voting, uint256 caseId, address juror) internal {
+        voting.finalizeJurorMetrics(caseId, juror);
+        bytes32 jurorCaseId =
+            keccak256(abi.encode("AGENTTRUST_JUROR_CASE_V1", address(voting), block.chainid, caseId, juror));
+        assertTrue(hub.recordedJurorCases(jurorCaseId));
+    }
+
     function test_fullAcceptedTradeCommitRevealAndPullSettlement() public {
         AgentRegistry registry = new AgentRegistry();
+        MockPoHVerifier verifier = new MockPoHVerifier();
+        registry.setPoHVerifier(address(verifier));
         ReputationHub hub = new ReputationHub();
         GuaranteeEscrow escrow = new GuaranteeEscrow(address(registry), address(hub));
         SchellingVoting voting =
@@ -37,11 +68,10 @@ contract E2ETest is Test {
         vm.prank(seller);
         uint256 sellerId = registry.registerAgent("Seller", "", "", _guardians());
         vm.prank(guarantor);
-        uint256 guarantorId = registry.registerAgent("Guarantor", "", "", _guardians());
+        uint256 guarantorId =
+            registry.registerAgentVerified("Guarantor", "", "", keccak256("human-guarantor"), hex"01", _guardians());
         for (uint256 i; i < 3; ++i) {
-            vm.deal(jurors[i], 0.2 ether);
-            vm.prank(jurors[i]);
-            registry.registerAgent("Juror", "", "", _guardians());
+            _registerJuror(registry, jurors[i], keccak256(abi.encode("human-juror", i)));
         }
 
         vm.prank(buyer);
@@ -63,25 +93,21 @@ contract E2ETest is Test {
         uint256 caseId = voting.openCase(tradeId);
         bytes32 salt = keccak256("e2e");
         for (uint256 i; i < 3; ++i) {
-            SchellingVoting.Side side = i < 2 ? SchellingVoting.Side.BUYER : SchellingVoting.Side.SELLER;
-            bytes32 commitment = voting.voteCommitment(caseId, jurors[i], side, salt);
-            vm.prank(jurors[i]);
-            voting.commitVote{value: 0.1 ether}(caseId, commitment);
+            _commitVote(
+                voting, caseId, jurors[i], i < 2 ? SchellingVoting.Side.BUYER : SchellingVoting.Side.SELLER, salt
+            );
         }
         vm.warp(block.timestamp + 1 days);
         for (uint256 i; i < 3; ++i) {
-            SchellingVoting.Side side = i < 2 ? SchellingVoting.Side.BUYER : SchellingVoting.Side.SELLER;
-            vm.prank(jurors[i]);
-            voting.revealVote(caseId, side, salt);
+            _revealVote(
+                voting, caseId, jurors[i], i < 2 ? SchellingVoting.Side.BUYER : SchellingVoting.Side.SELLER, salt
+            );
         }
         vm.warp(block.timestamp + 1 days);
         voting.settle(caseId);
 
         for (uint256 i; i < 3; ++i) {
-            voting.finalizeJurorMetrics(caseId, jurors[i]);
-            bytes32 jurorCaseId =
-                keccak256(abi.encode("AGENTTRUST_JUROR_CASE_V1", address(voting), block.chainid, caseId, jurors[i]));
-            assertTrue(hub.recordedJurorCases(jurorCaseId));
+            _finalizeJuror(hub, voting, caseId, jurors[i]);
         }
         vm.expectRevert(unicode"ReputationHub: 陪审记录已存在");
         voting.finalizeJurorMetrics(caseId, jurors[0]);

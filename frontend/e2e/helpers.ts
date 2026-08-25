@@ -21,16 +21,36 @@ export async function waitForTransaction(page: Page, successText: string | RegEx
   const status = page.locator(".transaction-status");
   const previous = lastTransactionHash.get(page);
   await expect.poll(async () => {
-    const hash = await status.locator("code").textContent().catch(() => null);
-    return hash && hash !== previous ? hash : undefined;
+    // 页面可能同时存在多个状态组件（注册 + 身份操作），取所有哈希并接受任一新哈希。
+    const hashes = await status.locator("code").allTextContents().catch(() => []);
+    return hashes.find((hash) => hash !== previous);
   }, { timeout: 30_000 }).toBeTruthy();
-  const hash = await status.locator("code").textContent();
+  const hashes = await status.locator("code").allTextContents();
+  const hash = hashes.find((value) => value !== previous);
   if (hash) lastTransactionHash.set(page, hash);
-  await expect(status).toContainText(successText, { timeout: 30_000 });
-  await expect(status).toContainText("区块：");
+  // 收窄到包含该新哈希的状态组件，避免多个状态组件触发 strict mode。
+  const target = status.filter({ hasText: hash ?? "\u0000" });
+  await expect(target).toContainText(successText, { timeout: 30_000 });
+  await expect(target).toContainText("区块：");
 }
 
 export async function registerAgent(page: Page, accountIndex: number, name: string) {
+  await fillRegistrationForm(page, accountIndex, name);
+  await page.getByRole("button", { name: /^注册（押金 .*可退还）/ }).click();
+  return await readRegisteredAgentId(page);
+}
+
+export async function registerAgentVerified(page: Page, accountIndex: number, name: string) {
+  await fillRegistrationForm(page, accountIndex, name);
+  await page.getByRole("checkbox", { name: /使用 World ID 人类验证注册/ }).check();
+  await page
+    .getByLabel("World ID nullifier（0x…64 位）")
+    .fill(`0x${(accountIndex + 100).toString(16).padStart(64, "0")}`);
+  await page.getByRole("button", { name: /^注册（押金 .*可退还）/ }).click();
+  return await readRegisteredAgentId(page);
+}
+
+async function fillRegistrationForm(page: Page, accountIndex: number, name: string) {
   await selectAccount(page, 8);
   const guardianA = (await page.locator(".wallet-value[title]").getAttribute("title"))!;
   await selectAccount(page, 9);
@@ -41,7 +61,9 @@ export async function registerAgent(page: Page, accountIndex: number, name: stri
   await page.getByLabel("MCP/A2A 端点（https://…）").fill(`https://localhost/${name.toLowerCase()}`);
   await page.getByLabel("守护人 1（必填）").fill(guardianA);
   await page.getByLabel("守护人 2（必填）").fill(guardianB);
-  await page.getByRole("button", { name: /^注册（押金 .*可退还）/ }).click();
+}
+
+async function readRegisteredAgentId(page: Page) {
   await waitForTransaction(page, /注册成功，新 Agent ID：\d+。/);
   const message = await page.locator(".transaction-status").innerText();
   const match = message.match(/Agent ID：(\d+)/);
