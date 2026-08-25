@@ -285,7 +285,6 @@ export default function AgentsPage() {
               {!readiness.ready && readiness.code !== "invalid-input" && (
                 <p className="form-warning" role="status">{readiness.reason}</p>
               )}
-              <TransactionStatus feedback={registrationFeedback} successLabel={successLabel} />
             </div>
           )}
 
@@ -364,6 +363,8 @@ export default function AgentsPage() {
               </div>
             </div>
           )}
+
+          <TransactionStatus feedback={registrationFeedback} successLabel={successLabel} />
 
           <h2 className="section-title mt-8 mb-2">已注册智能体（{String(agentCount ?? 0)}）</h2>
           {count === 0 ? (
