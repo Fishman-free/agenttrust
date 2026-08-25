@@ -222,7 +222,7 @@ fi
 
 echo "Deploying AgentRegistry, ReputationHub, GuaranteeEscrow, and SchellingVoting."
 export PRIVATE_KEY
-forge script script/Deploy.s.sol --rpc-url "$RPC_URL" --broadcast --private-key "$PRIVATE_KEY" -vv
+forge script script/Deploy.s.sol:Deploy --rpc-url "$RPC_URL" --broadcast --private-key "$PRIVATE_KEY" -vv
 
 RUN_FILE="broadcast/Deploy.s.sol/$CHAIN_ID/run-latest.json"
 [ -f "$RUN_FILE" ] || fail "missing broadcast file: $RUN_FILE"

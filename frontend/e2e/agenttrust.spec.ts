@@ -57,7 +57,7 @@ test("normal trade completes through the UI with three accounts, withdrawals, an
   ];
   // 未验证用户看到风险警示，并可通过 bindPoH 升级为已验证身份
   await selectAccount(page, 0);
-  await expect(page.getByRole("alert")).toContainText("尚未完成人类验证");
+  await expect(page.getByText("尚未完成人类验证（World ID）")).toBeVisible();
   await page.getByLabel("绑定 nullifier（0x…）").fill(`0x${(200).toString(16).padStart(64, "0")}`);
   await page.getByRole("button", { name: "绑定 PoH（升级为已验证身份）" }).click();
   await waitForTransaction(page, "已绑定人类证明，押金差额已退回。");

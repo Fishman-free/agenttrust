@@ -5,7 +5,7 @@ export const DEPLOYMENTS = {
     "chainId": 31337,
     "chainName": "Local Anvil",
     "status": "deployed",
-    "rpcUrl": "http://127.0.0.1:18545",
+    "rpcUrl": "http://127.0.0.1:8545",
     "contracts": {
       "agentRegistry": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
       "reputationHub": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
@@ -13,16 +13,16 @@ export const DEPLOYMENTS = {
       "schellingVoting": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9"
     },
     "runtimeBytecodeHashes": {
-      "agentRegistry": "0x49c049bd856426368333a934ba7c6c33b643ed437451a65439d4760161765d70",
+      "agentRegistry": "0xe7f8c873823519aa5715ce40951ecf6d9798fcc28a4b6a95894a152e4c6e8a76",
       "reputationHub": "0x97d8f0ea00a4213196ec249cf24fd4fc8a9381074ecebcae010f3ce669f8c4c2",
-      "guaranteeEscrow": "0xc80e8bf5242ff6cea2bd6173832b4f7bd902eb26e121f357ceefb696b886b937",
-      "schellingVoting": "0x93c51e89b945b190717ac75b1cbfa038f002211cee5cb7811323fc4320681238"
+      "guaranteeEscrow": "0x78aa71c04b98c3d95eded31a29e4b20e55ebacba6969c11d9a353dd158e91a4e",
+      "schellingVoting": "0x0fbbe08e116069325da8282dad5f025a6e3f4a864a8e09ff17c5eb60a87cbdbe"
     },
     "deploymentMetadata": {
       "agentRegistry": {
         "constructorArgs": [],
         "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "transactionHash": "0xcc61454122ece19a90d5029253bb722a7c1d9341dd6990c679ec1e0aa5170ed0",
+        "transactionHash": "0x5df23832bbcb6bda6ce985e7dd10f6e2ca0729b99253118d9ffbd0c6732eef92",
         "blockNumber": 1
       },
       "reputationHub": {
@@ -37,7 +37,7 @@ export const DEPLOYMENTS = {
           "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
         ],
         "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "transactionHash": "0x158395edb913e330a1a48fd5d0f87a0280b99cca14c282f5f6f2ff50498a54cf",
+        "transactionHash": "0xf792fbfb0446e0ff0131aa9afe9fb26d39c57d8656be56a81292f1ddeb441fa6",
         "blockNumber": 2
       },
       "schellingVoting": {
@@ -50,7 +50,7 @@ export const DEPLOYMENTS = {
           "86400"
         ],
         "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "transactionHash": "0xd7eb8862a8897d9a85eeacab73ec6f1d5d2daf099affd49acfc99fd545341c14",
+        "transactionHash": "0x6b59ed51baf719038df7b667611b24f3eba0a42a929adbe7ed6deac0c09ab05f",
         "blockNumber": 2
       }
     },

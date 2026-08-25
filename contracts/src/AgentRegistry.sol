@@ -156,16 +156,7 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         bytes calldata proof,
         address[] calldata guardianList
     ) external payable nonReentrant returns (uint256 tokenId) {
-        require(pohVerifier != address(0), unicode"AgentRegistry: 未配置人类证明验证器");
-        require(nullifier != bytes32(0), unicode"AgentRegistry: 无效 nullifier");
-        require(!usedPoHNullifiers[nullifier], unicode"AgentRegistry: nullifier 已使用");
-        require(
-            IAgentProofOfPersonhood(pohVerifier).verifyAndConsume(msg.sender, nullifier, proof),
-            unicode"AgentRegistry: 人类证明无效"
-        );
-        usedPoHNullifiers[nullifier] = true;
-        nullifierSubject[nullifier] = msg.sender;
-        subjectNullifier[msg.sender] = nullifier;
+        _anchorPoH(msg.sender, nullifier, proof);
         tokenId = _registerAgent(name, description, endpoint, guardianList, nullifier, registrationDeposit);
     }
 
@@ -174,16 +165,7 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
     function bindPoH(bytes32 nullifier, bytes calldata proof) external nonReentrant {
         require(activeSubjects[msg.sender] && !deregistered[msg.sender], unicode"AgentRegistry: 主体未激活");
         require(subjectNullifier[msg.sender] == bytes32(0), unicode"AgentRegistry: 已有 PoH 锚点");
-        require(pohVerifier != address(0), unicode"AgentRegistry: 未配置人类证明验证器");
-        require(nullifier != bytes32(0), unicode"AgentRegistry: 无效 nullifier");
-        require(!usedPoHNullifiers[nullifier], unicode"AgentRegistry: nullifier 已使用");
-        require(
-            IAgentProofOfPersonhood(pohVerifier).verifyAndConsume(msg.sender, nullifier, proof),
-            unicode"AgentRegistry: 人类证明无效"
-        );
-        usedPoHNullifiers[nullifier] = true;
-        nullifierSubject[nullifier] = msg.sender;
-        subjectNullifier[msg.sender] = nullifier;
+        _anchorPoH(msg.sender, nullifier, proof);
 
         uint256 locked = deposits[msg.sender];
         uint256 retained = locked > registrationDeposit ? registrationDeposit : locked;
@@ -194,6 +176,20 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
             emit WithdrawalCredited(msg.sender, refund);
         }
         emit PoHBound(msg.sender, nullifier, refund);
+    }
+
+    /// @notice Verifies and consumes one PoH nullifier, anchoring it to the subject.
+    function _anchorPoH(address subject, bytes32 nullifier, bytes calldata proof) private {
+        require(pohVerifier != address(0), unicode"AgentRegistry: 未配置人类证明验证器");
+        require(nullifier != bytes32(0), unicode"AgentRegistry: 无效 nullifier");
+        require(!usedPoHNullifiers[nullifier], unicode"AgentRegistry: nullifier 已使用");
+        require(
+            IAgentProofOfPersonhood(pohVerifier).verifyAndConsume(subject, nullifier, proof),
+            unicode"AgentRegistry: 人类证明无效"
+        );
+        usedPoHNullifiers[nullifier] = true;
+        nullifierSubject[nullifier] = subject;
+        subjectNullifier[subject] = nullifier;
     }
 
     /// @notice Whether the subject has a PoH anchor and thus recovery plus guarantor/juror roles.
@@ -279,16 +275,7 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         require(_ownerOf(firstAgentIdPlusOne[subject] - 1) == subject, unicode"AgentRegistry: NFT 已转让");
         require(!isGuardian[subject][newWallet], unicode"AgentRegistry: 新钱包不能是守护人");
 
-        ProofLevel level = ProofLevel.GUARDIANS;
-        if (pohVerifier != address(0) && recoveryProof.length != 0) {
-            try IAgentProofOfPersonhood(pohVerifier).verifySameIdentity(nullifier, newWallet, recoveryProof) returns (
-                bool ok
-            ) {
-                if (ok) level = ProofLevel.SAME_IDENTITY;
-            } catch {
-                level = ProofLevel.GUARDIANS;
-            }
-        }
+        ProofLevel level = _resolveProofLevel(nullifier, newWallet, recoveryProof);
 
         RecoveryRequest storage existing = recoveryRequests[subject];
         require(!existing.exists || block.timestamp > existing.expiresAt, unicode"AgentRegistry: 已有找回请求");
@@ -308,6 +295,21 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
             exists: true
         });
         emit RecoveryRequested(subject, newWallet, nullifier, executeAfter, expiresAt, nonce, level);
+    }
+
+    /// @notice A valid same-identity proof selects SAME_IDENTITY; any failure downgrades to GUARDIANS.
+    function _resolveProofLevel(bytes32 nullifier, address newWallet, bytes calldata recoveryProof)
+        private
+        returns (ProofLevel level)
+    {
+        if (pohVerifier == address(0) || recoveryProof.length == 0) return ProofLevel.GUARDIANS;
+        try IAgentProofOfPersonhood(pohVerifier).verifySameIdentity(nullifier, newWallet, recoveryProof) returns (
+            bool ok
+        ) {
+            return ok ? ProofLevel.SAME_IDENTITY : ProofLevel.GUARDIANS;
+        } catch {
+            return ProofLevel.GUARDIANS;
+        }
     }
 
     function approveRecovery(address subject) external {
@@ -335,8 +337,10 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         require(request.exists, unicode"AgentRegistry: 无找回请求");
         require(block.timestamp >= request.executeAfter, unicode"AgentRegistry: 否决窗口未结束");
         require(block.timestamp <= request.expiresAt, unicode"AgentRegistry: 找回请求已过期");
-        uint256 requiredApprovals = request.proofLevel == ProofLevel.SAME_IDENTITY ? 1 : _guardians[subject].length;
-        require(request.approvals >= requiredApprovals, unicode"AgentRegistry: 缺少守护人批准");
+        require(
+            request.approvals >= _requiredRecoveryApprovals(subject, request.proofLevel),
+            unicode"AgentRegistry: 缺少守护人批准"
+        );
         require(activeSubjects[subject] && !deregistered[subject], unicode"AgentRegistry: 身份未激活");
         require(!registeredSubjects[request.newWallet], unicode"AgentRegistry: 新钱包已注册");
         require(!isGuardian[subject][request.newWallet], unicode"AgentRegistry: 新钱包不能是守护人");
@@ -345,29 +349,40 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         uint256 tokenId = firstAgentIdPlusOne[subject] - 1;
         require(_ownerOf(tokenId) == subject, unicode"AgentRegistry: NFT 已转让");
 
-        address[] memory guardianList = _guardians[subject];
-        _clearGuardians(subject);
-        for (uint256 i; i < guardianList.length; ++i) {
-            isGuardian[request.newWallet][guardianList[i]] = true;
-            _guardians[request.newWallet].push(guardianList[i]);
-        }
-        emit GuardiansUpdated(request.newWallet, guardianList);
-
-        registeredSubjects[request.newWallet] = true;
-        activeSubjects[request.newWallet] = true;
-        activeSubjects[subject] = false;
-        registeredAtBlock[request.newWallet] = registeredAtBlock[subject];
-        firstAgentIdPlusOne[request.newWallet] = firstAgentIdPlusOne[subject];
-        deposits[request.newWallet] = deposits[subject];
-        deposits[subject] = 0;
-        agents[tokenId].owner = request.newWallet;
-        nullifierSubject[request.nullifier] = request.newWallet;
-        subjectNullifier[request.newWallet] = request.nullifier;
-        subjectNullifier[subject] = bytes32(0);
-        _safeTransfer(subject, request.newWallet, tokenId, "");
+        address[] memory guardianList = _migrateGuardians(subject, request.newWallet);
+        _migrateIdentity(subject, request.newWallet, tokenId, request.nullifier);
 
         delete recoveryRequests[subject];
         emit RecoveryCompleted(subject, request.newWallet, tokenId, request.nullifier);
+    }
+
+    function _requiredRecoveryApprovals(address subject, ProofLevel level) private view returns (uint256) {
+        return level == ProofLevel.SAME_IDENTITY ? 1 : _guardians[subject].length;
+    }
+
+    function _migrateGuardians(address subject, address newWallet) private returns (address[] memory guardianList) {
+        guardianList = _guardians[subject];
+        _clearGuardians(subject);
+        for (uint256 i; i < guardianList.length; ++i) {
+            isGuardian[newWallet][guardianList[i]] = true;
+            _guardians[newWallet].push(guardianList[i]);
+        }
+        emit GuardiansUpdated(newWallet, guardianList);
+    }
+
+    function _migrateIdentity(address subject, address newWallet, uint256 tokenId, bytes32 nullifier) private {
+        registeredSubjects[newWallet] = true;
+        activeSubjects[newWallet] = true;
+        activeSubjects[subject] = false;
+        registeredAtBlock[newWallet] = registeredAtBlock[subject];
+        firstAgentIdPlusOne[newWallet] = firstAgentIdPlusOne[subject];
+        deposits[newWallet] = deposits[subject];
+        deposits[subject] = 0;
+        agents[tokenId].owner = newWallet;
+        nullifierSubject[nullifier] = newWallet;
+        subjectNullifier[newWallet] = nullifier;
+        subjectNullifier[subject] = bytes32(0);
+        _safeTransfer(subject, newWallet, tokenId, "");
     }
 
     function slashDeposit(address subject, address recipient, uint256 amount) external nonReentrant {

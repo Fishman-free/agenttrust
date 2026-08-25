@@ -21,13 +21,17 @@ export async function waitForTransaction(page: Page, successText: string | RegEx
   const status = page.locator(".transaction-status");
   const previous = lastTransactionHash.get(page);
   await expect.poll(async () => {
-    const hash = await status.locator("code").textContent().catch(() => null);
-    return hash && hash !== previous ? hash : undefined;
+    // 页面可能同时存在多个状态组件（注册 + 身份操作），取所有哈希并接受任一新哈希。
+    const hashes = await status.locator("code").allTextContents().catch(() => []);
+    return hashes.find((hash) => hash !== previous);
   }, { timeout: 30_000 }).toBeTruthy();
-  const hash = await status.locator("code").textContent();
+  const hashes = await status.locator("code").allTextContents();
+  const hash = hashes.find((value) => value !== previous);
   if (hash) lastTransactionHash.set(page, hash);
-  await expect(status).toContainText(successText, { timeout: 30_000 });
-  await expect(status).toContainText("区块：");
+  // 收窄到包含该新哈希的状态组件，避免多个状态组件触发 strict mode。
+  const target = status.filter({ hasText: hash ?? "\u0000" });
+  await expect(target).toContainText(successText, { timeout: 30_000 });
+  await expect(target).toContainText("区块：");
 }
 
 export async function registerAgent(page: Page, accountIndex: number, name: string) {
