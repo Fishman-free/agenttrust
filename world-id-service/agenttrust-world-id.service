@@ -1,0 +1,25 @@
+[Unit]
+Description=AgentTrust World ID v4 service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=world-id
+Group=world-id
+WorkingDirectory=/opt/agenttrust-world-id
+EnvironmentFile=/etc/agenttrust/world-id.env
+ExecStart=/usr/local/bin/node /opt/agenttrust-world-id/dist/src/server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/agenttrust-world-id
+CapabilityBoundingSet=
+LockPersonality=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

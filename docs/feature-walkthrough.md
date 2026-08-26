@@ -6,7 +6,7 @@
 
 > Version: `main` at `6a662cf` (B: dual-path World ID PoH and tiered recovery; A: premium tiers, exposure caps, and buyer accounting; C: evidence submission and juror decision basis; English-first UI and docs — all merged).
 > Demo environment: Docker Compose (Anvil 31337 + development PoH verifier + six preconfigured accounts + automatic deployment), frontend at http://localhost:3000.
-> Verification baseline: **146 contract tests passed**.
+> Verification baseline: **159 contract tests passed**.
 > ⚠️ After upgrading to the new contracts, run `docker compose down --volumes && docker compose up -d --build` once.
 
 ---
@@ -153,7 +153,7 @@ The stake enters `totalLiability`; `openTradeCount` and `openStakeBySubject` are
 2. **S-path recovery depends on the registration device:** if that device is lost, recovery falls back to the guardian-based G path. Standard registrations have no recovery anchor, so the warning reflects a real constraint.
 3. **Jurors are not randomly selected:** participation is open, subject to snapshot eligibility, PoH, and stake; security relies on Schelling-point convergence.
 4. **Evidence persistence is external:** only the hash and summary are on-chain. Submitters must pin files; the UI offers Pinata upload and warns about persistence.
-5. **The real World ID adapter is not the local mock:** local Anvil and CI use development/mock verifiers to exercise flows, not to prove real World ID compatibility. `WorldIDPoHVerifier` exists, but **has not yet been deployed and validated on Base Sepolia**. Keep the production PoH path disabled until the integration checklist in [World ID integration](world-id-integration.md) passes.
+5. **Base Sepolia uses backend-attested World ID v4:** app `app_01728cabff1e05950af1ff18c06c9d38`, RP `rp_fd884ac4342cc4d1`, same-origin `/api/world-id`, the official v4 Developer Portal API, server-only trusted-attester keys, and Registry-bound adapter `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`. This enables PoH registration and guarantor/juror gates but is not direct onchain World verification. `verifySameIdentity` returns `false`, so recovery requires all guardians plus 48 hours. The contracts are unaudited, testnet-only, and not production-ready.
 
 ---
 

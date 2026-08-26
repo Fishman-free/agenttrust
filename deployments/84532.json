@@ -2,25 +2,56 @@
   "schemaVersion": 2,
   "chainId": 84532,
   "chainName": "Base Sepolia",
-  "status": "undeployed",
+  "status": "deployed",
   "rpcUrl": "https://sepolia.base.org",
   "contracts": {
-    "agentRegistry": "0x0000000000000000000000000000000000000000",
-    "reputationHub": "0x0000000000000000000000000000000000000000",
-    "guaranteeEscrow": "0x0000000000000000000000000000000000000000",
-    "schellingVoting": "0x0000000000000000000000000000000000000000"
+    "agentRegistry": "0x1f01763550a87ec94d986caa35aec9c8ce78403f",
+    "reputationHub": "0x66aa7db66de7ca18e3c3677ba209fe099b374d1f",
+    "guaranteeEscrow": "0x1a01b82fc73b03be857ad241aa4ed6b445ef7922",
+    "schellingVoting": "0xc66bd8485863734b011e82a4539ce43dc68fcd3a"
   },
   "runtimeBytecodeHashes": {
-    "agentRegistry": null,
-    "reputationHub": null,
-    "guaranteeEscrow": null,
-    "schellingVoting": null
+    "agentRegistry": "0xb831b82412784516cebba6a25dc66a1b5b8ef240eb5f69839b20a763fb53202b",
+    "reputationHub": "0x97d8f0ea00a4213196ec249cf24fd4fc8a9381074ecebcae010f3ce669f8c4c2",
+    "guaranteeEscrow": "0x701919a85fbd353f8c2fbc8cf1d9a6c9270f87ddc1a3dfc6f9e5888b554dc413",
+    "schellingVoting": "0x17f153a7b579e57ca72ba97c1ec275ffc74b9a9b433492390ed39bceb54e7299"
   },
   "deploymentMetadata": {
-    "agentRegistry": null,
-    "reputationHub": null,
-    "guaranteeEscrow": null,
-    "schellingVoting": null
+    "agentRegistry": {
+      "constructorArgs": [],
+      "deployer": "0x1fb11c41b42615590467029cb3ce2949b3f4ee53",
+      "transactionHash": "0x04472621a3a26664750f915b34a33a181a3312d4d25d245923729995f5568b8a",
+      "blockNumber": 46005035
+    },
+    "reputationHub": {
+      "constructorArgs": [],
+      "deployer": "0x1fb11c41b42615590467029cb3ce2949b3f4ee53",
+      "transactionHash": "0xc6ebe66275711076e722ab697dc7cd2189ec7c915cfe567a880c2090826ae71a",
+      "blockNumber": 46005035
+    },
+    "guaranteeEscrow": {
+      "constructorArgs": [
+        "0x1F01763550a87eC94D986CaA35aec9c8CE78403F",
+        "0x66Aa7DB66DE7CA18e3c3677bA209fe099b374d1F"
+      ],
+      "deployer": "0x1fb11c41b42615590467029cb3ce2949b3f4ee53",
+      "transactionHash": "0xa8f14cf7eb877d0b4f262bb9e3e13bbff6e5bbe764fbfa03106031660c532e2e",
+      "blockNumber": 46005035
+    },
+    "schellingVoting": {
+      "constructorArgs": [
+        "0x1A01b82FC73B03bE857ad241aa4eD6b445Ef7922",
+        "0x1F01763550a87eC94D986CaA35aec9c8CE78403F",
+        "0x66Aa7DB66DE7CA18e3c3677bA209fe099b374d1F",
+        "100000000000000000",
+        "86400",
+        "86400",
+        "86400"
+      ],
+      "deployer": "0x1fb11c41b42615590467029cb3ce2949b3f4ee53",
+      "transactionHash": "0x3c80e33f564a4484b026455785dc0cb397a1ef2de29119bf9a56185480ab7f32",
+      "blockNumber": 46005035
+    }
   },
   "votingParameters": {
     "caseStake": "100000000000000000",

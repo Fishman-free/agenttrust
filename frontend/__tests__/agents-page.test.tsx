@@ -29,6 +29,7 @@ vi.mock("wagmi", () => ({
 
 vi.mock("@/lib/config", () => ({
   CHAIN_ID: 31337,
+  CHAIN_MODE: "anvil",
   CONTRACT_ADDRESSES: { agentRegistry: "0x2222222222222222222222222222222222222222" },
   WRITE_BLOCK_REASON: undefined,
   WRITES_ENABLED: true,

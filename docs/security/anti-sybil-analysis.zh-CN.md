@@ -56,13 +56,13 @@ AgentTrust 的社区 ID（ERC-721 Agent ID）是智能体参与交易、担保�
 纯链上系统无法区分“一个真人”和“多个钱包”，只能提高成本。人类唯一性依赖一个结果可在链上验证的外部证明系统。
 
 已实现的 PoH 层见 [World ID 接入](../world-id-integration.zh-CN.md)：
-- `WorldIDPoHVerifier` 是真实适配器设计。注册/升级通过消费式路径调用官方 `WorldIDRouter.verifyProof`；找回通过 nullifierHash 锚点相等 + signal 绑定新钱包进行非消耗式同人校验；
+- `WorldIDPoHVerifier` 是面向已弃用 World ID V1/Contracts 3.0 的旧版适配器设计。其消费式注册/升级和非消耗式同人找回模型仅可作为设计输入，必须由兼容 v4 的适配器替代；
 - **双通道注册**：普通通道押金 ×3、无找回、不能担保/陪审；PoH 通道采用标准押金并解锁全部角色，买卖双方仍可低门槛进入；
 - `bindPoH` 消费未使用 nullifier，建立锚点、解锁特权角色与找回，并退回押金差额；
 - `registerAgentVerified` 要求有效且未使用的 nullifier；`usedPoHNullifiers` 在 router 消费之外提供 registry 级防重放；
 - `GuaranteeEscrow.guarantee` 与 `SchellingVoting.commitVote` 强制执行 PoH 角色门禁。
 
-> ⚠️ `WorldIDPoHVerifier` 不等于 `AnvilDevPoHVerifier` 或 `MockPoHVerifier`。本地 Anvil 与 CI mock 只演练合约状态流转，不验证真实 World ID 证明。适配器**尚未在 Base Sepolia 部署或完成校验**，因此真实接入仍处于待完成状态。
+> ⚠️ `WorldIDPoHVerifier` 不等于 `AnvilDevPoHVerifier` 或 `MockPoHVerifier`。本地 Anvil 与 CI mock 只演练合约状态流转，不验证真实 World ID 证明。App `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。Base Sepolia 使用同源 `/api/world-id`、官方 v4 Developer Portal API、仅服务器保存的可信证明人密钥和已绑定 Registry 的适配器 `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`。PoH 注册和担保人/陪审门禁已通过后端证明启用，并非 World 证明直接链上验证；`verifySameIdentity` 返回 `false`，找回采用全部守护人 + 48 小时否决窗。
 
 ### 路径 4：ID 买卖/借用（由身份语义缓解）
 Agent ID 是 ERC-721，攻击者可以买入或租用高信誉 NFT。
@@ -96,7 +96,7 @@ Agent ID 是 ERC-721，攻击者可以买入或租用高信誉 NFT。
 | `contracts/test/WorldIDPoHVerifier.t.sol` | 适配器参数转发、非消耗校验、假 router/Semaphore 验证器拒绝路径 |
 | `deployments/31337.json`、`frontend/lib/*.ts` | 因 registry runtime bytecode 变化重新生成 |
 
-当前验证基线：`forge test` **146 项合约测试通过**；`npm test` 69/69 通过；manifest 与 ABI `--check` 通过。
+当前验证基线：`forge test` **165 项合约测试通过**；`npm test` 69/69 通过；manifest 与 ABI `--check` 通过。
 
 ### 分级找回属性
 
@@ -106,14 +106,14 @@ Agent ID 是 ERC-721，攻击者可以买入或租用高信誉 NFT。
 - **G 路径**：同人证明缺失或失败 → 全守护人 + 48h 否决窗；
 - 找回执行期 7 天，迁移 NFT 控制权、责任主体、押金、资格快照、守护人和 nullifier 锚点，信誉不清零；
 - 找回与注销都要求 escrow `openTradeCount` 和 voting `openCommitmentCount` 为零；
-- Local Anvil 为演示/E2E 部署 `AnvilDevPoHVerifier`；真实链必须通过 `POH_VERIFIER` 配置已部署且已验证的 `WorldIDPoHVerifier`。
+- Local Anvil 为演示/E2E 部署 `AnvilDevPoHVerifier`；公共链不得配置旧版适配器，必须使用已部署、审查并校验的 World ID v4 适配器。
 
 ---
 
 ## 5. 残余风险
 
 1. **World ID 唯一性按设备**：同一人类多台设备可获多身份，链上实际属性是“一设备一 ID”；押金、信誉和守护人只是第二道防线。
-2. **真实适配器尚未验证**：`WorldIDPoHVerifier` 依赖官方 router 与 Semaphore 验证器；获得 `app_id` 后还需将哈希约定与真实 IDKit 输出核对。适配器**当前未部署在 Base Sepolia**。
+2. **后端证明信任**：旧版适配器已过时；线上适配器信任官方 v4 Developer Portal API 检查后的服务器签名。后端或证明人密钥被攻破可能签发虚假 PoH 证明，因此这不是 World 证明直接链上验证。
 3. **验证器治理风险**：`setPoHVerifier` 由 owner 控制；owner 被攻破或作恶可替换验证器。
 4. **找回信任假设**：S 路径需要原 World ID 设备；G 路径安全取决于守护人诚实度与 48h 否决窗内的在线率，守护人合谋可盗号。
 5. **关联钱包不可见**：同一实体仍可创建多个普通买方/卖方身份。PoH 角色门禁缩小了最高危攻击面，但没有消除虚假交易或刷信誉。
@@ -126,7 +126,7 @@ Agent ID 是 ERC-721，攻击者可以买入或租用高信誉 NFT。
 
 ## 6. 后续方向
 
-- 按 [World ID 接入清单](../world-id-integration.zh-CN.md) 完成 Base Sepolia 部署与 IDKit 端到端校验；在清单通过前，不应宣称 PoH 已在生产环境上线；
+- 实现 v4 适配器，并完成 [World ID 接入](../world-id-integration.zh-CN.md)中的 Base Sepolia 端到端清单；通过前不得宣称 PoH 已上线或具备生产可用性；
 - 增加随机陪审抽选与二次/附加质押，提高堆票成本；
 - 对低信誉主体引入递进押金或投票质押要求；
 - 对可疑资金来源与注册时间做链下聚类，作为前端提示层，但不把启发式判断当作同一身份的证明。

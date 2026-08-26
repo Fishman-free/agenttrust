@@ -4,114 +4,70 @@
 
 [← Back to feature walkthrough](feature-walkthrough.md) · [Anti-Sybil analysis](security/anti-sybil-analysis.md) · [Project README](../README.md)
 
-> Status: Contract and frontend scaffolding implemented as of 2026-08-26; **the real World ID adapter has not been deployed or validated on Base Sepolia**. Validation requires a World Developer Portal `app_id` and frontend IDKit integration. Local Anvil and CI use development/mock verifiers to simulate the flows; they are not evidence that real World ID verification works.
-> Verification baseline: **146 contract tests passed**.
-> Design reference: [`docs/superpowers/specs/2026-08-26-world-id-poh-tiered-recovery-design.md`](superpowers/specs/2026-08-26-world-id-poh-tiered-recovery-design.md)
+> **Live testnet status:** the Base Sepolia core deployment is RPC-validated in [`../deployments/84532.json`](../deployments/84532.json). World ID app `app_01728cabff1e05950af1ff18c06c9d38` and relying party `rp_fd884ac4342cc4d1` are registered. The contracts are unaudited, testnet-only, and not production-ready.
 
-## 1. Architecture
+## 1. Live architecture
+
+World ID v4 has no direct verifier available on Base Sepolia. AgentTrust therefore uses an explicit **backend-attestation** architecture rather than claiming direct onchain World proof verification:
 
 ```text
-Frontend (IDKit creates proof) ──► AgentRegistry.registerAgentVerified / bindPoH
-                                      │
-                                      ▼
-                             WorldIDPoHVerifier.verifyAndConsume
-                                      │
-                                      ▼
-                            official WorldIDRouter.verifyProof (consuming)
-
-New wallet (recovery) ──► AgentRegistry.requestRecovery
-                                      │
-                                      ▼
-                             WorldIDPoHVerifier.verifySameIdentity (non-consuming)
-                                      │
-                                      ├─ query router for Semaphore verifier + latestRoot()
-                                      ├─ require proof.nullifierHash == registration anchor
-                                      │  (same action and same device)
-                                      └─ require proof.signalHash == H(newWallet), without consumption
+IDKit / World proof
+  → same-origin /api/world-id
+  → official World ID v4 Developer Portal API
+  → trusted-attester signature (server-only signer key)
+  → WorldIDV4AttestationVerifier
+  → AgentRegistry
 ```
 
-- Registration and upgrade are **consuming**: the router permits one use per identity per action.
-- Recovery is **non-consuming**: only the same device can reproduce the anchored `nullifierHash`. Replays do not execute recovery because the registry independently enforces nonce, expiry, and one-time execution.
-
-### Real adapter versus local test verifiers
-
-- `WorldIDPoHVerifier` is the production-oriented adapter. It calls the official World ID router/Semaphore verification path and must be validated against actual IDKit output on the target chain.
-- `AnvilDevPoHVerifier` and `MockPoHVerifier` are local/testing substitutes with deliberately simplified behavior. They exercise registry state transitions but **do not validate a real World ID proof, router address, group root, or IDKit hashing convention**.
-- A passing local or CI flow must never be described as a successful Base Sepolia or production World ID integration.
-
-## 2. Official deployment addresses
-
-| Chain/network | WorldIDRouter |
+| Component | Verified live state |
 |---|---|
-| Base Sepolia (project testnet target; adapter currently undeployed) | `0x379c62556c665f1edd25f2c2a0f76bc70a53b2e4` |
-| OP Sepolia | `0xe177f37af0a862a02edfea4f59c02668e9d0aaa4` |
-| Base mainnet | Use the official [Address Book](https://docs.world.org/world-id/reference/address-book) |
+| Public site | https://agenttrust.site on Tokyo Caddy with valid HTTPS; `www` redirects to apex |
+| Core contracts | Deployed and RPC-validated; use [`../deployments/84532.json`](../deployments/84532.json) |
+| App / RP | `app_01728cabff1e05950af1ff18c06c9d38` / `rp_fd884ac4342cc4d1` |
+| Backend | Same-origin `/api/world-id`, using the official v4 Developer Portal API |
+| Adapter | `WorldIDV4AttestationVerifier` at `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF` |
+| Registry binding | Adapter bound to `AgentRegistry` |
+| Enabled gates | PoH registration, guarantor eligibility, and juror eligibility |
+| GitHub Pages | Deployment-gate workflow modified but not merged |
 
-The adapter queries the Semaphore verifier and group root through router methods `verifierLookupTable(groupId)` and `latestRoot()`; it does not hard-code them.
+The backend signer keys are server-only. They must never be placed in frontend bundles, public environment variables, logs, or documentation.
 
-> ⚠️ Chain distinction: Base Sepolia, OP Sepolia, and Base mainnet use different deployments and environments. Do not reuse an address, `app_id`, action environment, or proof across networks without confirming the official configuration.
+## 2. Trust boundary
 
-## 3. Deploy `WorldIDPoHVerifier`
+The adapter verifies a trusted-attester signature; it does **not** independently verify the World proof onchain. Security therefore depends on all of the following:
 
-```bash
-forge create contracts/src/WorldIDPoHVerifier.sol:WorldIDPoHVerifier \
-  --rpc-url <RPC> \
-  --private-key <PK> \
-  --constructor-args <router-address> <groupId> "<app_id>" "<action>"
-```
+1. the official World ID v4 Developer Portal API returning the correct result;
+2. the `/api/world-id` backend validating requests and responses correctly;
+3. trusted-attester signer keys remaining confidential and under operator control;
+4. the Registry remaining bound to the intended adapter; and
+5. replay, action, signal, chain, expiry, and nullifier checks remaining correctly enforced.
 
-Then inject the adapter into the project deployment:
+A compromise of the backend or attester key can create false PoH attestations. Rotate and revoke compromised keys, monitor adapter/Registry changes, and treat every attestation as backend-trusted—not trustless direct World verification.
 
-```bash
-POH_VERIFIER=<adapter-address> PRIVATE_KEY=<PK> forge script contracts/script/Deploy.s.sol --broadcast
-```
+## 3. Registration and privileged-role behavior
 
-- Create `app_id` and `action` in the World Developer Portal; keep staging and production separate.
-- **Registration and recovery must use the same action**, such as `agenttrust-identity`, with different signals. Equal `nullifierHash` anchors depend on this.
-- Use the official `groupId` for the target network. Staging commonly uses `1`, but the portal and current official documentation are authoritative.
-- After deployment, configure the registry with `setPoHVerifier` and verify the resulting on-chain address before exposing the PoH UI.
+A successful backend verification produces the attestation consumed by the Registry path. This enables verified registration or `bindPoH`, and the contracts enforce `isPoHVerified` for guarantors and jurors. Ordinary registration remains available with its higher deposit and without privileged-role eligibility.
 
-## 4. Hashing conventions (frontend and adapter must match)
+Local Anvil and CI continue to use development/mock verifiers for deterministic testing. Those mocks are not evidence of real World verification and must never be deployed publicly.
 
-Adapter implementation in Solidity:
+## 4. Recovery behavior
 
-```solidity
-signalHash        = uint256(keccak256(abi.encodePacked(wallet))) >> 8;
-externalNullifier = uint256(keccak256(abi.encodePacked(appId, action))) >> 8;
-```
+The deployed adapter's `verifySameIdentity` returns `false`. Therefore the same-identity fast path is unavailable on Base Sepolia. Recovery always falls back to the guardian path:
 
-When integrating IDKit, verify that the generated `nullifier_hash` and `external_nullifier` use exactly these conventions. If the selected IDKit version reduces values differently, for example modulo the SNARK field, implement an equivalent TypeScript pre-hash and ensure that the submitted on-chain `nullifier` matches the proof’s public input.
+- **all configured guardians must approve**;
+- the request has a **48-hour veto window**; and
+- normal execution-window and unsettled-obligation checks still apply.
 
-> ⚠️ **Do not enable the PoH path on a production chain until every item in §6 passes.** Local mock success does not validate these hashing assumptions.
+Documentation or UI must not advertise one-guardian/24-hour recovery for the live Base Sepolia deployment.
 
-## 5. Known limitations and residual risks
+## 5. Operational checks
 
-1. **One identity per device, not necessarily per human:** World ID identities are device-based. A person with multiple devices may obtain multiple identities, so the on-chain guarantee is “one device, one ID.” Deposits, reputation, and guardians provide secondary defenses.
-2. **Orb-only enforcement is unavailable on-chain:** the router proves group membership, including device-level verified identities, but does not expose the verification level. Orb-only onboarding can only be encouraged at the product layer.
-3. **Same-identity recovery depends on the device:** the S path works only while the registration device is available. Device loss falls back to the G path with all guardians and a 48-hour veto window.
-4. **No PoH anchor means no identity recovery:** a standard registration that loses its key is permanently inaccessible. `bindPoH` is the only remedy and must be completed before key loss.
-5. **Router and verifier dependency:** `WorldIDPoHVerifier` depends on official router and Semaphore behavior. Upgrades, group-root availability, or network configuration changes can break verification.
-6. **Governance control:** the registry owner can call `setPoHVerifier`; compromise or misuse could replace the trusted verifier. Operational controls and on-chain monitoring remain necessary.
-7. **Integration remains unvalidated:** the adapter’s hash convention and real IDKit output have not yet been checked end-to-end on Base Sepolia.
-
-## 6. Required Base Sepolia validation checklist
-
-Base Sepolia is the intended integration testnet, but the adapter is **currently undeployed there**. Complete and record all of the following before treating the integration as live:
-
-1. Create a staging app in the Developer Portal and one action named `agenttrust-identity`.
-2. Deploy `WorldIDPoHVerifier` as described in §3, call `setPoHVerifier`, and verify both addresses on Base Sepolia.
-3. Generate a registration proof in World App; confirm `registerAgentVerified` succeeds, `usedPoHNullifiers` is set, and `isPoHVerified` returns true.
-4. On the same device, generate a recovery proof with `signal = newWallet`; confirm non-consuming `verifySameIdentity` succeeds, the router has no consumption record for recovery, and S-path parameters apply (one guardian and 24-hour veto window).
-5. Test from a different device and with an empty/invalid proof; confirm fallback to the G path (all guardians and 48-hour veto window).
-6. Integrate `@worldcoin/idkit` in the frontend, with `app_id` and action supplied through environment configuration; keep local and E2E execution on an explicit mock branch.
-7. Confirm the §4 hashing conventions against actual IDKit output and proof public inputs.
-8. Confirm chain IDs, router address, explorer records, and frontend write readiness all identify Base Sepolia—not Local Anvil (31337), OP Sepolia, or Base mainnet.
-
-## 7. Local development
-
-- On Local Anvil (31337), `Deploy.s.sol` automatically deploys `AnvilDevPoHVerifier`. It accepts any non-empty proof, consumes each nullifier once, and treats same-identity proofs as valid, allowing registration, upgrade, and recovery flows to be demonstrated locally.
-- Tests cover both S and G paths by using `MockPoHVerifier.setSameIdentityFailure` to force same-identity verification failure.
-- These verifiers are mocks. Never configure their addresses on Base Sepolia, OP Sepolia, Base mainnet, or any production deployment.
+- Confirm `/api/world-id` remains same-origin and HTTPS-only.
+- Confirm signer secrets are server-only and absent from static output.
+- Verify `AgentRegistry.pohVerifier()` equals `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`.
+- Monitor attester rotation and Registry verifier changes.
+- Test rejection of replayed, expired, wrong-action, wrong-signal, wrong-chain, and malformed requests.
+- Keep the unaudited/testnet-only/not-production-ready warning visible.
 
 ---
 

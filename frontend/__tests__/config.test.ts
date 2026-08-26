@@ -29,8 +29,8 @@ describe("chain configuration", () => {
   it("uses generated manifests with an explicit testnet deployment state", () => {
     expect(DEPLOYMENTS[31337].status).toBe("deployed");
     expect(areContractAddressesConfigured(DEPLOYMENTS[31337].contracts)).toBe(true);
-    expect(DEPLOYMENTS[84532].status).toBe("undeployed");
-    expect(areContractAddressesConfigured(DEPLOYMENTS[84532].contracts)).toBe(false);
+    expect(DEPLOYMENTS[84532].status).toBe("deployed");
+    expect(areContractAddressesConfigured(DEPLOYMENTS[84532].contracts)).toBe(true);
   });
 });
 

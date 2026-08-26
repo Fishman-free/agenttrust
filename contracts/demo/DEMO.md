@@ -74,7 +74,7 @@ Clearing browser `localStorage` deletes reveal secrets and can cause a juror's s
 
 ## Automated verification
 
-The authoritative Foundry baseline is **146 tests passed, 0 failed, 0 skipped across 10 suites**.
+The authoritative Foundry baseline is **165 tests passed, 0 failed, 0 skipped**.
 
 ```bash
 forge test --root contracts --match-contract E2ETest -vvv
@@ -113,7 +113,7 @@ Never call Anvil time-manipulation methods against a public RPC.
 - Sybil identities registered before trade creation may still participate.
 - “Consensus aligned” only means alignment with the protocol's effective ruling; it does not prove real-world truth.
 - Juror metrics depend on permissionless finalization after settlement.
-- The Base Sepolia manifest is currently `undeployed`; Pages publishes an explicitly read-only research preview only.
+World ID app `app_01728cabff1e05950af1ff18c06c9d38` and RP `rp_fd884ac4342cc4d1` are registered. - The Base Sepolia core contracts are deployed and RPC-validated; addresses are authoritative only in [`../../deployments/84532.json`](../../deployments/84532.json). https://agenttrust.site is live on Tokyo Caddy with valid HTTPS and `www` redirects to the apex; GitHub Pages gate changes are not merged. PoH registration and guarantor/juror gates are live through same-origin `/api/world-id` backend attestation and Registry-bound adapter `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`, not direct onchain World verification. Recovery uses all guardians plus a 48-hour veto because `verifySameIdentity` returns `false`.
 - The contracts have not received an independent audit and must not be treated as production-ready.
 
 For public testnet preparation, use the [Base Sepolia deployment guide](./DEPLOY-BaseSepolia.md).

@@ -24,7 +24,7 @@ npm run dev
 
 未知的 `NEXT_PUBLIC_CHAIN` 会让构建直接失败，避免静默连接错误网络。链配置和地址来自 `lib/deployments.ts`，该文件由仓库根目录的 `deployments/*.json` 生成。不要手改生成文件，也不要在 `lib/config.ts` 中硬编码地址。
 
-Base Sepolia manifest 当前明确为 `undeployed`，因此该目标会显示不可用/只读状态，并禁用全部写操作。修改 manifest 后，在仓库根目录运行 `node scripts/deployment-manifest.mjs generate`；CI 使用 `check` 模式防止生成文件漂移。详见 [Base Sepolia 部署指南](../contracts/demo/DEPLOY-BaseSepolia.zh-CN.md)。
+World ID app `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。Base Sepolia manifest 当前为 `deployed` 且已通过 RPC 校验，核心地址以 [`../deployments/84532.json`](../deployments/84532.json) 为准。修改 manifest 后，在仓库根目录运行 `node scripts/deployment-manifest.mjs generate`；CI 使用 `check` 模式防止生成文件漂移。https://agenttrust.site 已在东京 Caddy 上线且 HTTPS 有效，`www` 重定向到主域名；GitHub Pages 部署门禁工作流已修改但尚未合并。同源 `/api/world-id` 后端调用 World ID 官方 v4 Developer Portal API，并以仅保存在服务器的可信证明人密钥签名；绑定 Registry 的适配器地址为 `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`。这是明确的后端证明信任模型，并非 World 证明直接链上验证。前端可在该模型下开放 PoH 注册与担保人/陪审门禁；由于 `verifySameIdentity` 返回 `false`，找回必须显示全部守护人 + 48 小时否决窗。该部署未经审计、仅限测试网，不具备生产可用性。详见 [Base Sepolia 部署指南](../contracts/demo/DEPLOY-BaseSepolia.zh-CN.md)。
 
 PowerShell 示例：
 

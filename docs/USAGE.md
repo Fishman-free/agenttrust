@@ -122,7 +122,7 @@ npm run dev                      # open http://localhost:3000
 | `curl http://localhost:3000/healthz` | HTTP 200 |
 | Network badge | Green indicator and `Local Anvil`, not `Research Preview` |
 
-**Authoritative test result:** **146 tests passed, 0 failed, 0 skipped across 10 suites**.
+**Authoritative test result:** **165 tests passed, 0 failed, 0 skipped**.
 
 ---
 
@@ -289,9 +289,9 @@ See [`security/anti-sybil-analysis.md`](security/anti-sybil-analysis.md) for the
 
 ## 9. Base Sepolia status and deployment
 
-Base Sepolia (Chain ID `84532`) is currently **undeployed and read-only**. `deployments/84532.json` is marked `undeployed`, and GitHub Pages is a research preview rather than a live protocol deployment.
+The four core contracts are deployed on Base Sepolia (Chain ID `84532`) and have passed manifest RPC validation. Use [`../deployments/84532.json`](../deployments/84532.json) for core addresses and deployment metadata. https://agenttrust.site is live on Tokyo Caddy with valid HTTPS; `www` redirects to the apex. The GitHub Pages deployment-gate workflow is modified but not merged.
 
-When ready, follow [`../contracts/demo/DEPLOY-BaseSepolia.md`](../contracts/demo/DEPLOY-BaseSepolia.md): fund an uncommitted test key, run `forge script --broadcast --verify`, generate and validate the manifest, then publish and remove the read-only gate only after review.
+World ID app `app_01728cabff1e05950af1ff18c06c9d38` and RP `rp_fd884ac4342cc4d1` are registered. Because v4 direct verification is unavailable on Base Sepolia, same-origin `/api/world-id` calls the official v4 Developer Portal API and issues trusted-attester signatures from server-only keys. Registry-bound adapter `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF` verifies those attestations. This backend trust model enables PoH registration and guarantor/juror gates; it is not direct onchain World verification. `verifySameIdentity` returns `false`, so recovery requires all guardians and a 48-hour veto. The contracts remain unaudited, testnet-only, and not production-ready. See [`../contracts/demo/DEPLOY-BaseSepolia.md`](../contracts/demo/DEPLOY-BaseSepolia.md).
 
 ---
 

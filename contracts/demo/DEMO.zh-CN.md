@@ -74,7 +74,7 @@ npm --prefix frontend run dev
 
 ## 自动验证
 
-权威 Foundry 基线为：**146 tests passed, 0 failed, 0 skipped across 10 suites**。
+权威 Foundry 基线为：**165 tests passed, 0 failed, 0 skipped**。
 
 ```bash
 forge test --root contracts --match-contract E2ETest -vvv
@@ -113,7 +113,7 @@ cast rpc evm_mine --rpc-url http://127.0.0.1:8545
 - 在交易创建前注册的 Sybil 身份仍可能参与。
 - “Consensus aligned”只表示与协议有效裁决一致，不证明现实真相。
 - Juror metric 依赖结算后的 permissionless finalization。
-- Base Sepolia manifest 当前为 `undeployed`；Pages 仅发布明确标注的只读研究预览。
+World ID app `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。- Base Sepolia 核心合约已部署并通过 RPC 校验，地址只能以 [`../../deployments/84532.json`](../../deployments/84532.json) 为准。https://agenttrust.site 已在东京 Caddy 上线且 HTTPS 有效，`www` 重定向到主域名；GitHub Pages 门禁修改尚未合并。PoH 注册及担保人/陪审门禁通过同源 `/api/world-id` 后端证明与已绑定 Registry 的适配器 `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF` 启用，并非 World 证明直接链上验证。由于 `verifySameIdentity` 返回 `false`，找回采用全部守护人 + 48 小时否决窗。
 - 合约未经独立审计，不应视为可用于生产环境。
 
 公共测试网准备流程见 [Base Sepolia 部署指南](./DEPLOY-BaseSepolia.zh-CN.md)。
