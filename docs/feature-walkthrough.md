@@ -4,7 +4,7 @@
 
 [← Back to project README](../README.md) · [World ID integration](world-id-integration.md) · [Anti-Sybil analysis](security/anti-sybil-analysis.md)
 
-> Version: `main` at `29f62c1` (B: dual-path World ID PoH and tiered recovery; A: premium tiers, exposure caps, and buyer accounting; C: evidence submission and juror decision basis, all merged).
+> Version: `main` at `6a662cf` (B: dual-path World ID PoH and tiered recovery; A: premium tiers, exposure caps, and buyer accounting; C: evidence submission and juror decision basis; English-first UI and docs — all merged).
 > Demo environment: Docker Compose (Anvil 31337 + development PoH verifier + six preconfigured accounts + automatic deployment), frontend at http://localhost:3000.
 > Verification baseline: **146 contract tests passed**.
 > ⚠️ After upgrading to the new contracts, run `docker compose down --volumes && docker compose up -d --build` once.

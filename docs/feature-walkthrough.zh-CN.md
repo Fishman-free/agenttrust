@@ -4,7 +4,7 @@
 
 [← 返回项目 README](../README.zh-CN.md) · [World ID 接入](world-id-integration.zh-CN.md) · [防女巫分析](security/anti-sybil-analysis.zh-CN.md)
 
-> 版本：`main` @ `29f62c1`（B：World ID PoH 双通道与分级找回；A：保费分档 + 敞口上限 + 买方记账；C：举证与陪审裁决依据，已全部合入）。
+> 版本：`main` @ `6a662cf`（B：World ID PoH 双通道与分级找回；A：保费分档 + 敞口上限 + 买方记账；C：举证与陪审裁决依据；英文优先的界面与文档，已全部合入）。
 > 演示环境：Docker Compose（Anvil 31337 + 开发 PoH 验证器 + 6 个预置账户 + 自动部署），前端 http://localhost:3000。
 > 验证基线：**146 项合约测试通过**。
 > ⚠️ 升级到新合约需执行一次 `docker compose down --volumes && docker compose up -d --build`。
