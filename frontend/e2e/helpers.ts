@@ -4,14 +4,14 @@ import { switchAccount } from "./provider";
 const lastTransactionHash = new WeakMap<Page, string>();
 
 export async function connectWallet(page: Page) {
-  await page.getByRole("region", { name: "钱包状态" }).getByRole("button", { name: "连接钱包" }).click();
-  await expect(page.getByRole("region", { name: "钱包状态" }).getByRole("button", { name: "断开" })).toBeVisible();
+  await page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Connect wallet" }).click();
+  await expect(page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Disconnect" })).toBeVisible();
 }
 
 export async function selectAccount(page: Page, index: number) {
   await page.waitForLoadState("domcontentloaded");
   const address = await switchAccount(page, index);
-  const connect = page.getByRole("region", { name: "钱包状态" }).getByRole("button", { name: "连接钱包" });
+  const connect = page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Connect wallet" });
   if (await connect.isVisible()) await connect.click();
   await expect.poll(async () => (await page.locator(".wallet-value[title]").getAttribute("title"))?.toLowerCase()).toBe(address.toLowerCase());
   return address;
@@ -31,22 +31,22 @@ export async function waitForTransaction(page: Page, successText: string | RegEx
   // 收窄到包含该新哈希的状态组件，避免多个状态组件触发 strict mode。
   const target = status.filter({ hasText: hash ?? "\u0000" });
   await expect(target).toContainText(successText, { timeout: 30_000 });
-  await expect(target).toContainText("区块：");
+  await expect(target).toContainText("Block:");
 }
 
 export async function registerAgent(page: Page, accountIndex: number, name: string) {
   await fillRegistrationForm(page, accountIndex, name);
-  await page.getByRole("button", { name: /^注册（押金 .*可退还）/ }).click();
+  await page.getByRole("button", { name: /^Register \(deposit .* ETH, refundable\)/ }).click();
   return await readRegisteredAgentId(page);
 }
 
 export async function registerAgentVerified(page: Page, accountIndex: number, name: string) {
   await fillRegistrationForm(page, accountIndex, name);
-  await page.getByRole("checkbox", { name: /使用 World ID 人类验证注册/ }).check();
+  await page.getByRole("checkbox", { name: /Register with World ID Proof of Humanity/ }).check();
   await page
-    .getByLabel("World ID nullifier（0x…64 位）")
+    .getByLabel("World ID nullifier (0x… 64 digits)")
     .fill(`0x${(accountIndex + 100).toString(16).padStart(64, "0")}`);
-  await page.getByRole("button", { name: /^注册（押金 .*可退还）/ }).click();
+  await page.getByRole("button", { name: /^Register \(deposit .* ETH, refundable\)/ }).click();
   return await readRegisteredAgentId(page);
 }
 
@@ -56,55 +56,55 @@ async function fillRegistrationForm(page: Page, accountIndex: number, name: stri
   await selectAccount(page, 9);
   const guardianB = (await page.locator(".wallet-value[title]").getAttribute("title"))!;
   await selectAccount(page, accountIndex);
-  await page.getByLabel("智能体名称（如 DataAgent）").fill(name);
-  await page.getByLabel("能力描述（如：链上数据分析服务）").fill(`${name} E2E capability`);
-  await page.getByLabel("MCP/A2A 端点（https://…）").fill(`https://localhost/${name.toLowerCase()}`);
-  await page.getByLabel("守护人 1（必填）").fill(guardianA);
-  await page.getByLabel("守护人 2（必填）").fill(guardianB);
+  await page.getByLabel("Agent name (e.g. DataAgent)").fill(name);
+  await page.getByLabel("Capability description (e.g. on-chain data analysis)").fill(`${name} E2E capability`);
+  await page.getByLabel("MCP/A2A endpoint (https://…)").fill(`https://localhost/${name.toLowerCase()}`);
+  await page.getByLabel("Guardian 1 (required)").fill(guardianA);
+  await page.getByLabel("Guardian 2 (required)").fill(guardianB);
 }
 
 async function readRegisteredAgentId(page: Page) {
-  await waitForTransaction(page, /注册成功，新 Agent ID：\d+。/);
+  await waitForTransaction(page, /Registration succeeded. New Agent ID: \d+\./);
   const message = await page.locator(".transaction-status").innerText();
-  const match = message.match(/Agent ID：(\d+)/);
+  const match = message.match(/Agent ID: (\d+)/);
   if (!match) throw new Error(`Could not parse AgentRegistered ID from UI: ${message}`);
   return match[1];
 }
 
 export async function createDeliveredTrade(page: Page, ids: string[]) {
   const [buyerId, sellerId, guarantorId] = ids;
-  await page.getByRole("link", { name: "交易", exact: true }).click();
+  await page.getByRole("link", { name: "Trade", exact: true }).click();
   await page.waitForURL(/\/trade\/?$/);
-  await expect(page.getByRole("heading", { name: "担保交易闭环" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Guaranteed trade lifecycle" })).toBeVisible();
   await selectAccount(page, 0);
-  await page.getByLabel("买家 Agent ID").fill(buyerId);
-  await page.getByLabel("卖家 Agent ID").fill(sellerId);
-  await page.getByLabel("交易金额（ETH）").fill("0.1");
-  await page.getByLabel("最高保费（ETH）").fill("0.01");
-  await expect(page.getByLabel("担保条款预览")).toContainText("可承保是");
-  await page.getByRole("button", { name: "创建交易" }).click();
-  await waitForTransaction(page, /交易创建成功/);
+  await page.getByLabel("Buyer Agent ID").fill(buyerId);
+  await page.getByLabel("Seller Agent ID").fill(sellerId);
+  await page.getByLabel("Trade amount (ETH)").fill("0.1");
+  await page.getByLabel("Maximum premium (ETH)").fill("0.01");
+  await expect(page.getByLabel("Guarantee terms preview")).toContainText("InsurableYes");
+  await page.getByRole("button", { name: "Create trade" }).click();
+  await waitForTransaction(page, /Trade created/);
   const tradeId = await page.getByLabel("Trade ID").inputValue();
   if (!/^\d+$/.test(tradeId)) throw new Error(`UI did not load event-generated Trade ID: ${tradeId}`);
 
   await selectAccount(page, 1);
-  await page.getByRole("button", { name: "卖家接受交易" }).click();
-  await waitForTransaction(page, "卖家接受交易成功。");
+  await page.getByRole("button", { name: "Seller accepts trade" }).click();
+  await waitForTransaction(page, "Seller accepts trade succeeded.");
   await selectAccount(page, 0);
-  await page.getByRole("button", { name: /买家托管/ }).click();
-  await waitForTransaction(page, "买家托管 0.1 ETH成功。");
+  await page.getByRole("button", { name: /Buyer escrows/ }).click();
+  await waitForTransaction(page, "Buyer escrows 0.1 ETH succeeded.");
   await selectAccount(page, 2);
-  await page.getByLabel("担保 Agent ID").fill(guarantorId);
-  await page.getByLabel("覆盖率（%）").fill("75");
-  await page.getByLabel("保费（ETH）", { exact: true }).fill("0.0075");
-  await expect(page.getByText("requiredStake 链上精确值：")).toContainText("0.075 ETH");
-  await page.getByRole("button", { name: /提供担保并质押 0\.075 ETH/ }).click();
-  await waitForTransaction(page, "担保报价已确认。");
-  await expect(page.getByText(/当前账户剩余可担保额度：/)).toContainText("4.925 ETH");
+  await page.getByLabel("Guarantor Agent ID").fill(guarantorId);
+  await page.getByLabel("Coverage (%)").fill("75");
+  await page.getByLabel("Premium (ETH)", { exact: true }).fill("0.0075");
+  await expect(page.getByText("requiredStake exact on-chain value:")).toContainText("0.075 ETH");
+  await page.getByRole("button", { name: /Offer guarantee and stake 0.075 ETH/ }).click();
+  await waitForTransaction(page, "Guarantee quote confirmed.");
+  await expect(page.getByText(/Remaining guarantee capacity for current account:/)).toContainText("4.925 ETH");
   await selectAccount(page, 1);
-  await page.getByRole("button", { name: "卖家接受担保" }).click();
-  await waitForTransaction(page, "卖家接受担保成功。");
-  await page.getByRole("button", { name: "卖家确认交付" }).click();
-  await waitForTransaction(page, "卖家确认交付成功。");
+  await page.getByRole("button", { name: "Seller accepts guarantee" }).click();
+  await waitForTransaction(page, "Seller accepts guarantee succeeded.");
+  await page.getByRole("button", { name: "Seller marks delivered" }).click();
+  await waitForTransaction(page, "Seller marks delivered succeeded.");
   return tradeId;
 }

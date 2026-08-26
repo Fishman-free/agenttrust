@@ -1,3 +1,5 @@
+import { dictionaries, type Locale } from "./locale";
+
 export type WriteBlockCode = "not-configured" | "not-connected" | "wrong-chain" | "busy" | "unauthorized" | "invalid-state" | "invalid-input";
 
 export type WriteReadinessInput = {
@@ -9,27 +11,23 @@ export type WriteReadinessInput = {
   stateValid: boolean;
   inputValid: boolean;
   reasons?: Partial<Record<WriteBlockCode, string>>;
+  locale?: Locale;
 };
 
 export type WriteReadiness =
   | { ready: true; code: null; reason: null }
   | { ready: false; code: WriteBlockCode; reason: string };
 
-const DEFAULT_REASONS: Record<WriteBlockCode, string> = {
-  "not-configured": "合约尚未配置，当前无法提交交易。",
-  "not-connected": "请先连接钱包。",
-  "wrong-chain": "请切换到应用配置的网络。",
-  busy: "上一笔交易仍在处理中。",
-  unauthorized: "当前账户无权执行此操作。",
-  "invalid-state": "当前链上状态不允许执行此操作。",
-  "invalid-input": "请检查并补全有效输入。",
-};
+function defaultReasons(locale: Locale): Record<WriteBlockCode, string> {
+  const t = dictionaries[locale].write;
+  return { "not-configured": t.notConfigured, "not-connected": t.notConnected, "wrong-chain": t.wrongChain, busy: t.busy, unauthorized: t.unauthorized, "invalid-state": t.invalidState, "invalid-input": t.invalidInput };
+}
 
 /** Pure, ordered write guard. Earlier infrastructure failures take precedence over form errors. */
 export function getWriteReadiness(input: WriteReadinessInput): WriteReadiness {
   const code = firstBlockCode(input);
   if (code === null) return { ready: true, code: null, reason: null };
-  return { ready: false, code, reason: input.reasons?.[code] ?? DEFAULT_REASONS[code] };
+  return { ready: false, code, reason: input.reasons?.[code] ?? defaultReasons(input.locale ?? "en")[code] };
 }
 
 export const assessWriteReadiness = getWriteReadiness;

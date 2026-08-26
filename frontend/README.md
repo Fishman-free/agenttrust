@@ -1,30 +1,32 @@
 # AgentTrust Frontend
 
-AgentTrust 的 Next.js App Router 前端，提供智能体注册、担保交易、争议裁决和信誉查询界面。钱包与链上交互基于 wagmi、viem 和 TanStack Query。
+**English** | [简体中文](./README.zh-CN.md)
 
-## 本地开发
+AgentTrust's Next.js App Router frontend provides Agent registration, guaranteed trades, dispute resolution, and reputation lookup. Wallet and onchain interactions use wagmi, viem, and TanStack Query.
 
-要求 Node.js 20+，并在当前目录安装依赖：
+## Local development
+
+Requires **Node.js >=20.9**. Install dependencies in this directory and start the development server:
 
 ```bash
 npm ci
 npm run dev
 ```
 
-默认连接本地 Anvil（Chain ID `31337`，RPC `http://127.0.0.1:8545`）。访问 `http://localhost:3000`。
+The default target is local Anvil (chain ID `31337`, RPC `http://127.0.0.1:8545`). Open `http://localhost:3000`.
 
-## 环境变量
+## Environment variables
 
-| 变量 | 可选值 | 默认值 | 用途 |
+| Variable | Accepted values | Default | Purpose |
 | --- | --- | --- | --- |
-| `NEXT_PUBLIC_CHAIN` | `anvil`、`base-sepolia` | `anvil` | 选择链与合约地址组 |
-| `NEXT_PUBLIC_BASE_PATH` | 例如 `/multiagent` | 空 | 部署到子路径时设置 Next.js base path |
+| `NEXT_PUBLIC_CHAIN` | `anvil`, `base-sepolia` | `anvil` | Select the chain and contract-address set |
+| `NEXT_PUBLIC_BASE_PATH` | For example, `/multiagent` | empty | Set the Next.js base path for subpath deployments |
 
-未知的 `NEXT_PUBLIC_CHAIN` 会在构建时直接报错，避免静默连接错误网络。链与地址读取仓库根目录 `deployments/*.json` 生成的 `lib/deployments.ts`；不要手改生成文件或在 `lib/config.ts` 中硬编码地址。Base Sepolia manifest 当前明确为 `undeployed`，因此界面会提示并禁用全部可写操作。
+An unknown `NEXT_PUBLIC_CHAIN` fails the build instead of silently connecting to the wrong network. Chain configuration and addresses come from `lib/deployments.ts`, generated from repository-root `deployments/*.json`. Do not edit the generated file or hard-code addresses in `lib/config.ts`.
 
-修改 manifest 后，在仓库根目录运行 `node scripts/deployment-manifest.mjs generate`；CI 用 `check` 模式防止生成文件漂移。
+The Base Sepolia manifest is currently explicitly `undeployed`, so that target displays an unavailable/read-only status and disables all write actions. After changing a manifest, run `node scripts/deployment-manifest.mjs generate` from the repository root; CI uses `check` mode to prevent generated-file drift. See the [Base Sepolia deployment guide](../contracts/demo/DEPLOY-BaseSepolia.md).
 
-PowerShell 示例：
+PowerShell example:
 
 ```powershell
 $env:NEXT_PUBLIC_CHAIN="base-sepolia"
@@ -32,7 +34,7 @@ $env:NEXT_PUBLIC_BASE_PATH="/multiagent"
 npm run build
 ```
 
-## 常用命令
+## Common commands
 
 ```bash
 npm run lint
@@ -42,7 +44,7 @@ npm run test:watch
 npm run e2e
 ```
 
-合约 ABI 由根目录 `scripts/gen-abi.mjs` 从 Foundry artifacts 确定性生成：
+Contract ABIs are generated deterministically from Foundry artifacts by repository-root `scripts/gen-abi.mjs`:
 
 ```bash
 forge build --root contracts
@@ -50,27 +52,29 @@ node scripts/gen-abi.mjs
 node scripts/gen-abi.mjs --check
 ```
 
-不要手工修改 `lib/abi.ts`。
+Do not edit `lib/abi.ts` manually.
 
-`npm run build` 使用 `output: "export"` 生成 `out/`。项目启用了 `trailingSlash: true`，每个路由输出为目录下的 `index.html`，适合 GitHub Pages、对象存储和 Nginx 静态托管，也能安全处理 `/agents/` 等深链。参考 `nginx.conf` 的 `try_files $uri $uri/` 配置。
+`npm run build` uses `output: "export"` to generate `out/`. With `trailingSlash: true`, every route becomes an `index.html` inside its route directory. This supports GitHub Pages, object storage, and Nginx static hosting while safely handling deep links such as `/agents/`. For Nginx, follow the `try_files $uri $uri/` example in `nginx.conf`.
 
-## 钱包与交易 UI
+## Wallet and transaction UI
 
-全局页头提供钱包连接、断开、当前地址、当前链、错误网络检测，以及切换或添加目标链。所有合约页面都通过 `app/components/transaction-status.tsx` 等待链上 receipt，再解析事件并刷新状态。交易页实现完整十状态流程；争议页实现带 2% bond 的争议、permissionless 开案、commit–reveal、claim/withdraw 与陪审指标固化。
+The global header provides wallet connect/disconnect, current address and chain, wrong-network detection, and target-chain switching or addition. Every contract page waits for the onchain receipt through `app/components/transaction-status.tsx`, parses events, and refreshes state. The trade UI implements the complete ten-state lifecycle. The dispute UI implements the 2% bond, permissionless case opening, commit–reveal, claim/withdraw, and juror-metric finalization.
 
-Commit secret 使用浏览器 CSPRNG 生成，并按 chain、Voting 地址、case 和 voter 隔离存入 localStorage。清理浏览器数据前必须导出备份，否则可能无法 reveal 并损失投票 stake。
+Commit secrets are generated with the browser CSPRNG and isolated in `localStorage` by chain, Voting address, case, and voter. Export a backup before clearing browser data; otherwise reveal may become impossible and the voting stake may be slashed.
 
-## 测试
+## Tests
 
-Vitest 使用 jsdom 与 React Testing Library，覆盖 ABI 漂移、manifest/config、事件解析、十状态映射、commit secret 生命周期、交易反馈以及 Agents/Disputes/Reputation 页面逻辑。
+Vitest uses jsdom and React Testing Library to cover ABI drift, manifest/config behavior, event parsing, ten-state mappings, commit-secret lifecycle, transaction feedback, and Agents/Disputes/Reputation page logic.
 
-`npm run e2e` 启动 disposable Anvil、部署当前合约并运行串行 Chromium E2E，覆盖正常交易和六身份争议交易。测试钱包 provider 只注入 localhost/31337，使用 Anvil unlocked accounts，不进入生产 bundle。
+`npm run e2e` starts disposable Anvil, deploys the current contracts, and runs serial Chromium E2E for a normal trade and a six-identity disputed trade. The test wallet provider is injected only for localhost/31337, uses unlocked Anvil accounts, and is excluded from the production bundle.
 
-MetaMask/Synpress smoke 是独立、非主门禁测试：
+The MetaMask/Synpress smoke test is separate and non-blocking:
 
 ```bash
 npm run e2e:metamask:cache
 npm run e2e:metamask
 ```
 
-Synpress 4 的 cache CLI 不支持原生 Windows；请在 Linux/WSL 或手动触发 GitHub Actions 的 non-blocking MetaMask job。仅使用公开的 disposable Anvil mnemonic，禁止复用真实钱包助记词。
+Synpress 4's cache CLI does not support native Windows. Use Linux/WSL or manually trigger the non-blocking MetaMask GitHub Actions job. Use only the public disposable Anvil mnemonic; never reuse a real wallet mnemonic.
+
+For the end-to-end workflow and its secret-handling warnings, see the [full-path demo](../contracts/demo/DEMO.md).

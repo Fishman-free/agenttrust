@@ -44,18 +44,18 @@ describe("ReputationPage", () => {
     await userEvent.type(screen.getByRole("textbox", { name: "Agent ID" }), "1");
 
     expect(screen.getByText("73")).toBeInTheDocument();
-    expect(screen.getByText("完成交易").previousElementSibling).toHaveTextContent("4");
-    expect(screen.getByText("不可变责任主体").nextElementSibling).toHaveTextContent(responsibleParty);
-    expect(screen.getByText("当前 NFT 所有者").nextElementSibling).toHaveTextContent(currentOwner);
+    expect(screen.getByText("Completed trades").previousElementSibling).toHaveTextContent("4");
+    expect(screen.getByText("Responsible subject").nextElementSibling).toHaveTextContent(responsibleParty);
+    expect(screen.getByText("Current NFT owner").nextElementSibling).toHaveTextContent(currentOwner);
 
-    const jurorSection = screen.getByRole("heading", { name: "责任主体的陪审信誉" }).closest("section");
+    const jurorSection = screen.getByRole("heading", { name: "Juror reputation of the responsible subject" }).closest("section");
     expect(jurorSection).not.toBeNull();
     const juror = within(jurorSection!);
-    expect(juror.getByText("当前符合陪审资格")).toBeInTheDocument();
-    expect(juror.getByText("揭示率").previousElementSibling).toHaveTextContent("80.0%");
-    expect(juror.getByText("共识样本").previousElementSibling).toHaveTextContent("4");
-    expect(juror.getByText("共识一致率").previousElementSibling).toHaveTextContent("75.0%");
-    expect(juror.getByText(/不代表客观真相/)).toBeInTheDocument();
+    expect(juror.getByText("Currently juror-eligible")).toBeInTheDocument();
+    expect(juror.getByText("Reveal rate").previousElementSibling).toHaveTextContent("80.0%");
+    expect(juror.getByText("Consensus samples").previousElementSibling).toHaveTextContent("4");
+    expect(juror.getByText("Consensus alignment").previousElementSibling).toHaveTextContent("75.0%");
+    expect(juror.getByText(/does not prove objective truth/)).toBeInTheDocument();
 
     expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
       functionName: "jurorReputation",
@@ -69,9 +69,9 @@ describe("ReputationPage", () => {
     render(<ReputationPage />);
     await userEvent.type(screen.getByRole("textbox", { name: "Agent ID" }), "0");
 
-    const jurorSection = screen.getByRole("heading", { name: "责任主体的陪审信誉" }).closest("section");
+    const jurorSection = screen.getByRole("heading", { name: "Juror reputation of the responsible subject" }).closest("section");
     const juror = within(jurorSection!);
-    expect(juror.getByText("揭示率").previousElementSibling).toHaveTextContent("—");
-    expect(juror.getByText("共识一致率").previousElementSibling).toHaveTextContent("—");
+    expect(juror.getByText("Reveal rate").previousElementSibling).toHaveTextContent("—");
+    expect(juror.getByText("Consensus alignment").previousElementSibling).toHaveTextContent("—");
   });
 });

@@ -2,6 +2,7 @@
 
 import type { Hash, TransactionReceipt } from "viem";
 import { useWaitForTransactionReceipt } from "wagmi";
+import { dictionaries, useLocale } from "@/lib/locale";
 
 export type TransactionPhase = "idle" | "submitting" | "confirming" | "success" | "error";
 
@@ -35,18 +36,16 @@ export function useTransactionFeedback({
   if (isSubmitting) return { phase: "submitting" };
   if (receipt.error) return { phase: "error", hash, error: receipt.error };
   if (receipt.isSuccess && receipt.data?.status === "reverted") {
-    return { phase: "error", hash, receipt: receipt.data, error: new Error("交易已上链但执行回滚。") };
+    return { phase: "error", hash, receipt: receipt.data, error: new Error(dictionaries.en.transaction.reverted) };
   }
   if (receipt.isSuccess && receipt.data) return { phase: "success", hash, receipt: receipt.data, successLabel };
   if (hash) return { phase: "confirming", hash };
   return { phase: "idle" };
 }
 
-function friendlyError(error: Error) {
-  const cause = "shortMessage" in error && typeof error.shortMessage === "string"
-    ? error.shortMessage
-    : error.message;
-  return cause || "交易失败，请检查钱包与网络后重试。";
+function friendlyError(error: Error, fallback: string) {
+  const cause = "shortMessage" in error && typeof error.shortMessage === "string" ? error.shortMessage : error.message;
+  return cause || fallback;
 }
 
 export function TransactionStatus({
@@ -56,22 +55,23 @@ export function TransactionStatus({
   feedback: TransactionFeedback;
   successLabel?: string;
 }) {
+  const { dictionary: t } = useLocale();
   if (feedback.phase === "idle") return null;
 
   const isError = feedback.phase === "error";
   const message = {
-    submitting: "等待钱包确认…",
-    confirming: "交易已提交，等待链上确认…",
-    success: successLabel ?? feedback.successLabel ?? "交易已确认。",
-    error: feedback.error ? friendlyError(feedback.error) : "交易失败。",
+    submitting: t.transaction.submitting,
+    confirming: t.transaction.confirming,
+    success: successLabel ?? feedback.successLabel ?? t.transaction.success,
+    error: feedback.error ? friendlyError(feedback.error, t.transaction.failed) : t.transaction.failed,
     idle: "",
   }[feedback.phase];
 
   return (
     <div className={`transaction-status transaction-${feedback.phase}`} role={isError ? "alert" : "status"} aria-live="polite">
       <strong>{message}</strong>
-      {feedback.hash && <span>交易哈希：<code>{feedback.hash}</code></span>}
-      {feedback.receipt && <span>区块：{feedback.receipt.blockNumber.toString()}</span>}
+      {feedback.hash && <span>{t.transaction.hash}<code>{feedback.hash}</code></span>}
+      {feedback.receipt && <span>{t.transaction.block}{feedback.receipt.blockNumber.toString()}</span>}
     </div>
   );
 }

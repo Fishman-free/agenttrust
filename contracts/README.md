@@ -1,49 +1,61 @@
-# AgentTrust 智能合约（Foundry）
+# AgentTrust Smart Contracts (Foundry)
 
-AgentTrust 协议的四层 Solidity 合约实现，使用 Foundry 开发、测试与部署。
+**English** | [简体中文](./README.zh-CN.md)
 
-## 合约清单
+AgentTrust's Solidity implementation, developed, tested, and deployed with Foundry.
 
-| 合约 | 职责 |
+## Contract inventory
+
+Four core contracts are tracked in each deployment manifest:
+
+| Contract | Responsibility |
 |---|---|
-| `src/AgentRegistry.sol` | 智能体身份注册表（ERC-721 Agent ID + 责任主体 owner 绑定） |
-| `src/GuaranteeEscrow.sol` | 交易担保托管（escrow 质押 + 违约罚没） |
-| `src/SchellingVoting.sol` | 争议裁决（Schelling 点社区质押投票） |
-| `src/ReputationHub.sol` | 信誉中心（链上 attestation，仅 Escrow/Voting 可写，禁止自评） |
+| `src/AgentRegistry.sol` | Agent identity registry: ERC-721 Agent IDs, accountable-owner binding, registration deposits, and proof-of-humanity configuration |
+| `src/GuaranteeEscrow.sol` | Trade escrow, guarantor stake, settlement, and slashing |
+| `src/SchellingVoting.sol` | Dispute resolution through staked Schelling-point community voting |
+| `src/ReputationHub.sol` | Onchain attestations; only authorized Escrow/Voting writers may update reputation, and self-review is forbidden |
 
-## 测试
+`src/WorldIDPoHVerifier.sol` is the real World ID proof-of-humanity adapter. It is deployed and configured separately and is not one of the four manifest-tracked core contracts. `AnvilDevPoHVerifier`, defined in `script/Deploy.s.sol`, is local-only test infrastructure and must never be deployed to a public or valuable network.
+
+## Tests
+
+The authoritative Foundry baseline is **146 tests passed, 0 failed, 0 skipped across 10 suites**, including unit, fuzz, E2E, and invariant coverage.
 
 ```bash
-# 94 个测试全通过（含 unit、fuzz、E2E 与 invariant 套件）
 export PATH="$HOME/.foundry/bin:$PATH"
 NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 
-# 仅 E2E 全链路
+# Full-path E2E only
 NO_PROXY="127.0.0.1,localhost,::1" forge test --match-contract E2ETest -vvv
 ```
 
-> **Windows 注意**：foundry 不在 PATH 需先 `export PATH="$HOME/.foundry/bin:$PATH"`；本机代理会导致 cast/forge 请求 502，必须带 `NO_PROXY="127.0.0.1,localhost,::1"`。
+> **Windows:** If Foundry is not on `PATH`, first run `export PATH="$HOME/.foundry/bin:$PATH"`. A local proxy can make `cast`/`forge` requests return 502; use `NO_PROXY="127.0.0.1,localhost,::1"` for local RPC calls.
 
-## 部署
+## Local deployment
 
 ```bash
-# 本地 anvil 演示链（配合全链路演示）
+# Disposable local Anvil chain used by the full-path demo
 export PATH="$HOME/.foundry/bin:$PATH"
 NO_PROXY="127.0.0.1,localhost,::1" anvil --chain-id 31337 --port 8545
 
-# 部署（需同时导出 PRIVATE_KEY，Deploy.s.sol 内部用 vm.envUint 读取）
+# Deploy; Deploy.s.sol also reads PRIVATE_KEY through vm.envUint
 export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 NO_PROXY="127.0.0.1,localhost,::1" \
   forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key "$PRIVATE_KEY"
 ```
 
-部署脚本自动完成：Registry → Hub → Escrow → Voting 顺序部署、Hub 授权 Escrow/Voting 写入、Escrow 所有权移交 Voting（社区裁决可驱动 escrow）。
+The published key is an insecure, disposable Anvil key. Never use it on a public or valuable network.
 
-## 演示
+The script deploys Registry → Hub → Escrow → Voting, grants Escrow/Voting their Hub writer roles, transfers Escrow ownership to Voting, configures obligation oracles and registration parameters, and—only on chain `31337` when `POH_VERIFIER` is unset—deploys the local-only `AnvilDevPoHVerifier`.
 
-全链路演示手册见 [`demo/DEMO.md`](./demo/DEMO.md)（注册 → 担保交易 → 交付 → 争议 → 社区投票 → 罚没 → 信誉更新）。
+A public-network deployment requires a separately deployed real `WorldIDPoHVerifier` address in `POH_VERIFIER`; see the [Base Sepolia deployment guide](./demo/DEPLOY-BaseSepolia.md).
 
-## 更多
+## Demo
 
-- 项目总览见根目录 [`README.md`](../README.md)
-- 设计规格见 [`docs/superpowers/specs/2026-08-08-agenttrust-design.md`](../docs/superpowers/specs/2026-08-08-agenttrust-design.md)
+See the [full-path demo](./demo/DEMO.md) for registration → guaranteed trade → delivery → dispute → community vote → slashing → reputation updates.
+
+## More
+
+- [Project overview](../README.md)
+- [Base Sepolia deployment guide](./demo/DEPLOY-BaseSepolia.md)
+- [Design specification](../docs/superpowers/specs/2026-08-08-agenttrust-design.md)

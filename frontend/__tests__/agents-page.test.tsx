@@ -70,7 +70,7 @@ describe("AgentsPage", () => {
     };
     view.rerender(<AgentsPage />);
 
-    expect(await screen.findByText(/注册成功，新 Agent ID：7/)).toBeInTheDocument();
+    expect(await screen.findByText(/Registration succeeded. New Agent ID: 7/)).toBeInTheDocument();
     await waitFor(() => {
       expect(mocks.refetchCount).toHaveBeenCalled();
       expect(mocks.refetchList).toHaveBeenCalledOnce();
@@ -81,7 +81,7 @@ describe("AgentsPage", () => {
     mocks.account.isConnected = false;
     render(<AgentsPage />);
 
-    await userEvent.click(screen.getByRole("button", { name: "连接钱包" }));
+    await userEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
     expect(mocks.connect).toHaveBeenCalledWith({ connector: mocks.connector });
   });
 
@@ -90,16 +90,16 @@ describe("AgentsPage", () => {
     mocks.feedback.current = { phase: "idle" };
     render(<AgentsPage />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent("网络错误");
-    expect(screen.getByRole("button", { name: /注册（押金/ })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Network error");
+    expect(screen.getByRole("button", { name: /Register \(deposit/ })).toBeDisabled();
   });
 
   it("reveals World ID inputs when verified registration mode is selected", async () => {
     render(<AgentsPage />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /使用 World ID 人类验证注册/ }));
-    expect(screen.getByLabelText("World ID nullifier（0x…64 位）")).toBeInTheDocument();
-    expect(screen.getByLabelText("人类证明（hex）")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: /Register with World ID Proof of Humanity/ }));
+    expect(screen.getByLabelText("World ID nullifier (0x… 64 digits)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Humanity proof (hex)")).toBeInTheDocument();
   });
 
   it("warns unverified active subjects and offers the PoH upgrade path", async () => {
@@ -108,11 +108,11 @@ describe("AgentsPage", () => {
     mocks.feedback.current = { phase: "idle" };
     render(<AgentsPage />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("尚未完成人类验证");
-    const bind = screen.getByRole("button", { name: "绑定 PoH（升级为已验证身份）" });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Proof of Humanity");
+    const bind = screen.getByRole("button", { name: "Bind PoH (upgrade to verified identity)" });
     expect(bind).toBeDisabled();
 
-    await userEvent.type(screen.getByLabelText("绑定 nullifier（0x…）"), `0x${"ab".repeat(32)}`);
+    await userEvent.type(screen.getByLabelText("Bind nullifier (0x… 64 hex digits; any unused value on testnet)"), `0x${"ab".repeat(32)}`);
     expect(bind).toBeEnabled();
 
     await userEvent.click(bind);

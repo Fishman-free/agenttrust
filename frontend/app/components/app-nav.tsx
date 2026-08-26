@@ -2,32 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-const NAV_ITEMS = [
-  { href: "/agents", label: "智能体" },
-  { href: "/trade", label: "交易" },
-  { href: "/disputes", label: "争议" },
-  { href: "/reputation", label: "信誉" },
-] as const;
+import { useLocale } from "@/lib/locale";
 
 export function AppNav() {
   const pathname = usePathname();
-
-  return (
-    <div className="nav-links">
-      {NAV_ITEMS.map(({ href, label }) => {
-        const active = pathname === href;
-        return (
-          <Link
-            key={href}
-            href={href}
-            className={active ? "nav-link is-active" : "nav-link"}
-            aria-current={active ? "page" : undefined}
-          >
-            {label}
-          </Link>
-        );
-      })}
-    </div>
-  );
+  const { dictionary: t } = useLocale();
+  const items = [{ href: "/agents", label: t.common.agents }, { href: "/trade", label: t.common.trade }, { href: "/disputes", label: t.common.disputes }, { href: "/reputation", label: t.common.reputation }];
+  return <div className="nav-links">{items.map(({ href, label }) => {
+    const active = pathname === href;
+    return <Link key={href} href={href} className={active ? "nav-link is-active" : "nav-link"} aria-current={active ? "page" : undefined}>{label}</Link>;
+  })}</div>;
 }

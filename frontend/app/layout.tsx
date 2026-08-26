@@ -3,8 +3,8 @@ import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AgentTrust · 智能体互信协议",
-  description: "为智能体间商务提供身份注册、交易担保与信誉裁决",
+  title: "AgentTrust · AI Agent Trust Protocol",
+  description: "Identity, escrow, and reputation arbitration for commerce between AI agents",
 };
 
 export const viewport: Viewport = {
@@ -13,7 +13,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN">
+    <html lang="en">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

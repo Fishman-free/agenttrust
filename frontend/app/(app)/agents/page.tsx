@@ -8,6 +8,7 @@ import { CHAIN_ID, CONTRACT_ADDRESSES, WRITE_BLOCK_REASON, WRITES_ENABLED, activ
 import { parseAgentRegistered } from "@/lib/receipt-events";
 import { getWriteReadiness } from "@/lib/write-readiness";
 import { TransactionStatus, useTransactionFeedback } from "@/app/components/transaction-status";
+import { formatMessage, useLocale } from "@/lib/locale";
 
 type AgentMetadata = readonly [
   name: string,
@@ -35,6 +36,8 @@ function shortAddress(value: string) {
 }
 
 export default function AgentsPage() {
+  const { locale, dictionary: t } = useLocale();
+  const a = t.agents;
   const { address, chainId, isConnected } = useAccount();
   const { connect, connectors, isPending: isConnecting } = useConnect();
   const registration = useWriteContract();
@@ -174,13 +177,13 @@ export default function AgentsPage() {
     .map((guardian) => guardian as `0x${string}`);
   const guardianError =
     guardian1.trim() === "" || guardian2.trim() === ""
-      ? "请填写至少两位守护人（紧急联系人）。"
+      ? a.guardiansRequired
       : !filledGuardians.every((g) => isAddress(g))
-        ? "守护人地址格式无效。"
+        ? a.guardianInvalid
         : filledGuardians.some((g) => g.toLowerCase() === address?.toLowerCase())
-          ? "不能把自己设为守护人。"
+          ? a.guardianSelf
           : new Set(filledGuardians.map((g) => g.toLowerCase())).size !== filledGuardians.length
-            ? "守护人地址重复。"
+            ? a.guardianDuplicate
             : undefined;
 
   const verifiedInputsValid = !verifiedMode || (NULLIFIER_PATTERN.test(nullifier.trim()) && proof.trim() !== "");
@@ -197,19 +200,19 @@ export default function AgentsPage() {
     inputValid,
     reasons: {
       "not-configured": WRITE_BLOCK_REASON,
-      "wrong-chain": `请切换到 ${activeChain.name}（Chain ID ${CHAIN_ID}）。`,
-      "invalid-state": "注册押金尚未加载。",
-      "invalid-input":
-        guardianError ?? (verifiedMode && !verifiedInputsValid ? "请填写有效的 World ID nullifier 与非空证明。" : "请填写完整信息。"),
+      "wrong-chain": formatMessage(a.wrongNetwork, { chain: activeChain.name, chainId: CHAIN_ID }),
+      "invalid-state": a.depositLoading,
+      "invalid-input": guardianError ?? (verifiedMode && !verifiedInputsValid ? a.validWorldId : a.completeInfo),
     },
+    locale,
   });
 
   const ownRecoveryView = ownRecovery as RecoveryView | undefined;
   const hasLiveRecovery = Boolean(ownRecoveryView?.[7]);
   const obligationReason = hasActiveTrades
-    ? "存在未了结的交易（等待对方操作或超时）。"
+    ? a.activeTrades
     : hasOpenCommitments
-      ? "存在未清结的陪审投票义务。"
+      ? a.openVotes
       : undefined;
   const deregisterReady =
     WRITES_ENABLED && isConnected && chainId === CHAIN_ID && !opsBusy && Boolean(activeSubject)
@@ -266,20 +269,20 @@ export default function AgentsPage() {
   }
 
   const successLabel = registrationEvent
-    ? `注册成功，新 Agent ID：${registrationEvent.args.tokenId.toString()}。`
+    ? formatMessage(a.registered, { id: registrationEvent.args.tokenId.toString() })
     : registrationFeedback.phase === "success"
-      ? "交易已确认，但回执中未找到 AgentRegistered 事件。"
+      ? a.missingEvent
       : undefined;
 
   const recoveryWindowHours = ownRecoveryView?.[6] === 0 ? 24 : 48;
-  const recoveryRequiredApprovals = ownRecoveryView?.[6] === 0 ? "1" : "全部";
+  const recoveryRequiredApprovals = ownRecoveryView?.[6] === 0 ? "1" : a.all;
   const recoverySubjectValid = recoverySubject.trim() !== "" && isAddress(recoverySubject.trim());
 
   return (
     <main className="page">
       <div className="page-head">
-        <h1 className="page-title">智能体注册</h1>
-        <p className="page-sub">以链上 NFT 绑定智能体与责任主体；押金可全额退还。人类验证（World ID）解锁找回、担保与陪审能力。</p>
+        <h1 className="page-title">{a.title}</h1>
+        <p className="page-sub">{a.subtitle}</p>
       </div>
       {!isConnected && (
         <button
@@ -287,65 +290,64 @@ export default function AgentsPage() {
           onClick={() => connectors[0] && connect({ connector: connectors[0] })}
           disabled={!connectors[0] || isConnecting}
         >
-          {isConnecting ? "连接中…" : "连接钱包"}
+          {isConnecting ? t.common.connecting : t.common.connectWallet}
         </button>
       )}
-      {!registryConfigured && <p className="form-warning mt-3" role="status">当前网络的 AgentRegistry 尚未部署，读取与注册均已禁用。</p>}
+      {!registryConfigured && <p className="form-warning mt-3" role="status">{a.registryMissing}</p>}
       {isConnected && chainId !== CHAIN_ID && (
         <p className="form-error mb-4" role="alert">
-          网络错误：请切换到 {activeChain.name}（Chain ID {CHAIN_ID}）。
+          {formatMessage(a.wrongNetwork, { chain: activeChain.name, chainId: CHAIN_ID })}
         </p>
       )}
       {isConnected && (
         <>
-          <p className="form-hint mb-4">当前责任主体：{address}</p>
+          <p className="form-hint mb-4">{formatMessage(a.currentSubject, { address: address ?? "" })}</p>
 
           {!activeSubject && (
             <div className="card space-y-3">
-              <input aria-label="智能体名称（如 DataAgent）" placeholder="智能体名称（如 DataAgent）" value={name} onChange={(e) => setName(e.target.value)}
+              <input aria-label={a.name} placeholder={a.name} value={name} onChange={(e) => setName(e.target.value)}
                 className="field-input" />
-              <input aria-label="能力描述（如：链上数据分析服务）" placeholder="能力描述（如：链上数据分析服务）" value={desc} onChange={(e) => setDesc(e.target.value)}
+              <input aria-label={a.description} placeholder={a.description} value={desc} onChange={(e) => setDesc(e.target.value)}
                 className="field-input" />
-              <input aria-label="MCP/A2A 端点（https://…）" placeholder="MCP/A2A 端点（https://…）" value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
+              <input aria-label={a.endpoint} placeholder={a.endpoint} value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
                 className="field-input" />
               <label className="field-label">
-                守护人 1（必填，紧急联系人地址）
-                <input aria-label="守护人 1（必填）" placeholder="0x…" value={guardian1} onChange={(e) => setGuardian1(e.target.value)} className="field-input" />
+                {a.guardian1}
+                <input aria-label={a.guardian1Aria} placeholder="0x…" value={guardian1} onChange={(e) => setGuardian1(e.target.value)} className="field-input" />
               </label>
               <label className="field-label">
-                守护人 2（必填）
-                <input aria-label="守护人 2（必填）" placeholder="0x…" value={guardian2} onChange={(e) => setGuardian2(e.target.value)} className="field-input" />
+                {a.guardian2}
+                <input aria-label={a.guardian2} placeholder="0x…" value={guardian2} onChange={(e) => setGuardian2(e.target.value)} className="field-input" />
               </label>
               <label className="field-label">
-                守护人 3（可选）
-                <input aria-label="守护人 3（可选）" placeholder="0x…（可选）" value={guardian3} onChange={(e) => setGuardian3(e.target.value)} className="field-input" />
+                {a.guardian3}
+                <input aria-label={a.guardian3} placeholder={a.optionalAddress} value={guardian3} onChange={(e) => setGuardian3(e.target.value)} className="field-input" />
               </label>
               <label className="field-checkbox">
                 <input
                   type="checkbox"
-                  aria-label="使用 World ID 人类验证注册（测试网模拟）"
+                  aria-label={a.verifiedMode}
                   checked={verifiedMode}
                   onChange={(e) => setVerifiedMode(e.target.checked)}
                 />
-                使用 World ID 人类验证注册：解锁找回、担保人、陪审员资格（标准押金）
+                {a.verifiedModeHelp}
               </label>
               {verifiedMode && (
                 <>
                   <label className="field-label">
-                    World ID nullifier（0x…64 位十六进制）
-                    <input aria-label="World ID nullifier（0x…64 位）" placeholder="0x…" value={nullifier} onChange={(e) => setNullifier(e.target.value)}
+                    {a.nullifier}
+                    <input aria-label={a.nullifierAria} placeholder="0x…" value={nullifier} onChange={(e) => setNullifier(e.target.value)}
                       className="field-input" />
                   </label>
                   <label className="field-label">
-                    人类证明（hex，测试网可填 0x01 模拟）
-                    <input aria-label="人类证明（hex）" placeholder="0x01" value={proof} onChange={(e) => setProof(e.target.value)}
+                    {a.proof}
+                    <input aria-label={a.proofAria} placeholder="0x01" value={proof} onChange={(e) => setProof(e.target.value)}
                       className="field-input" />
                   </label>
                 </>
               )}
               <p className="form-hint">
-                普通注册押金为标准值 3 倍，且无法找回账号、不能担任担保人或陪审员（可随时升级验证）。
-                找回：同人证明 + 1 守护人（24h 否决窗）；或全守护人批准（48h 否决窗）。
+                {a.depositHelp}
               </p>
               <button
                 onClick={register}
@@ -354,10 +356,10 @@ export default function AgentsPage() {
                 className="button button-primary"
               >
                 {busy
-                  ? "注册中…"
+                  ? a.registering
                   : depositData === undefined
-                    ? "加载中…"
-                    : `注册（押金 ${verifiedMode ? depositEth : plainDepositEth} ETH，可退还）`}
+                    ? t.common.loading
+                    : formatMessage(a.registerDeposit, { amount: verifiedMode ? depositEth : plainDepositEth })}
               </button>
               {!readiness.ready && readiness.code !== "invalid-input" && (
                 <p className="form-warning" role="status">{readiness.reason}</p>
@@ -368,36 +370,36 @@ export default function AgentsPage() {
           {activeSubject && (
             <div className="space-y-3">
               <div className="card space-y-3">
-                <h2 className="card-title">我的社区身份</h2>
+                <h2 className="card-title">{a.identity}</h2>
                 <p className="text-sm">
-                  状态：{deregistered ? <strong className="warning-text">已注销</strong> : <strong>活跃</strong>} ·
-                  人类验证：{poHVerified ? <strong>✅ 已验证（World ID）</strong> : <strong className="warning-text">未验证</strong>} ·
-                  锁定押金：<strong>{lockedDeposit === undefined ? "—" : `${formatEther(lockedDeposit)} ETH`}</strong> ·
-                  待提取余额：<strong>{pendingBalance === undefined ? "—" : `${formatEther(pendingBalance)} ETH`}</strong>
+                  {a.status} {deregistered ? <strong className="warning-text">{a.deregistered}</strong> : <strong>{a.active}</strong>} ·{" "}
+                  {a.poh} {poHVerified ? <strong>{a.verified}</strong> : <strong className="warning-text">{a.unverified}</strong>} ·{" "}
+                  {a.lockedDeposit} <strong>{lockedDeposit === undefined ? "—" : `${formatEther(lockedDeposit)} ETH`}</strong> ·{" "}
+                  {a.pending} <strong>{pendingBalance === undefined ? "—" : `${formatEther(pendingBalance)} ETH`}</strong>
                 </p>
                 {activeSubject && !deregistered && poHVerified === false && (
                   <div className="callout space-y-2" role="alert">
-                    <p className="warning-text">尚未完成人类验证（World ID）</p>
+                    <p className="warning-text">{a.notVerified}</p>
                     <p className="text-sm">
-                      丢失私钥将<b>无法找回</b>，且不能担任担保人或陪审员。建议尽快验证升级（升级后退回押金差额）。
+                      {a.notVerifiedRisk}
                     </p>
                     <label className="field-label">
-                      绑定 nullifier（0x…64 位十六进制，测试网可随意填写未使用值）
-                      <input aria-label="绑定 nullifier（0x…）" placeholder="0x…" value={bindNullifier}
+                      {a.bindNullifier}
+                      <input aria-label={a.bindNullifier} placeholder="0x…" value={bindNullifier}
                         onChange={(e) => setBindNullifier(e.target.value)} className="field-input" />
                     </label>
                     <label className="field-label">
-                      绑定证明（hex，测试网可填 0x01 模拟）
-                      <input aria-label="绑定证明（hex）" placeholder="0x01" value={bindProof}
+                      {a.bindProof}
+                      <input aria-label={a.bindProof} placeholder="0x01" value={bindProof}
                         onChange={(e) => setBindProof(e.target.value)} className="field-input" />
                     </label>
                     <button
                       className="button button-primary"
                       disabled={!bindReady}
-                      title={bindReady ? undefined : "填写有效的 nullifier（64 位十六进制）与非空证明。"}
-                      onClick={() => runOperation("bindPoH", [bindNullifier.trim(), bindProof.trim()], "已绑定人类证明，押金差额已退回。")}
+                      title={bindReady ? undefined : a.bindInvalid}
+                      onClick={() => runOperation("bindPoH", [bindNullifier.trim(), bindProof.trim()], a.bindSuccess)}
                     >
-                      绑定 PoH（升级为已验证身份）
+                      {a.bindButton}
                     </button>
                   </div>
                 )}
@@ -406,16 +408,16 @@ export default function AgentsPage() {
                     <button
                       className="button button-secondary"
                       disabled={!deregisterReady}
-                      title={deregisterReady ? undefined : (hasLiveRecovery ? "有进行中的找回请求，先否决或等待过期。" : (obligationReason ?? "条件未满足。"))}
-                      onClick={() => runOperation("deregister", [], "已注销，押金已转入待提取余额。")}
+                      title={deregisterReady ? undefined : (hasLiveRecovery ? a.recoveryBlocks : (obligationReason ?? a.conditions))}
+                      onClick={() => runOperation("deregister", [], a.deregisterSuccess)}
                     >
-                      注销并退还押金
+                      {a.deregister}
                     </button>
                   </div>
                 )}
                 {!deregisterReady && activeSubject && !deregistered && (
                   <p className="form-warning" role="status">
-                    {hasLiveRecovery ? "有进行中的找回请求，注销暂不可用。" : (obligationReason ?? "请确保网络与钱包状态正确。")}
+                    {hasLiveRecovery ? a.recoveryDeregisterBlock : (obligationReason ?? a.walletCheck)}
                   </p>
                 )}
                 {Number(pendingBalance ?? 0) > 0 && (
@@ -423,9 +425,9 @@ export default function AgentsPage() {
                     <button
                       className="button button-primary"
                       disabled={!WRITES_ENABLED || opsBusy}
-                      onClick={() => runOperation("withdraw", [address], "押金已提取。")}
+                      onClick={() => runOperation("withdraw", [address], a.withdrawSuccess)}
                     >
-                      提取待提取余额
+                      {a.withdrawDeposit}
                     </button>
                   </div>
                 )}
@@ -433,40 +435,42 @@ export default function AgentsPage() {
               </div>
 
               <div className="card space-y-3">
-                <h2 className="card-title">找回与守护</h2>
+                <h2 className="card-title">{a.recovery}</h2>
                 {hasLiveRecovery ? (
                   <div className="callout space-y-2">
                     <p className="text-sm">
-                      找回请求进行中：新钱包 <code>{shortAddress(ownRecoveryView?.[0] ?? "")}</code> ·
-                      守护人批准 <strong>{String(ownRecoveryView?.[5] ?? 0)} / {recoveryRequiredApprovals}</strong> ·
-                      路径：<strong>{ownRecoveryView?.[6] === 0 ? "同人证明（24h 否决窗）" : "全守护人兜底（48h 否决窗）"}</strong> ·
-                      可执行时间 <code>{new Date(Number(ownRecoveryView?.[2] ?? 0) * 1000).toLocaleString()}</code>
+                      {formatMessage(a.recoveryLive, {
+                        wallet: shortAddress(ownRecoveryView?.[0] ?? ""),
+                        approvals: String(ownRecoveryView?.[5] ?? 0),
+                        required: recoveryRequiredApprovals,
+                        path: ownRecoveryView?.[6] === 0 ? a.samePersonPath : a.guardianPath,
+                        date: new Date(Number(ownRecoveryView?.[2] ?? 0) * 1000).toLocaleString(locale),
+                      })}
                     </p>
-                    <p className="form-hint">若你并未丢失私钥，请在 {recoveryWindowHours} 小时否决窗口内立即否决，否则身份将被迁移。</p>
+                    <p className="form-hint">{formatMessage(a.vetoWarning, { hours: recoveryWindowHours })}</p>
                     <button
                       className="button button-warning"
                       disabled={!WRITES_ENABLED || opsBusy}
-                      onClick={() => runOperation("vetoRecovery", [address], "已否决找回请求。")}
+                      onClick={() => runOperation("vetoRecovery", [address], a.vetoSuccess)}
                     >
-                      否决找回
+                      {a.veto}
                     </button>
                   </div>
                 ) : (
                   <p className="form-hint">
-                    当前没有针对你的找回请求。丢失私钥时，新钱包可携带 World ID 同人证明发起找回（需命令行工具），守护人在下方批准；
-                    无同人证明时需全部守护人批准并等待 48 小时否决窗。
+                    {a.noRecovery}
                   </p>
                 )}
                 <label className="field-label">
-                  作为守护人：输入被守护人地址并批准其找回请求
-                  <input aria-label="被守护人地址" placeholder="0x…" value={recoverySubject} onChange={(e) => setRecoverySubject(e.target.value)} className="field-input" />
+                  {a.approveHelp}
+                  <input aria-label={a.protectedAddress} placeholder="0x…" value={recoverySubject} onChange={(e) => setRecoverySubject(e.target.value)} className="field-input" />
                 </label>
                 <button
                   className="button button-secondary"
                   disabled={!WRITES_ENABLED || opsBusy || !recoverySubjectValid}
-                  onClick={() => runOperation("approveRecovery", [recoverySubject.trim()], "已批准该找回请求。")}
+                  onClick={() => runOperation("approveRecovery", [recoverySubject.trim()], a.approveSuccess)}
                 >
-                  批准找回
+                  {a.approve}
                 </button>
               </div>
             </div>
@@ -474,9 +478,9 @@ export default function AgentsPage() {
 
           <TransactionStatus feedback={registrationFeedback} successLabel={successLabel} />
 
-          <h2 className="section-title mt-8 mb-2">已注册智能体（{String(agentCount ?? 0)}）</h2>
+          <h2 className="section-title mt-8 mb-2">{formatMessage(a.registeredAgents, { count: String(agentCount ?? 0) })}</h2>
           {count === 0 ? (
-            <p className="form-hint">暂无智能体，注册第一个吧</p>
+            <p className="form-hint">{a.noAgents}</p>
           ) : (
             <ul className="agent-list space-y-2">
               {agentList?.map((item, i) => {
@@ -485,9 +489,9 @@ export default function AgentsPage() {
                   <li key={i} className="list-row text-sm break-all">
                     <span className="font-semibold">#{i}</span>
                     {agent ? (
-                      <> · {agent[0]}（{agent[1]}） · {agent[2]} · {agent[3]}</>
+                      <> · {agent[0]} ({agent[1]}) · {agent[2]} · {agent[3]}</>
                     ) : (
-                      <> · 加载失败</>
+                      <> · {t.common.failedToLoad}</>
                     )}
                   </li>
                 );

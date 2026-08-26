@@ -3,6 +3,7 @@
 import { defineChain } from "viem";
 import { baseSepolia } from "viem/chains";
 import { DEPLOYMENTS, type DeploymentContracts } from "./deployments";
+import { dictionaries, formatMessage, type Locale } from "./locale";
 
 const anvilDeployment = DEPLOYMENTS[31337];
 
@@ -19,7 +20,7 @@ export type ChainMode = "anvil" | "base-sepolia";
 export function resolveChainMode(value: string | undefined): ChainMode {
   if (value === undefined || value === "") return "anvil";
   if (value === "anvil" || value === "base-sepolia") return value;
-  throw new Error(`不支持的 NEXT_PUBLIC_CHAIN: ${value}`);
+  throw new Error(formatMessage(dictionaries.en.config.unsupportedChain, { value }));
 }
 
 // 链选择：NEXT_PUBLIC_CHAIN = "anvil" | "base-sepolia"，默认 anvil（本地开发）
@@ -47,6 +48,8 @@ export function areContractAddressesConfigured(addresses: AddressMap): boolean {
 /** 可写操作的统一安全开关；任一部署地址为零时必须禁用交易。 */
 export const WRITES_ENABLED = areContractAddressesConfigured(CONTRACT_ADDRESSES);
 
-export const WRITE_BLOCK_REASON = WRITES_ENABLED
-  ? undefined
-  : `${activeChain.name} 的合约尚未部署，已禁用所有可写操作。`;
+export function getWriteBlockReason(locale: Locale): string | undefined {
+  return WRITES_ENABLED ? undefined : formatMessage(dictionaries[locale].config.writesDisabled, { chain: activeChain.name });
+}
+
+export const WRITE_BLOCK_REASON = getWriteBlockReason("en");
