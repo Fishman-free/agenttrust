@@ -25,6 +25,7 @@
   "votingParameters": {
     "caseStake": "100000000000000000",
     "commitWindow": 86400,
+    "randomCommitWindow": 86400,
     "revealWindow": 86400
   }
 }

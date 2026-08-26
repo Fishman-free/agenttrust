@@ -87,15 +87,19 @@ describe("generated contract ABIs", () => {
       "caseIdForTrade(uint256)",
       "claim(uint256)",
       "commitVote(uint256,bytes32)",
+      "isRandomInvited(uint256,address)",
       "jurorStatus(uint256,address)",
+      "jurySizeForAmount(uint256)",
       "openCase(uint256)",
       "revealVote(uint256,uint8,bytes32)",
+      "selectRandomJury(uint256)",
       "settle(uint256)",
       "voteCommitment(uint256,address,uint8,bytes32)",
     ]);
     expectSignatures(signatures(schellingVotingAbi, "event"), [
       "CaseOpened(uint256,uint256,uint256,uint256,uint256,uint256)",
       "CaseSettled(uint256,uint8,uint256,bool)",
+      "RandomJurySelected(uint256,uint256,uint256)",
       "VoteCommitted(uint256,address,bytes32)",
       "VoteRevealed(uint256,address,uint8)",
     ]);
@@ -108,9 +112,7 @@ describe("generated contract ABIs", () => {
       item?.outputs?.map((output) => `${output.name}:${canonicalType(output)}`);
 
     expect(outputs(functionItem(schellingVotingAbi, "caseDetails"))).toEqual([
-      "tradeId:uint256", "stake:uint256", "commitDeadline:uint256", "revealDeadline:uint256",
-      "eligibilityAgentCount:uint256", "committedCount:uint256", "votesForBuyer:uint256",
-      "votesForSeller:uint256", "abstentions:uint256", "settled:bool", "effective:bool", "winner:uint8",
+      "details:(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,bool,bool,uint8,uint256,uint256,uint256,uint256,uint256,bool)",
     ]);
     expect(outputs(functionItem(schellingVotingAbi, "jurorStatus"))).toEqual([
       "committed:bool", "revealed:bool", "side:uint8", "claimed:bool",

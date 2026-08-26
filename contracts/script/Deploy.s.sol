@@ -38,7 +38,7 @@ contract Deploy is Script {
         ReputationHub hub = new ReputationHub();
         GuaranteeEscrow escrow = new GuaranteeEscrow(address(registry), address(hub));
         SchellingVoting voting =
-            new SchellingVoting(address(escrow), address(registry), address(hub), 0.1 ether, 1 days, 1 days);
+            new SchellingVoting(address(escrow), address(registry), address(hub), 0.1 ether, 1 days, 1 days, 1 days);
         hub.setOutcomeWriter(address(escrow), true);
         hub.setJurorMetricWriter(address(voting), true);
         // Guarantor exposure cap: per-subject total open stakes (operators tune via MAX_OPEN_STAKE).
