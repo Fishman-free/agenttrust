@@ -63,7 +63,7 @@ describe("disputes commit workflow", () => {
     saveVoteSecret(localStorage, scope, original);
     const submit = vi.fn(async () => hash);
 
-    await expect(prepareAndSubmitVote(basePreparation({ submit }))).rejects.toThrow(/禁止覆盖/);
+    await expect(prepareAndSubmitVote(basePreparation({ submit }))).rejects.toThrow(/Overwriting is blocked/);
     expect(submit).not.toHaveBeenCalled();
     expect(readVoteSecret(localStorage, scope)).toEqual({ status: "valid", record: original });
   });
@@ -75,7 +75,7 @@ describe("disputes commit workflow", () => {
     const first = prepareAndSubmitVote(basePreparation({ mutex, readCommitment: () => delayed }));
     const second = prepareAndSubmitVote(basePreparation({ mutex }));
 
-    await expect(second).rejects.toThrow(/重复提交/);
+    await expect(second).rejects.toThrow(/Do not submit again/);
     resolveCommitment?.(commitment);
     await expect(first).resolves.toMatchObject({ hash });
   });
@@ -88,7 +88,7 @@ describe("disputes commit workflow", () => {
         chainId: scope.chainId, account: otherAccount, votingAddress, caseId: scope.caseId,
       }),
       submit,
-    }))).rejects.toThrow(/已变化/);
+    }))).rejects.toThrow(/changed/);
     expect(readVoteSecret(localStorage, scope).status).toBe("missing");
     expect(submit).not.toHaveBeenCalled();
   });

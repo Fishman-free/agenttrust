@@ -17,7 +17,7 @@ describe("WalletState", () => {
     const onConnect = vi.fn();
     render(<WalletState {...baseProps} onConnect={onConnect} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "连接钱包" }));
+    await userEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
     expect(onConnect).toHaveBeenCalledOnce();
   });
 
@@ -36,7 +36,7 @@ describe("WalletState", () => {
 
     expect(screen.getByText("0x1234…5678")).toBeInTheDocument();
     expect(screen.getByText("Base Sepolia")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "断开" }));
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
     expect(onDisconnect).toHaveBeenCalledOnce();
   });
 
@@ -53,8 +53,8 @@ describe("WalletState", () => {
       />,
     );
 
-    expect(screen.getByRole("alert")).toHaveTextContent("网络错误");
-    await userEvent.click(screen.getByRole("button", { name: /切换\/添加 Base Sepolia/ }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Network error");
+    await userEvent.click(screen.getByRole("button", { name: /Switch\/add Base Sepolia/ }));
     expect(onSwitchChain).toHaveBeenCalledOnce();
   });
 });

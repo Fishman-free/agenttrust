@@ -13,20 +13,20 @@ describe("Home", () => {
     const { container } = render(<Home />);
 
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("为智能体建立可验证的信任");
-    expect(screen.getByRole("navigation", { name: "主要导航" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Verifiable trust for AI agents");
+    expect(screen.getByRole("navigation", { name: "Primary navigation" })).toBeInTheDocument();
 
     for (const [name, href] of [
-      ["智能体身份", "/agents"],
-      ["担保交易", "/trade"],
-      ["争议裁决", "/disputes"],
-      ["信誉档案", "/reputation"],
+      ["Agent identity", "/agents"],
+      ["Guaranteed trade", "/trade"],
+      ["Dispute arbitration", "/disputes"],
+      ["Reputation profile", "/reputation"],
     ]) {
       expect(screen.getByRole("link", { name: new RegExp(name) })).toHaveAttribute("href", href);
     }
 
-    expect(screen.getByRole("link", { name: /探索智能体/ })).toHaveAttribute("href", "/agents");
-    expect(screen.getByRole("link", { name: "查看交易流程" })).toHaveAttribute("href", "/trade");
+    expect(screen.getByRole("link", { name: /Explore agents/ })).toHaveAttribute("href", "/agents");
+    expect(screen.getByRole("link", { name: "View trade flow" })).toHaveAttribute("href", "/trade");
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(container.querySelector(".trust-visual")).toHaveAttribute("aria-hidden", "true");
   });
@@ -34,9 +34,9 @@ describe("Home", () => {
   it("makes the undeployed research-preview limitation explicit", () => {
     render(<Home />);
 
-    expect(screen.getByText("Research Preview")).toBeInTheDocument();
+    expect(screen.getAllByText("Research Preview")[0]).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Base Sepolia 合约尚未部署，链上读取与交易操作暂不可用。",
+      "Contracts are not deployed on Base Sepolia; on-chain reads and transactions are unavailable.",
     );
   });
 });

@@ -58,9 +58,9 @@ describe("TransactionStatus", () => {
 
   it("renders every active phase and receipt details", () => {
     const phases: Array<[TransactionFeedback, string]> = [
-      [{ phase: "submitting" }, "等待钱包确认"],
-      [{ phase: "confirming", hash }, "等待链上确认"],
-      [{ phase: "success", hash, receipt, successLabel: "创建交易成功。" }, "创建交易成功"],
+      [{ phase: "submitting" }, "Waiting for wallet confirmation"],
+      [{ phase: "confirming", hash }, "waiting for on-chain confirmation"],
+      [{ phase: "success", hash, receipt, successLabel: "Trade created." }, "Trade created"],
       [{ phase: "error", error: new Error("boom") }, "boom"],
     ];
     for (const [feedback, text] of phases) {
@@ -73,6 +73,6 @@ describe("TransactionStatus", () => {
   it("allows the component success label to override feedback", () => {
     render(<TransactionStatus feedback={{ phase: "success", receipt, successLabel: "旧标签" }} successLabel="已完成结算。" />);
     expect(screen.getByText("已完成结算。")).toBeInTheDocument();
-    expect(screen.getByText("区块：42")).toBeInTheDocument();
+    expect(screen.getByText("Block:42")).toBeInTheDocument();
   });
 });

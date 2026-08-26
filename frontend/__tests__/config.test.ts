@@ -23,7 +23,7 @@ describe("chain configuration", () => {
   });
 
   it("rejects unknown modes instead of silently selecting a chain", () => {
-    expect(() => resolveChainMode("mainnet")).toThrow(/不支持/);
+    expect(() => resolveChainMode("mainnet")).toThrow(/Unsupported/);
   });
 
   it("uses generated manifests with an explicit testnet deployment state", () => {
