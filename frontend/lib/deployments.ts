@@ -15,8 +15,8 @@ export const DEPLOYMENTS = {
     "runtimeBytecodeHashes": {
       "agentRegistry": "0xe7f8c873823519aa5715ce40951ecf6d9798fcc28a4b6a95894a152e4c6e8a76",
       "reputationHub": "0x97d8f0ea00a4213196ec249cf24fd4fc8a9381074ecebcae010f3ce669f8c4c2",
-      "guaranteeEscrow": "0x78aa71c04b98c3d95eded31a29e4b20e55ebacba6969c11d9a353dd158e91a4e",
-      "schellingVoting": "0x0fbbe08e116069325da8282dad5f025a6e3f4a864a8e09ff17c5eb60a87cbdbe"
+      "guaranteeEscrow": "0x127d9b5fa9a43c0107d434f9b066fc4d6b93d4245be8becc02b31f95cd1e6454",
+      "schellingVoting": "0x862d8a7c6972b25425a5c9780445042178b15e7eb3ecf767250c6929b0733889"
     },
     "deploymentMetadata": {
       "agentRegistry": {
@@ -37,7 +37,7 @@ export const DEPLOYMENTS = {
           "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
         ],
         "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "transactionHash": "0xf792fbfb0446e0ff0131aa9afe9fb26d39c57d8656be56a81292f1ddeb441fa6",
+        "transactionHash": "0x78b7bb5ba92494b85c8870091e36f8dd5d6362144cdbbe3c790d83ea8ed3493a",
         "blockNumber": 2
       },
       "schellingVoting": {
@@ -50,8 +50,8 @@ export const DEPLOYMENTS = {
           "86400"
         ],
         "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-        "transactionHash": "0x6b59ed51baf719038df7b667611b24f3eba0a42a929adbe7ed6deac0c09ab05f",
-        "blockNumber": 2
+        "transactionHash": "0x04b33f0ca39eb98c4b6aa19c30be12c0bf60dbe6a3f14b2ad35b7da581206069",
+        "blockNumber": 4
       }
     },
     "votingParameters": {

@@ -80,8 +80,10 @@ contract EscrowHandler is Test {
     function create(uint96 rawAmount) external {
         uint256 amount = bound(uint256(rawAmount), 1, 10 ether);
         vm.prank(buyer);
-        uint256 tradeId = escrow.createTrade(buyerId, sellerId, amount, amount * 20 / 100);
-        tradeIds.push(tradeId);
+        // 低分卖家在大额档位可能不可承保；跳过即可，真实买家同样只能创建可承保交易。
+        try escrow.createTrade(buyerId, sellerId, amount, amount * 20 / 100) returns (uint256 tradeId) {
+            tradeIds.push(tradeId);
+        } catch {}
     }
 
     function advance(uint256 seed, uint8 choice) external {
@@ -237,6 +239,8 @@ contract EscrowInvariantTest is StdInvariant, Test {
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
         hub.setOutcomeWriter(address(escrow), true);
+        // 敞口上限由单元测试覆盖；不变式聚焦账务一致性，放开上限保持各路径活跃。
+        escrow.setMaxOpenStake(type(uint256).max);
         handler = new EscrowHandler(registry, hub, escrow);
 
         bytes4[] memory selectors = new bytes4[](6);
@@ -265,17 +269,24 @@ contract EscrowInvariantTest is StdInvariant, Test {
             assertLe(handler.terminalTransitions(tradeId), 1);
             assertLe(handler.reputationTransitions(tradeId), 1);
             bytes32 outcomeId = keccak256(abi.encode(address(escrow), tradeId));
+            bytes32 buyerOutcomeId = keccak256(abi.encode(address(escrow), tradeId, uint256(1)));
             GuaranteeEscrow.State state = escrow.tradeState(tradeId);
             bool recorded = hub.recordedOutcomes(outcomeId);
+            bool buyerRecorded = hub.recordedOutcomes(buyerOutcomeId);
             GuaranteeEscrow.Trade memory trade = escrow.getTrade(tradeId);
             if (state == GuaranteeEscrow.State.RELEASED || state == GuaranteeEscrow.State.RESOLVED) {
                 assertTrue(trade.outcomeRecorded || trade.outcomePending);
                 assertFalse(trade.outcomeRecorded && trade.outcomePending);
+                assertTrue(trade.buyerOutcomeRecorded || trade.buyerOutcomePending);
+                assertFalse(trade.buyerOutcomeRecorded && trade.buyerOutcomePending);
             } else if (state == GuaranteeEscrow.State.VOIDED) {
+                // 卖方在作废路径永不记录；买方仅在"接受后未托管"的作废路径记录 DEFAULTED，
+                // 且该记录在结果写入方被撤销时可能处于 pending 状态。
                 assertFalse(recorded);
                 assertFalse(trade.outcomePending);
             }
             assertEq(trade.outcomeRecorded, recorded);
+            assertEq(trade.buyerOutcomeRecorded, buyerRecorded);
             if (recorded) assertEq(handler.reputationTransitions(tradeId), 1);
         }
     }
@@ -306,6 +317,15 @@ contract EscrowInvariantTest is StdInvariant, Test {
         assertEq(escrow.openTradeCount(handler.buyer()), expectedBuyer, "buyer open trade count");
         assertEq(escrow.openTradeCount(handler.seller()), expectedSeller, "seller open trade count");
         assertEq(escrow.openTradeCount(handler.guarantor()), expectedGuarantor, "guarantor open trade count");
+    }
+
+    function invariant_openStakeMatchesOpenGuarantees() public view {
+        uint256 expectedStake;
+        for (uint256 i; i < handler.tradeCount(); ++i) {
+            GuaranteeEscrow.Trade memory trade = escrow.getTrade(handler.tradeIds(i));
+            if (trade.guarantorObligationOpen) expectedStake += trade.stake;
+        }
+        assertEq(escrow.openStakeBySubject(handler.guarantor()), expectedStake, "guarantor open stake");
     }
 }
 

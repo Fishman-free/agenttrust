@@ -26,7 +26,13 @@ contract AnvilDevPoHVerifier {
 
 contract Deploy is Script {
     function run() external returns (address, address, address, address) {
+        // 所有 env 读取必须在 startBroadcast 之前完成（广播模拟上下文不继承测试 cheatcode 环境）。
         uint256 pk = vm.envUint("PRIVATE_KEY");
+        uint256 registrationDeposit = vm.envOr("REGISTRATION_DEPOSIT", uint256(0.01 ether));
+        uint256 maxOpenStake = vm.envOr("MAX_OPEN_STAKE", uint256(5 ether));
+        address pohVerifier = vm.envOr("POH_VERIFIER", address(0));
+        bool devVerifier = pohVerifier == address(0) && block.chainid == 31337;
+
         vm.startBroadcast(pk);
         AgentRegistry registry = new AgentRegistry();
         ReputationHub hub = new ReputationHub();
@@ -35,14 +41,15 @@ contract Deploy is Script {
             new SchellingVoting(address(escrow), address(registry), address(hub), 0.1 ether, 1 days, 1 days);
         hub.setOutcomeWriter(address(escrow), true);
         hub.setJurorMetricWriter(address(voting), true);
+        // Guarantor exposure cap: per-subject total open stakes (operators tune via MAX_OPEN_STAKE).
+        escrow.setMaxOpenStake(maxOpenStake);
         escrow.transferOwnership(address(voting));
         registry.setObligationOracles(address(escrow), address(voting));
         // Fully refundable anti-Sybil deposit. Operators set REGISTRATION_DEPOSIT explicitly.
-        registry.setRegistrationDeposit(vm.envOr("REGISTRATION_DEPOSIT", uint256(0.01 ether)));
+        registry.setRegistrationDeposit(registrationDeposit);
         // Optional PoH verifier. 0 = disabled (plain channel only, no recovery).
         // Local Anvil gets a dev verifier so the verified channel and recovery paths are exercisable.
-        address pohVerifier = vm.envOr("POH_VERIFIER", address(0));
-        if (pohVerifier == address(0) && block.chainid == 31337) {
+        if (devVerifier) {
             pohVerifier = address(new AnvilDevPoHVerifier());
         }
         if (pohVerifier != address(0)) {

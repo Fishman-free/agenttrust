@@ -100,6 +100,7 @@ export async function createDeliveredTrade(page: Page, ids: string[]) {
   await expect(page.getByText("requiredStake 链上精确值：")).toContainText("0.075 ETH");
   await page.getByRole("button", { name: /提供担保并质押 0\.075 ETH/ }).click();
   await waitForTransaction(page, "担保报价已确认。");
+  await expect(page.getByText(/当前账户剩余可担保额度：/)).toContainText("4.925 ETH");
   await selectAccount(page, 1);
   await page.getByRole("button", { name: "卖家接受担保" }).click();
   await waitForTransaction(page, "卖家接受担保成功。");
