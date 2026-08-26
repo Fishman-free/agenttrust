@@ -4,9 +4,9 @@
 
 [← 返回项目 README](../README.zh-CN.md) · [World ID 接入](world-id-integration.zh-CN.md) · [防女巫分析](security/anti-sybil-analysis.zh-CN.md)
 
-> 版本：`main` @ `29f62c1`（B：World ID PoH 双通道与分级找回；A：保费分档 + 敞口上限 + 买方记账；C：举证与陪审裁决依据，已全部合入）。
+> 版本：`main` @ `6a662cf`（B：World ID PoH 双通道与分级找回；A：保费分档 + 敞口上限 + 买方记账；C：举证与陪审裁决依据；英文优先的界面与文档，已全部合入）。
 > 演示环境：Docker Compose（Anvil 31337 + 开发 PoH 验证器 + 6 个预置账户 + 自动部署），前端 http://localhost:3000。
-> 验证基线：**159 项合约测试通过**。
+> 验证基线：**165 项合约测试通过**。
 > ⚠️ 升级到新合约需执行一次 `docker compose down --volumes && docker compose up -d --build`。
 
 ---
@@ -153,7 +153,7 @@
 2. **找回 S 路径依赖注册设备**：设备丢失走 G 路径（守护人承载安全）；普通注册无锚点、无法找回，警示即真实约束；
 3. **陪审并非随机抽选**：开放自选 + 资格快照 + PoH + 质押，依赖 Schelling 点收敛假设；
 4. **举证持久化依赖链下 pin**：链上只有哈希 + 摘要，页面提供 Pinata 上传与持久化警告；
-5. **Base Sepolia 使用后端证明的 World ID v4**：app `app_01728cabff1e05950af1ff18c06c9d38`、RP `rp_fd884ac4342cc4d1`、同源 `/api/world-id`、官方 v4 Developer Portal API、仅服务器保存的可信证明人密钥和已绑定 Registry 的适配器 `0x1325C3eD12d535Bc33A56305466159d370BDf6cE`。这已启用 PoH 注册和担保人/陪审门禁，但不是 World 证明直接链上验证。`verifySameIdentity` 返回 `false`，找回要求全部守护人 + 48 小时。合约未经审计、仅限测试网，不具备生产可用性。
+5. **Base Sepolia 使用后端证明的 World ID v4**：app `app_01728cabff1e05950af1ff18c06c9d38`、RP `rp_fd884ac4342cc4d1`、同源 `/api/world-id`、官方 v4 Developer Portal API、仅服务器保存的可信证明人密钥和已绑定 Registry 的适配器 `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`。这已启用 PoH 注册和担保人/陪审门禁，但不是 World 证明直接链上验证。`verifySameIdentity` 返回 `false`，找回要求全部守护人 + 48 小时。合约未经审计、仅限测试网，不具备生产可用性。
 
 ---
 

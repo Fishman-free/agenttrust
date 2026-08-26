@@ -8,7 +8,7 @@ import { ATTESTATION_TYPES, issueAttestation, validateResult } from "../src/worl
 
 const signerKey = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
 const attesterKey = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a";
-const adapter = "0x1325C3eD12d535Bc33A56305466159d370BDf6cE";
+const adapter = "0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF";
 const subject = "0x1fB11c41b42615590467029CB3cE2949b3F4eE53";
 const nullifier = `0x${"11".repeat(32)}` as const;
 

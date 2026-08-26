@@ -41,7 +41,7 @@ curl http://localhost:8545
 docker compose logs setup
 ```
 
-The authoritative contract-test result is **159 tests passed, 0 failed, 0 skipped**. Run the tests outside this runtime-only Compose flow with the command documented in [`README.md`](README.md).
+The authoritative contract-test result is **165 tests passed, 0 failed, 0 skipped**. Run the tests outside this runtime-only Compose flow with the command documented in [`README.md`](README.md).
 
 ## How it works
 
@@ -109,7 +109,7 @@ Anvil uses Chain ID `31337` and network name `Local Anvil`. Configure a browser 
 
 ### Can I use Base Sepolia?
 
-World ID app `app_01728cabff1e05950af1ff18c06c9d38` and RP `rp_fd884ac4342cc4d1` are registered. The four core contracts are deployed and RPC-validated on Base Sepolia (Chain ID 84532); use [`deployments/84532.json`](deployments/84532.json) for core addresses. This Compose setup is local-only. https://agenttrust.site is live on Tokyo Caddy with valid HTTPS and `www` redirects to the apex; the GitHub Pages deployment-gate workflow is modified but not merged. Base Sepolia PoH uses the bound `WorldIDV4AttestationVerifier` (`0x1325C3eD12d535Bc33A56305466159d370BDf6cE`) and same-origin `/api/world-id` backend. This is trusted backend attestation through the official World ID v4 Developer Portal API—not direct onchain World verification. PoH registration and guarantor/juror gates are enabled; recovery uses all guardians plus a 48-hour veto because `verifySameIdentity` returns `false`. The deployment is unaudited, testnet-only, and not production-ready. See [`contracts/demo/DEPLOY-BaseSepolia.md`](contracts/demo/DEPLOY-BaseSepolia.md).
+World ID app `app_01728cabff1e05950af1ff18c06c9d38` and RP `rp_fd884ac4342cc4d1` are registered. The four core contracts are deployed and RPC-validated on Base Sepolia (Chain ID 84532); use [`deployments/84532.json`](deployments/84532.json) for core addresses. This Compose setup is local-only. https://agenttrust.site is live on Tokyo Caddy with valid HTTPS and `www` redirects to the apex; the GitHub Pages deployment-gate workflow is modified but not merged. Base Sepolia PoH uses the bound `WorldIDV4AttestationVerifier` (`0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`) and same-origin `/api/world-id` backend. This is trusted backend attestation through the official World ID v4 Developer Portal API—not direct onchain World verification. PoH registration and guarantor/juror gates are enabled; recovery uses all guardians plus a 48-hour veto because `verifySameIdentity` returns `false`. The deployment is unaudited, testnet-only, and not production-ready. See [`contracts/demo/DEPLOY-BaseSepolia.md`](contracts/demo/DEPLOY-BaseSepolia.md).
 
 ### Port 8545 is already in use
 

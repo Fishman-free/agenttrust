@@ -34,19 +34,6 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
-    "name": "PLAIN_DEPOSIT_MULTIPLIER",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "RECOVERY_DELAY_GUARDIAN",
     "inputs": [],
     "outputs": [
@@ -1022,6 +1009,25 @@ export const agentRegistryAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "subjectAt",
+    "inputs": [
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -2481,6 +2487,32 @@ export const guaranteeEscrowAbi = [
   },
   {
     "type": "function",
+    "name": "PREMIUM_TIER2_STEP",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PREMIUM_TIER2_STEP_SURCHARGE_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "PREMIUM_TIER2_SURCHARGE_BPS",
     "inputs": [],
     "outputs": [
@@ -3478,6 +3510,25 @@ export const guaranteeEscrowAbi = [
   },
   {
     "type": "function",
+    "name": "tradeAmount",
+    "inputs": [
+      {
+        "name": "tradeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "tradeState",
     "inputs": [
       {
@@ -3984,12 +4035,134 @@ export const schellingVotingAbi = [
         "internalType": "uint256"
       },
       {
+        "name": "randomCommitWindow_",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
         "name": "revealWindow_",
         "type": "uint256",
         "internalType": "uint256"
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "JURY_SIZE_T1",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "JURY_SIZE_T2",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "JURY_SIZE_T3",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "JURY_SIZE_T4",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "JURY_SIZE_T5",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "JURY_T1_AMOUNT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "JURY_T2_AMOUNT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "JURY_T3_AMOUNT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "JURY_T4_AMOUNT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -4029,64 +4202,101 @@ export const schellingVotingAbi = [
     ],
     "outputs": [
       {
-        "name": "tradeId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "stake",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "commitDeadline",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "revealDeadline",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "eligibilityAgentCount",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "committedCount",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "votesForBuyer",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "votesForSeller",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "abstentions",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "settled",
-        "type": "bool",
-        "internalType": "bool"
-      },
-      {
-        "name": "effective",
-        "type": "bool",
-        "internalType": "bool"
-      },
-      {
-        "name": "winner",
-        "type": "uint8",
-        "internalType": "enum SchellingVoting.Side"
+        "name": "details",
+        "type": "tuple",
+        "internalType": "struct SchellingVoting.CaseDetailsView",
+        "components": [
+          {
+            "name": "tradeId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "stake",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "commitDeadline",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "revealDeadline",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "eligibilityAgentCount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "committedCount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "votesForBuyer",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "votesForSeller",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "abstentions",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "settled",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "effective",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "winner",
+            "type": "uint8",
+            "internalType": "enum SchellingVoting.Side"
+          },
+          {
+            "name": "jurySize",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "voluntarySeats",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "randomSeats",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "randomCommitDeadline",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "randomInvitedCount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "randomSelected",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
       }
     ],
     "stateMutability": "view"
@@ -4255,6 +4465,30 @@ export const schellingVotingAbi = [
   },
   {
     "type": "function",
+    "name": "isRandomInvited",
+    "inputs": [
+      {
+        "name": "caseId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "jurorObligationCleared",
     "inputs": [
       {
@@ -4315,6 +4549,25 @@ export const schellingVotingAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "jurySizeForAmount",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
   },
   {
     "type": "function",
@@ -4401,6 +4654,19 @@ export const schellingVotingAbi = [
   },
   {
     "type": "function",
+    "name": "randomCommitWindow",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "registry",
     "inputs": [],
     "outputs": [
@@ -4454,6 +4720,19 @@ export const schellingVotingAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "selectRandomJury",
+    "inputs": [
+      {
+        "name": "caseId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -4755,6 +5034,31 @@ export const schellingVotingAbi = [
         "type": "address",
         "internalType": "address",
         "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RandomJurySelected",
+    "inputs": [
+      {
+        "name": "caseId",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "invitedCount",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "seed",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
       }
     ],
     "anonymous": false

@@ -93,8 +93,9 @@ ESCROW_HASH=$(manifest_hash guaranteeEscrow)
 VOTING_HASH=$(manifest_hash schellingVoting)
 CASE_STAKE=$(manifest_string caseStake)
 COMMIT_WINDOW=$(manifest_number commitWindow)
+RANDOM_COMMIT_WINDOW=$(manifest_number randomCommitWindow)
 REVEAL_WINDOW=$(manifest_number revealWindow)
-for value in "$REGISTRY_HASH" "$HUB_HASH" "$ESCROW_HASH" "$VOTING_HASH" "$CASE_STAKE" "$COMMIT_WINDOW" "$REVEAL_WINDOW"; do
+for value in "$REGISTRY_HASH" "$HUB_HASH" "$ESCROW_HASH" "$VOTING_HASH" "$CASE_STAKE" "$COMMIT_WINDOW" "$RANDOM_COMMIT_WINDOW" "$REVEAL_WINDOW"; do
   [ -n "$value" ] || fail "manifest is missing runtime hashes or voting parameters"
 done
 
@@ -155,6 +156,7 @@ validate_deployment() {
   assert_true_call "ReputationHub.jurorMetricWriters" "$HUB" "jurorMetricWriters(address)(bool)" "$VOTING"
   assert_uint_call "SchellingVoting.caseStake" "$VOTING" "caseStake()(uint256)" "$CASE_STAKE"
   assert_uint_call "SchellingVoting.commitWindow" "$VOTING" "commitWindow()(uint256)" "$COMMIT_WINDOW"
+  assert_uint_call "SchellingVoting.randomCommitWindow" "$VOTING" "randomCommitWindow()(uint256)" "$RANDOM_COMMIT_WINDOW"
   assert_uint_call "SchellingVoting.revealWindow" "$VOTING" "revealWindow()(uint256)" "$REVEAL_WINDOW"
   echo "   dependency, role, ownership, and voting parameter wiring ok"
 }

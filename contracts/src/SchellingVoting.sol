@@ -7,10 +7,9 @@ import {GuaranteeEscrow} from "./GuaranteeEscrow.sol";
 import {AgentRegistry} from "./AgentRegistry.sol";
 import {ReputationHub} from "./ReputationHub.sol";
 
-/// @notice Commit-reveal dispute voting over a verifiable registration-count snapshot.
-/// This is not random jury selection: every eligible registered subject may participate,
-/// one address/subject per case. Registration fees only raise Sybil cost; they do not prove
-/// real-world uniqueness, and linked addresses cannot be detected on chain.
+/// @notice Commit-reveal dispute voting with a hybrid jury: roughly half the seats are
+/// grabbed first-come-first-served by eligible volunteers and half are drawn randomly from the
+/// registration snapshot using a blockhash/RANDAO seed, so trade parties cannot stuff the panel.
 contract SchellingVoting is Ownable, ReentrancyGuard {
     enum Side {
         BUYER,
@@ -20,19 +19,37 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     uint256 public constant MIN_VOTERS = 3;
     uint256 public constant MAX_PHASE_WINDOW = 7 days;
 
+    // Amount-scaled jury size (larger disputes seat a larger panel).
+    uint256 public constant JURY_T1_AMOUNT = 1 ether;
+    uint256 public constant JURY_T2_AMOUNT = 10 ether;
+    uint256 public constant JURY_T3_AMOUNT = 50 ether;
+    uint256 public constant JURY_T4_AMOUNT = 100 ether;
+    uint256 public constant JURY_SIZE_T1 = 5;
+    uint256 public constant JURY_SIZE_T2 = 7;
+    uint256 public constant JURY_SIZE_T3 = 9;
+    uint256 public constant JURY_SIZE_T4 = 11;
+    uint256 public constant JURY_SIZE_T5 = 13;
+
     struct Case {
         bool exists;
         uint256 tradeId;
         uint256 stake;
         uint256 commitDeadline;
+        uint256 randomCommitDeadline;
         uint256 revealDeadline;
         uint256 eligibilityAgentCount;
+        uint256 jurySize;
+        uint256 voluntarySeats;
+        uint256 randomSeats;
+        uint256 randomSeed;
         uint256 committedCount;
         uint256 votesForBuyer;
         uint256 votesForSeller;
         uint256 abstentions;
+        uint256 randomInvitedCount;
         bool settled;
         bool effective;
+        bool randomSelected;
         Side winner;
         mapping(address => bytes32) commitment;
         mapping(address => bool) hasCommitted;
@@ -40,6 +57,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         mapping(address => Side) side;
         mapping(address => bool) claimed;
         mapping(address => bool) obligationCleared;
+        mapping(address => bool) randomInvited;
     }
 
     struct CaseDetailsView {
@@ -55,6 +73,12 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         bool settled;
         bool effective;
         Side winner;
+        uint256 jurySize;
+        uint256 voluntarySeats;
+        uint256 randomSeats;
+        uint256 randomCommitDeadline;
+        uint256 randomInvitedCount;
+        bool randomSelected;
     }
 
     GuaranteeEscrow public immutable escrow;
@@ -62,6 +86,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     ReputationHub public immutable hub;
     uint256 public immutable caseStake;
     uint256 public immutable commitWindow;
+    uint256 public immutable randomCommitWindow;
     uint256 public immutable revealWindow;
     uint256 public nextCaseId;
     uint256 public totalLiability;
@@ -93,6 +118,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         bool effective,
         bool aligned
     );
+    event RandomJurySelected(uint256 indexed caseId, uint256 invitedCount, uint256 seed);
 
     constructor(
         address escrow_,
@@ -100,6 +126,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         address hub_,
         uint256 caseStake_,
         uint256 commitWindow_,
+        uint256 randomCommitWindow_,
         uint256 revealWindow_
     ) Ownable(msg.sender) {
         require(
@@ -107,9 +134,13 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
             unicode"SchellingVoting: 依赖地址为零"
         );
         require(caseStake_ != 0, unicode"SchellingVoting: 质押必须大于零");
-        require(commitWindow_ != 0 && revealWindow_ != 0, unicode"SchellingVoting: 窗口必须大于零");
         require(
-            commitWindow_ <= MAX_PHASE_WINDOW && revealWindow_ <= MAX_PHASE_WINDOW,
+            commitWindow_ != 0 && randomCommitWindow_ != 0 && revealWindow_ != 0,
+            unicode"SchellingVoting: 窗口必须大于零"
+        );
+        require(
+            commitWindow_ <= MAX_PHASE_WINDOW && randomCommitWindow_ <= MAX_PHASE_WINDOW
+                && revealWindow_ <= MAX_PHASE_WINDOW,
             unicode"SchellingVoting: 窗口过长"
         );
         escrow = GuaranteeEscrow(escrow_);
@@ -117,6 +148,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         hub = ReputationHub(hub_);
         caseStake = caseStake_;
         commitWindow = commitWindow_;
+        randomCommitWindow = randomCommitWindow_;
         revealWindow = revealWindow_;
     }
 
@@ -135,8 +167,12 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         c.exists = true;
         c.tradeId = tradeId;
         c.stake = caseStake;
+        c.jurySize = jurySizeForAmount(escrow.tradeAmount(tradeId));
+        c.voluntarySeats = c.jurySize / 2; // floor(N/2)
+        c.randomSeats = c.jurySize - c.jurySize / 2; // ceil(N/2)
         c.commitDeadline = block.timestamp + commitWindow;
-        c.revealDeadline = c.commitDeadline + revealWindow;
+        c.randomCommitDeadline = c.commitDeadline + randomCommitWindow;
+        c.revealDeadline = c.randomCommitDeadline + revealWindow;
         c.eligibilityAgentCount = escrow.eligibilityAgentCount(tradeId);
         emit CaseOpened(caseId, tradeId, c.stake, c.commitDeadline, c.revealDeadline, c.eligibilityAgentCount);
     }
@@ -147,29 +183,70 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         return caseIdPlusOne - 1;
     }
 
-    function caseDetails(uint256 caseId)
-        external
-        view
-        existingCase(caseId)
-        returns (
-            uint256 tradeId,
-            uint256 stake,
-            uint256 commitDeadline,
-            uint256 revealDeadline,
-            uint256 eligibilityAgentCount,
-            uint256 committedCount,
-            uint256 votesForBuyer,
-            uint256 votesForSeller,
-            uint256 abstentions,
-            bool settled,
-            bool effective,
-            Side winner
-        )
-    {
-        bytes memory encodedDetails = abi.encode(_caseDetails(caseId));
-        assembly ("memory-safe") {
-            return(add(encodedDetails, 0x20), mload(encodedDetails))
+    /// @notice Jury size for a dispute amount: larger exposures seat a larger panel.
+    function jurySizeForAmount(uint256 amount) public pure returns (uint256) {
+        if (amount <= JURY_T1_AMOUNT) return JURY_SIZE_T1;
+        if (amount <= JURY_T2_AMOUNT) return JURY_SIZE_T2;
+        if (amount <= JURY_T3_AMOUNT) return JURY_SIZE_T3;
+        if (amount <= JURY_T4_AMOUNT) return JURY_SIZE_T4;
+        return JURY_SIZE_T5;
+    }
+
+    /// @notice Derives the random seed and invites the random half of the jury after the
+    /// volunteer commit window closes. Permissionless; blockhash/RANDAO is not manipulable by
+    /// the trade parties (only a block proposer could theoretically bias it).
+    function selectRandomJury(uint256 caseId) external nonReentrant existingCase(caseId) {
+        Case storage c = _cases[caseId];
+        require(!c.settled, unicode"SchellingVoting: 已结算");
+        require(block.timestamp >= c.commitDeadline, unicode"SchellingVoting: 志愿窗口未结束");
+        require(!c.randomSelected, unicode"SchellingVoting: 已抽取陪审团");
+        c.randomSelected = true;
+        uint256 seed = uint256(
+            keccak256(
+                abi.encode(
+                    blockhash(block.number - 1), block.prevrandao, block.number, caseId, address(this), block.chainid
+                )
+            )
+        );
+        c.randomSeed = seed;
+        uint256 count = c.eligibilityAgentCount;
+        if (count != 0 && c.randomSeats != 0) {
+            // Random rotation over the snapshot: scan from a seed-derived offset, visiting each
+            // candidate at most once, so the panel fills whenever at least `randomSeats` eligible
+            // subjects exist within the scanned window (with-replacement draws could leave seats
+            // empty). Every eligible subject has equal inclusion odds.
+            uint256 start = seed % count;
+            uint256 maxAttempts = count < c.randomSeats * 10 ? count : c.randomSeats * 10;
+            uint256 selected;
+            for (uint256 step; step < maxAttempts && selected < c.randomSeats; ++step) {
+                address subject = registry.subjectAt((start + step) % count);
+                if (_randomEligible(c, subject)) {
+                    c.randomInvited[subject] = true;
+                    ++selected;
+                }
+            }
+            c.randomInvitedCount = selected;
         }
+        emit RandomJurySelected(caseId, c.randomInvitedCount, seed);
+    }
+
+    function _randomEligible(Case storage c, address subject) private view returns (bool) {
+        if (subject == address(0) || c.hasCommitted[subject] || c.randomInvited[subject]) return false;
+        if (!registry.isRegisteredSubjectAtCount(subject, c.eligibilityAgentCount)) return false;
+        if (!hub.isJurorEligible(subject)) return false;
+        if (!registry.isPoHVerified(subject)) return false;
+        (address buyer, address seller, address guarantor) = escrow.tradeActors(c.tradeId);
+        return subject != buyer && subject != seller && subject != guarantor;
+    }
+
+    function isRandomInvited(uint256 caseId, address subject) external view existingCase(caseId) returns (bool) {
+        return _cases[caseId].randomInvited[subject];
+    }
+
+    /// @notice Full case view returned as one struct (a single stack slot), so the function
+    /// compiles under every codegen mode, including `forge coverage --ir-minimum`.
+    function caseDetails(uint256 caseId) external view existingCase(caseId) returns (CaseDetailsView memory details) {
+        details = _caseDetails(caseId);
     }
 
     function _caseDetails(uint256 caseId) private view returns (CaseDetailsView memory details) {
@@ -186,6 +263,12 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
         details.settled = c.settled;
         details.effective = c.effective;
         details.winner = c.winner;
+        details.jurySize = c.jurySize;
+        details.voluntarySeats = c.voluntarySeats;
+        details.randomSeats = c.randomSeats;
+        details.randomCommitDeadline = c.randomCommitDeadline;
+        details.randomInvitedCount = c.randomInvitedCount;
+        details.randomSelected = c.randomSelected;
     }
 
     function jurorStatus(uint256 caseId, address subject)
@@ -221,7 +304,14 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
 
     function commitVote(uint256 caseId, bytes32 commitment) external payable nonReentrant existingCase(caseId) {
         Case storage c = _cases[caseId];
-        require(!c.settled && block.timestamp < c.commitDeadline, unicode"SchellingVoting: 提交窗口已结束");
+        require(!c.settled, unicode"SchellingVoting: 已结算");
+        if (block.timestamp < c.commitDeadline) {
+            require(c.committedCount < c.voluntarySeats, unicode"SchellingVoting: 自愿席已满");
+        } else if (block.timestamp < c.randomCommitDeadline) {
+            require(c.randomInvited[msg.sender], unicode"SchellingVoting: 非随机抽中陪审员");
+        } else {
+            revert(unicode"SchellingVoting: 提交窗口已结束");
+        }
         require(
             registry.isRegisteredSubjectAtCount(msg.sender, c.eligibilityAgentCount),
             unicode"SchellingVoting: 不在资格快照中"
@@ -247,7 +337,7 @@ contract SchellingVoting is Ownable, ReentrancyGuard {
     function revealVote(uint256 caseId, Side side, bytes32 salt) external existingCase(caseId) {
         Case storage c = _cases[caseId];
         require(
-            !c.settled && block.timestamp >= c.commitDeadline && block.timestamp < c.revealDeadline,
+            !c.settled && block.timestamp >= c.randomCommitDeadline && block.timestamp < c.revealDeadline,
             unicode"SchellingVoting: 不在揭示窗口"
         );
         require(c.hasCommitted[msg.sender], unicode"SchellingVoting: 未提交");

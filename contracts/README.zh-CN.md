@@ -15,11 +15,11 @@ AgentTrust 的 Solidity 合约实现，使用 Foundry 开发、测试与部署�
 | `src/SchellingVoting.sol` | 通过 Schelling 点社区质押投票裁决争议 |
 | `src/ReputationHub.sol` | 链上信誉存证；仅获授权的 Escrow/Voting 可写，禁止自评 |
 
-World ID app `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。`src/WorldIDPoHVerifier.sol` 是面向已弃用 World ID V1/Contracts 3.0 的旧版适配器，并非线上集成。由于 Base Sepolia 没有可用的 v4 直接验证器，项目采用明确的后端证明架构：同源 `/api/world-id` 调用 World ID 官方 v4 Developer Portal API，使用仅保存在服务器的可信证明人密钥签名；`WorldIDV4AttestationVerifier`（`0x1325C3eD12d535Bc33A56305466159d370BDf6cE`）验证证明并已绑定 Registry。这不是 World 证明直接链上验证。`script/Deploy.s.sol` 中定义的 `AnvilDevPoHVerifier` 仍仅供本地开发，绝不能公开部署。
+World ID app `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。`src/WorldIDPoHVerifier.sol` 是面向已弃用 World ID V1/Contracts 3.0 的旧版适配器，并非线上集成。由于 Base Sepolia 没有可用的 v4 直接验证器，项目采用明确的后端证明架构：同源 `/api/world-id` 调用 World ID 官方 v4 Developer Portal API，使用仅保存在服务器的可信证明人密钥签名；`WorldIDV4AttestationVerifier`（`0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`）验证证明并已绑定 Registry。这不是 World 证明直接链上验证。`script/Deploy.s.sol` 中定义的 `AnvilDevPoHVerifier` 仍仅供本地开发，绝不能公开部署。
 
 ## 测试
 
-权威 Foundry 基线为：**159 tests passed, 0 failed, 0 skipped**，包含 unit、fuzz、E2E 与 invariant 覆盖。
+权威 Foundry 基线为：**165 tests passed, 0 failed, 0 skipped**，包含 unit、fuzz、E2E 与 invariant 覆盖。
 
 ```bash
 export PATH="$HOME/.foundry/bin:$PATH"
@@ -48,7 +48,7 @@ NO_PROXY="127.0.0.1,localhost,::1" \
 
 脚本按 Registry → Hub → Escrow → Voting 的顺序部署，授予 Escrow/Voting 对 Hub 的写权限，将 Escrow 所有权移交 Voting，并配置义务预言机和注册参数。仅当链 ID 为 `31337` 且未设置 `POH_VERIFIER` 时，脚本才会部署本地专用的 `AnvilDevPoHVerifier`。
 
-Base Sepolia 上四个核心合约已部署并通过 RPC 校验，地址见 [`../deployments/84532.json`](../deployments/84532.json)。独立的 `WorldIDV4AttestationVerifier` 已部署到 `0x1325C3eD12d535Bc33A56305466159d370BDf6cE` 并绑定 Registry。PoH 注册与担保人/陪审门禁已通过可信后端证明模型启用。`verifySameIdentity` 返回 `false`，因此 Base Sepolia 找回固定采用全部守护人 + 48 小时否决窗。详见 [Base Sepolia 部署指南](./demo/DEPLOY-BaseSepolia.zh-CN.md)。
+Base Sepolia 上四个核心合约已部署并通过 RPC 校验，地址见 [`../deployments/84532.json`](../deployments/84532.json)。独立的 `WorldIDV4AttestationVerifier` 已部署到 `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF` 并绑定 Registry。PoH 注册与担保人/陪审门禁已通过可信后端证明模型启用。`verifySameIdentity` 返回 `false`，因此 Base Sepolia 找回固定采用全部守护人 + 48 小时否决窗。详见 [Base Sepolia 部署指南](./demo/DEPLOY-BaseSepolia.zh-CN.md)。
 
 ## 演示
 

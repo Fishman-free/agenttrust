@@ -6,7 +6,7 @@
 >
 > https://agenttrust.site is live on Tokyo Caddy with valid HTTPS; `www` redirects to the apex. The GitHub Pages deployment-gate workflow is modified but not merged. The contracts are unaudited, testnet-only, and not production-ready.
 >
-> World ID app `app_01728cabff1e05950af1ff18c06c9d38` and RP `rp_fd884ac4342cc4d1` are registered. Because Base Sepolia has no v4 direct verifier, same-origin `/api/world-id` uses the official v4 Developer Portal API and server-only trusted-attester keys. `WorldIDV4AttestationVerifier` at `0x1325C3eD12d535Bc33A56305466159d370BDf6cE` is bound to the Registry. PoH registration and guarantor/juror gates are enabled through this backend trust model—not direct onchain World verification. `verifySameIdentity` returns `false`, so recovery requires all guardians plus a 48-hour veto.
+> World ID app `app_01728cabff1e05950af1ff18c06c9d38` and RP `rp_fd884ac4342cc4d1` are registered. Because Base Sepolia has no v4 direct verifier, same-origin `/api/world-id` uses the official v4 Developer Portal API and server-only trusted-attester keys. `WorldIDV4AttestationVerifier` at `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF` is bound to the Registry. PoH registration and guarantor/juror gates are enabled through this backend trust model—not direct onchain World verification. `verifySameIdentity` returns `false`, so recovery requires all guardians plus a 48-hour veto.
 
 ## 1. Deployment model
 
@@ -27,7 +27,7 @@ The frontend can be exported with `NEXT_PUBLIC_CHAIN=base-sepolia`. GitHub Pages
 - A Base Sepolia RPC, such as `https://sepolia.base.org`.
 - A BaseScan API key if using `--verify` during deployment.
 - For future PoH work only: the existing World ID app is `app_01728cabff1e05950af1ff18c06c9d38`; confirm current v4 portal, action, and proof requirements before designing the replacement adapter. Do not reuse legacy V1/Contracts 3.0 assumptions.
-- All contract tests green. The authoritative baseline is **159 tests passed, 0 failed, 0 skipped**:
+- All contract tests green. The authoritative baseline is **165 tests passed, 0 failed, 0 skipped**:
 
 ```bash
 NO_PROXY="127.0.0.1,localhost,::1" forge test --root contracts
@@ -118,7 +118,7 @@ node scripts/deployment-manifest.mjs --check \
 
 `--write` and `--check` are compatibility aliases for `generate` and `check`. The write command updates `deployments/84532.json` and regenerates `frontend/lib/deployments.ts`. Do not edit the generated module or hard-code addresses in `frontend/lib/config.ts`.
 
-The core manifest intentionally tracks only four contracts. The separate World ID manifest records adapter `0x1325C3eD12d535Bc33A56305466159d370BDf6cE`, its trust model, attester, RP/action, and deployment transactions. The Registry binding was directly verified with `pohVerifier()` before enabling the PoH UI.
+The core manifest intentionally tracks only four contracts. The separate World ID manifest records adapter `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`, its trust model, attester, RP/action, and deployment transactions. The Registry binding was directly verified with `pohVerifier()` before enabling the PoH UI.
 
 ### Step 5: build and test the frontend locally
 
@@ -163,7 +163,7 @@ Use `forge script --estimate-gas` and actual deployment output as the source of 
 |---|---|
 | RPC unavailable | Retry or use another reputable Base Sepolia RPC |
 | Legacy adapter selected | Stop; do not deploy the V1/Contracts 3.0 `WorldIDPoHVerifier`; implement and review a v4 adapter |
-| Unexpected verifier binding | Verify `pohVerifier()` equals `0x1325C3eD12d535Bc33A56305466159d370BDf6cE`; disable affected flows and review any mismatch |
+| Unexpected verifier binding | Verify `pohVerifier()` equals `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`; disable affected flows and review any mismatch |
 | Wrong core addresses | Regenerate from the named broadcast; let manifest RPC validation reject incorrect wiring |
 | Frontend addresses stale | Run manifest `--check`, inspect Actions logs for `NEXT_PUBLIC_CHAIN=base-sepolia`, then clear Pages cache and hard-refresh |
 | Insufficient gas | Obtain more faucet ETH, then use `forge script --resume` where safe or redeploy |

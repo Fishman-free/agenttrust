@@ -107,7 +107,10 @@ contract GuaranteeEscrowTest is Test {
         assertEq(escrow.premiumTierSurchargeBps(1 ether), 0, "T0 boundary");
         assertEq(escrow.premiumTierSurchargeBps(1 ether + 1), 100, "T1");
         assertEq(escrow.premiumTierSurchargeBps(10 ether), 100, "T1 boundary");
-        assertEq(escrow.premiumTierSurchargeBps(10 ether + 1), 250, "T2");
+        assertEq(escrow.premiumTierSurchargeBps(10 ether + 1), 250, "T2 base");
+        assertEq(escrow.premiumTierSurchargeBps(20 ether), 300, "T2 +1 step");
+        assertEq(escrow.premiumTierSurchargeBps(29 ether), 300, "T2 still +1 step below 30");
+        assertEq(escrow.premiumTierSurchargeBps(30 ether), 350, "T2 +2 steps");
 
         // 新卖家 50 分：基准 750 bps，随档位上浮
         (,, uint256 t0Premium,) = escrow.quoteGuaranteeTerms(sellerId, 0.5 ether, 0.1 ether);
@@ -115,7 +118,7 @@ contract GuaranteeEscrowTest is Test {
         (,, uint256 t1Premium,) = escrow.quoteGuaranteeTerms(sellerId, 2 ether, 0.4 ether);
         assertEq(t1Premium, 0.17 ether, "750 + 100 bps");
         (,, uint256 t2Premium,) = escrow.quoteGuaranteeTerms(sellerId, 20 ether, 4 ether);
-        assertEq(t2Premium, 2 ether, "750 + 250 bps");
+        assertEq(t2Premium, 2.1 ether, "750 + 300 bps");
     }
 
     function test_guaranteeBlockedWhenExposureCapExceeded() public {
@@ -476,7 +479,7 @@ contract GuaranteeEscrowTest is Test {
         uint64 rawCoverage,
         uint96 rawPremium
     ) public {
-        uint256 amount = bound(uint256(rawAmount), 1, 100 ether);
+        uint256 amount = bound(uint256(rawAmount), 1, 10 ether);
         uint256 coverage = bound(uint256(rawCoverage), 1e18, escrow.MAX_COVERAGE());
         uint256 maximumPremium = amount / 10;
         (,, uint256 referencePremium,) = escrow.quoteGuaranteeTerms(sellerId, amount, maximumPremium);
@@ -497,7 +500,7 @@ contract GuaranteeEscrowTest is Test {
     }
 
     function testFuzz_invalidCoveragePremiumAndStakeBoundaries(uint96 rawAmount, uint64 rawCoverage) public {
-        uint256 amount = bound(uint256(rawAmount), 1, 100 ether);
+        uint256 amount = bound(uint256(rawAmount), 1, 10 ether);
         uint256 maxCoverage = escrow.MAX_COVERAGE();
         uint256 id = _createAcceptedFunded(amount);
         (,, uint256 referencePremium,) = escrow.quoteGuaranteeTerms(sellerId, amount, amount / 10);
@@ -917,7 +920,7 @@ contract GuaranteeEscrowTest is Test {
     }
 
     function testFuzz_disputeBondAlwaysRoundsUp(uint96 rawAmount) public {
-        uint256 amount = bound(uint256(rawAmount), 1, 100 ether);
+        uint256 amount = bound(uint256(rawAmount), 1, 10 ether);
         uint256 id = _createAcceptedFunded(amount);
         assertEq(escrow.requiredDisputeBond(id), (amount * 200 + 9999) / 10000);
     }

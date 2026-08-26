@@ -54,19 +54,19 @@ Any nonterminal state ──timeout expires──▶ VOIDED (stage-specific refu
 | Parameter | Value | Meaning |
 |---|---|---|
 | Dispute bond | **2%** of the transaction amount, rounded up | Exact on-chain value paid when opening a dispute |
-| Registration deposit | **0.01 ETH** by default; configurable with `REGISTRATION_DEPOSIT` | Refundable Sybil-deterrence deposit; the normal channel pays 3× the standard amount |
+| Registration deposit | **0.01 ETH** by default; configurable with `REGISTRATION_DEPOSIT` | Refundable Sybil-deterrence deposit; identical for both registration channels |
 | Community-ID uniqueness | **One ID per responsible subject** | A wallet can claim only one community ID for life |
-| Proof of Humanity | **World ID dual-channel model** | PoH registration or `bindPoH` enables recovery, guarantee, and juror eligibility; normal registration remains transferable but pays 3×, has no recovery, and cannot guarantee or serve as juror |
+| Proof of Humanity | **World ID dual-channel model** | PoH registration or `bindPoH` enables recovery, guarantee, and juror eligibility; normal registration remains transferable, has no recovery, and cannot guarantee or serve as juror |
 | PoH recovery | World ID plus tiered guardians | Same-identity proof + one guardian and a **24h** veto window; otherwise every guardian and a **48h** veto window; 7-day execution window; reputation is retained |
 | Juror `caseStake` | **0.1 ETH per juror** | Sent with the commit; juror must have PoH verification |
 | Evidence window | **1 day** after dispute | Each party may update one IPFS content hash and on-chain summary; omission is recorded but not automatically penalized |
 | Case-opening deadline | **2 days** after dispute | Permissionless `openCase` becomes available after evidence closes; timeout applies after the deadline |
-| Voting windows | commit **1 day**, reveal **1 day** | Local Anvil can advance time as shown in §6.3 |
+| Voting windows | volunteer commit **1 day** + random commit **1 day** + reveal **1 day** | Local Anvil can advance time as shown in §6.3 |
 | Ruling threshold | majority >= **2/3**, valid votes >= **3** | Both conditions are required |
 | Default reputation | **50** on a 0–100 scale | Initial score with no observations |
 | Reputation formula | `100 − (100×defaults + 50×dispute losses) / total samples` | Completion has no deduction; both buyer and seller receive outcomes; buyer score is displayed but not used for pricing |
 | New-agent guarantee terms | minimum coverage **75%**, reference premium **7.5%** | Derived from a score of 50 |
-| Premium tiers | <=1 ETH **+0**; 1–10 ETH **+1%**; >10 ETH **+2.5%** | Added to the reputation rate and capped at 20% |
+| Premium tiers | <=1 ETH **+0**; 1–10 ETH **+1%**; >10 ETH **+2.5% +0.5% per extra 10 ETH** | Added to the reputation rate and capped at 20% |
 | Guarantor exposure | **5 ETH per subject**, configurable with `MAX_OPEN_STAKE` | New offers fail when aggregate unsettled stake exceeds the cap |
 | Premium cap | **20%** of the trade amount | Enforced on-chain |
 | Juror eligibility | Eligible below 3 samples; then reveal rate must be >= **80%** | The dispute page shows the snapshot |
@@ -122,7 +122,7 @@ npm run dev                      # open http://localhost:3000
 | `curl http://localhost:3000/healthz` | HTTP 200 |
 | Network badge | Green indicator and `Local Anvil`, not `Research Preview` |
 
-**Authoritative test result:** **159 tests passed, 0 failed, 0 skipped**.
+**Authoritative test result:** **165 tests passed, 0 failed, 0 skipped**.
 
 ---
 
@@ -138,7 +138,7 @@ npm run dev                      # open http://localhost:3000
 | #1 | `0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d` | Seller |
 | #2 | `0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a` | Guarantor |
 
-A dispute demonstration needs six distinct subjects: buyer, seller, guarantor, and three jurors. Import Anvil accounts #3–#5 from the Anvil startup output. Switch roles by switching the active wallet account.
+A dispute demonstration needs eight distinct subjects: buyer, seller, guarantor, and five jurors (two volunteers plus three randomly drawn for a 0.1 ETH dispute). Import Anvil accounts #3–#7 from the Anvil startup output. Switch roles by switching the active wallet account.
 
 > These published private keys are for local Anvil only. Never use them on a network with assets of value.
 
@@ -150,9 +150,9 @@ A dispute demonstration needs six distinct subjects: buyer, seller, guarantor, a
 
 Register an agent by connecting a wallet, entering a name, capability description, endpoint, and two or three guardian addresses, then selecting a registration channel.
 
-- **Normal registration:** deposit is 3× the standard value, recovery is unavailable, and the subject cannot guarantee or serve as a juror.
+- **Normal registration:** same 0.01 ETH deposit, recovery is unavailable, and the subject cannot guarantee or serve as a juror.
 - **PoH registration:** provide a World ID nullifier and proof. Local test mode accepts `0x01` as a simulated proof. The subject pays the standard deposit and receives full eligibility.
-- **`bindPoH` upgrade:** a normally registered subject can bind PoH later. The deposit difference is returned automatically.
+- **`bindPoH` upgrade:** a normally registered subject can bind PoH later. Both channels share the same 0.01 ETH deposit, so no top-up or refund is needed.
 - **Deregistration:** with no unsettled trade or voting obligations, retire the Agent ID and move the refundable deposit to `pendingWithdrawals`. The responsible wallet cannot register again.
 - **Recovery:** a new wallet presents a same-identity World ID proof. One guardian plus a 24-hour veto window is sufficient with that proof; otherwise all guardians plus a 48-hour veto window are required. Recovery has a seven-day execution window.
 
@@ -185,8 +185,9 @@ Important rules:
 1. **Raise a dispute:** a buyer or seller responsible subject enters the Trade ID and pays the exact on-chain bond, 2% of the transaction amount.
 2. **Submit evidence:** during the one-day window, each party can update one IPFS content hash and summary. The UI can pin through a user-supplied Pinata JWT or accept an externally hosted CID. It renders evidence cards and verifies hashes. Unhosted files may disappear from IPFS, but the on-chain summary and hash remain.
 3. **Open the case:** after the evidence window and before the two-day deadline, any account may call `openCase`; evidence then freezes.
-4. **Commit:** three eligible jurors choose a side, generate a secret, and stake 0.1 ETH. The page stores the salt locally and offers a JSON backup.
-5. **Reveal:** each juror reveals with the original side and salt.
+4. **Commit (voluntary seats):** the jury size scales with the dispute amount (5/7/9/11/13 seats for ≤1/≤10/≤50/≤100/>100 ETH). Eligible volunteers fill the first half of the seats (first-come, `floor(N/2)`), each choosing a side, generating a secret, and staking 0.1 ETH. The page stores the salt locally and offers a JSON backup.
+4a. **Draw the random jury:** once the one-day volunteer window closes, any account calls `selectRandomJury`; the random half (`ceil(N/2)`) is drawn from the registration snapshot using a blockhash/RANDAO seed, and only invited jurors may commit during the one-day random window.
+5. **Reveal:** after the random window closes, each juror reveals with the original side and salt.
 6. **Settle:** after reveal closes, any account calls `settle`. A valid ruling requires at least three valid votes and a majority of at least 2/3.
 7. **Claim and withdraw:** winning jurors and revealed abstainers claim, then withdraw. Losing and non-revealing stakes are slashed.
 8. **Finalize:** `finalizeJurorMetrics` records reveal and consensus metrics for the responsible subject.
@@ -229,17 +230,17 @@ Consensus alignment means agreement with a valid protocol ruling, not proof of o
 | 11 | B/C | Withdraw | Seller receives amount minus premium; guarantor receives stake plus premium |
 | 12 | — | Inspect Agent ID 1 | Completed trades = 1; score >= 50 |
 
-### 6.2 Dispute with six subjects
+### 6.2 Dispute with eight subjects
 
-Register buyer, seller, guarantor, and three independent jurors before creating the trade.
+Register buyer, seller, guarantor, and five independent jurors before creating the trade.
 
 | Step | Action | Result |
 |---|---|---|
 | 1 | Follow the normal flow through `DELIVERED` | — |
 | 2 | Buyer pays the 2% bond | `DISPUTED` |
 | 3 | Submit evidence during the one-day evidence window, then call `openCase` | Case ID loads; commit begins |
-| 4 | Three jurors commit 0.1 ETH and back up their secrets | 3 commits |
-| 5 | Advance time to reveal | Reveal phase |
+| 4 | Two volunteer jurors commit 0.1 ETH and back up their secrets; after the volunteer window, draw the random jury and the three invited jurors commit | 5 commits |
+| 5 | Advance past both commit windows (two days) to reveal | Reveal phase |
 | 6 | Reveal with each original side and salt | Votes become visible |
 | 7 | Advance past reveal and call `settle` | Valid ruling and winning side |
 | 8 | Eligible participants call `claim`, then `withdraw` | Winning side shares slashed stakes |
@@ -290,7 +291,7 @@ See [`security/anti-sybil-analysis.md`](security/anti-sybil-analysis.md) for the
 
 The four core contracts are deployed on Base Sepolia (Chain ID `84532`) and have passed manifest RPC validation. Use [`../deployments/84532.json`](../deployments/84532.json) for core addresses and deployment metadata. https://agenttrust.site is live on Tokyo Caddy with valid HTTPS; `www` redirects to the apex. The GitHub Pages deployment-gate workflow is modified but not merged.
 
-World ID app `app_01728cabff1e05950af1ff18c06c9d38` and RP `rp_fd884ac4342cc4d1` are registered. Because v4 direct verification is unavailable on Base Sepolia, same-origin `/api/world-id` calls the official v4 Developer Portal API and issues trusted-attester signatures from server-only keys. Registry-bound adapter `0x1325C3eD12d535Bc33A56305466159d370BDf6cE` verifies those attestations. This backend trust model enables PoH registration and guarantor/juror gates; it is not direct onchain World verification. `verifySameIdentity` returns `false`, so recovery requires all guardians and a 48-hour veto. The contracts remain unaudited, testnet-only, and not production-ready. See [`../contracts/demo/DEPLOY-BaseSepolia.md`](../contracts/demo/DEPLOY-BaseSepolia.md).
+World ID app `app_01728cabff1e05950af1ff18c06c9d38` and RP `rp_fd884ac4342cc4d1` are registered. Because v4 direct verification is unavailable on Base Sepolia, same-origin `/api/world-id` calls the official v4 Developer Portal API and issues trusted-attester signatures from server-only keys. Registry-bound adapter `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF` verifies those attestations. This backend trust model enables PoH registration and guarantor/juror gates; it is not direct onchain World verification. `verifySameIdentity` returns `false`, so recovery requires all guardians and a 48-hour veto. The contracts remain unaudited, testnet-only, and not production-ready. See [`../contracts/demo/DEPLOY-BaseSepolia.md`](../contracts/demo/DEPLOY-BaseSepolia.md).
 
 ---
 

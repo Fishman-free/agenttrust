@@ -87,6 +87,8 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     uint256 public constant PREMIUM_TIER2_THRESHOLD = 10 ether;
     uint256 public constant PREMIUM_TIER1_SURCHARGE_BPS = 100;
     uint256 public constant PREMIUM_TIER2_SURCHARGE_BPS = 250;
+    uint256 public constant PREMIUM_TIER2_STEP = 10 ether;
+    uint256 public constant PREMIUM_TIER2_STEP_SURCHARGE_BPS = 50;
     uint256 public constant DEFAULT_MAX_OPEN_STAKE = 5 ether;
 
     AgentRegistry public immutable registry;
@@ -184,6 +186,10 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         return _trades[tradeId].eligibilityAgentCount;
     }
 
+    function tradeAmount(uint256 tradeId) external view existingTrade(tradeId) returns (uint256) {
+        return _trades[tradeId].amount;
+    }
+
     function subjectHasActiveTrades(address subject) external view returns (bool) {
         return openTradeCount[subject] != 0;
     }
@@ -233,8 +239,13 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     }
 
     /// @notice Tier surcharge (bps) applied on top of the score-based rate, rising with amount.
+    /// Above the tier-2 threshold each additional 10 ETH adds STEP_SURCHARGE_BPS on top of the
+    /// 2.5% base, so larger exposures are progressively more expensive to underwrite.
     function premiumTierSurchargeBps(uint256 amount) public pure returns (uint256) {
-        if (amount > PREMIUM_TIER2_THRESHOLD) return PREMIUM_TIER2_SURCHARGE_BPS;
+        if (amount > PREMIUM_TIER2_THRESHOLD) {
+            uint256 extraSteps = (amount - PREMIUM_TIER2_THRESHOLD) / PREMIUM_TIER2_STEP;
+            return PREMIUM_TIER2_SURCHARGE_BPS + extraSteps * PREMIUM_TIER2_STEP_SURCHARGE_BPS;
+        }
         if (amount > PREMIUM_TIER1_THRESHOLD) return PREMIUM_TIER1_SURCHARGE_BPS;
         return 0;
     }

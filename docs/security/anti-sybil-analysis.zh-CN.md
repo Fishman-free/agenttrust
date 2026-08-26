@@ -62,7 +62,7 @@ AgentTrust 的社区 ID（ERC-721 Agent ID）是智能体参与交易、担保�
 - `registerAgentVerified` 要求有效且未使用的 nullifier；`usedPoHNullifiers` 在 router 消费之外提供 registry 级防重放；
 - `GuaranteeEscrow.guarantee` 与 `SchellingVoting.commitVote` 强制执行 PoH 角色门禁。
 
-> ⚠️ `WorldIDPoHVerifier` 不等于 `AnvilDevPoHVerifier` 或 `MockPoHVerifier`。本地 Anvil 与 CI mock 只演练合约状态流转，不验证真实 World ID 证明。App `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。Base Sepolia 使用同源 `/api/world-id`、官方 v4 Developer Portal API、仅服务器保存的可信证明人密钥和已绑定 Registry 的适配器 `0x1325C3eD12d535Bc33A56305466159d370BDf6cE`。PoH 注册和担保人/陪审门禁已通过后端证明启用，并非 World 证明直接链上验证；`verifySameIdentity` 返回 `false`，找回采用全部守护人 + 48 小时否决窗。
+> ⚠️ `WorldIDPoHVerifier` 不等于 `AnvilDevPoHVerifier` 或 `MockPoHVerifier`。本地 Anvil 与 CI mock 只演练合约状态流转，不验证真实 World ID 证明。App `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。Base Sepolia 使用同源 `/api/world-id`、官方 v4 Developer Portal API、仅服务器保存的可信证明人密钥和已绑定 Registry 的适配器 `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`。PoH 注册和担保人/陪审门禁已通过后端证明启用，并非 World 证明直接链上验证；`verifySameIdentity` 返回 `false`，找回采用全部守护人 + 48 小时否决窗。
 
 ### 路径 4：ID 买卖/借用（由身份语义缓解）
 Agent ID 是 ERC-721，攻击者可以买入或租用高信誉 NFT。
@@ -96,7 +96,7 @@ Agent ID 是 ERC-721，攻击者可以买入或租用高信誉 NFT。
 | `contracts/test/WorldIDPoHVerifier.t.sol` | 适配器参数转发、非消耗校验、假 router/Semaphore 验证器拒绝路径 |
 | `deployments/31337.json`、`frontend/lib/*.ts` | 因 registry runtime bytecode 变化重新生成 |
 
-当前验证基线：`forge test` **159 项合约测试通过**；`npm test` 69/69 通过；manifest 与 ABI `--check` 通过。
+当前验证基线：`forge test` **165 项合约测试通过**；`npm test` 69/69 通过；manifest 与 ABI `--check` 通过。
 
 ### 分级找回属性
 

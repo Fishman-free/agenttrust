@@ -70,7 +70,7 @@ export default function AgentsPage() {
     query: { enabled: registryConfigured },
   });
   const depositEth = depositData === undefined ? "0" : formatEther(depositData);
-  const plainDeposit = depositData === undefined ? undefined : depositData * 3n;
+  const plainDeposit = depositData;
   const plainDepositEth = plainDeposit === undefined ? "0" : formatEther(plainDeposit);
   const { data: poHVerifier } = useReadContract({
     address: CONTRACT_ADDRESSES.agentRegistry,

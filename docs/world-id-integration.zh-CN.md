@@ -25,7 +25,7 @@ IDKit / World 证明
 | 核心合约 | 已部署并通过 RPC 校验；以 [`../deployments/84532.json`](../deployments/84532.json) 为准 |
 | App / RP | `app_01728cabff1e05950af1ff18c06c9d38` / `rp_fd884ac4342cc4d1` |
 | 后端 | 同源 `/api/world-id`，调用官方 v4 Developer Portal API |
-| 适配器 | `WorldIDV4AttestationVerifier`：`0x1325C3eD12d535Bc33A56305466159d370BDf6cE` |
+| 适配器 | `WorldIDV4AttestationVerifier`：`0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF` |
 | Registry 绑定 | 适配器已绑定 `AgentRegistry` |
 | 已启用门禁 | PoH 注册、担保人资格、陪审员资格 |
 | GitHub Pages | 部署门禁工作流已修改但尚未合并 |
@@ -64,7 +64,7 @@ IDKit / World 证明
 
 - 确认 `/api/world-id` 始终同源且仅通过 HTTPS 提供；
 - 确认签名秘密仅在服务器，未进入静态输出；
-- 核验 `AgentRegistry.pohVerifier()` 等于 `0x1325C3eD12d535Bc33A56305466159d370BDf6cE`；
+- 核验 `AgentRegistry.pohVerifier()` 等于 `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`；
 - 监控证明人轮换与 Registry 验证器变更；
 - 测试重放、过期、错误 action/signal/chain 与畸形请求均被拒绝；
 - 持续展示“未经审计、仅限测试网、不具备生产可用性”警告。

@@ -6,7 +6,7 @@
 >
 > https://agenttrust.site 已在东京 Caddy 上线且 HTTPS 有效，`www` 重定向到主域名。GitHub Pages 部署门禁工作流已修改但尚未合并。合约未经审计、仅限测试网，不具备生产可用性。
 >
-> World ID app `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。由于 Base Sepolia 没有 v4 直接验证器，同源 `/api/world-id` 使用官方 v4 Developer Portal API 与仅保存在服务器的可信证明人密钥。`WorldIDV4AttestationVerifier`（`0x1325C3eD12d535Bc33A56305466159d370BDf6cE`）已绑定 Registry。PoH 注册及担保人/陪审门禁已通过该后端信任模型启用，并非 World 证明直接链上验证。`verifySameIdentity` 返回 `false`，找回要求全部守护人 + 48 小时否决窗。
+> World ID app `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。由于 Base Sepolia 没有 v4 直接验证器，同源 `/api/world-id` 使用官方 v4 Developer Portal API 与仅保存在服务器的可信证明人密钥。`WorldIDV4AttestationVerifier`（`0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`）已绑定 Registry。PoH 注册及担保人/陪审门禁已通过该后端信任模型启用，并非 World 证明直接链上验证。`verifySameIdentity` 返回 `false`，找回要求全部守护人 + 48 小时否决窗。
 
 ## 1. 部署模型
 
@@ -27,7 +27,7 @@ World ID 与四合约 manifest 分开记录。旧版 `WorldIDPoHVerifier` 不得
 - Base Sepolia RPC，例如 `https://sepolia.base.org`。
 - 如需在部署时使用 `--verify`，准备 BaseScan API key。
 - 仅供未来 PoH 工作：现有 World ID app 为 `app_01728cabff1e05950af1ff18c06c9d38`；设计替代适配器前，必须核对当前 v4 Portal、action 和证明要求，不得复用旧版 V1/Contracts 3.0 假设。
-- 合约测试全部通过。权威基线为：**159 tests passed, 0 failed, 0 skipped**：
+- 合约测试全部通过。权威基线为：**165 tests passed, 0 failed, 0 skipped**：
 
 ```bash
 NO_PROXY="127.0.0.1,localhost,::1" forge test --root contracts
@@ -118,7 +118,7 @@ node scripts/deployment-manifest.mjs --check \
 
 `--write` 和 `--check` 分别是 `generate` 和 `check` 的兼容别名。写入命令会更新 `deployments/84532.json` 并重新生成 `frontend/lib/deployments.ts`。不要手改生成模块，也不要在 `frontend/lib/config.ts` 中硬编码地址。
 
-核心 manifest 有意只跟踪四个合约。独立 World ID manifest 记录 adapter `0x1325C3eD12d535Bc33A56305466159d370BDf6cE`、信任模型、attester、RP/action 和部署交易；开放 PoH UI 前已用 `pohVerifier()` 直接核验 Registry 绑定。
+核心 manifest 有意只跟踪四个合约。独立 World ID manifest 记录 adapter `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`、信任模型、attester、RP/action 和部署交易；开放 PoH UI 前已用 `pohVerifier()` 直接核验 Registry 绑定。
 
 ### 步骤 5：本地构建并测试前端
 
@@ -163,7 +163,7 @@ cast call "$REGISTRY" "pohVerifier()(address)" --rpc-url https://sepolia.base.or
 |---|---|
 | RPC 不可达 | 重试或改用其他可信 Base Sepolia RPC |
 | 选用了旧版适配器 | 停止；不要部署 V1/Contracts 3.0 `WorldIDPoHVerifier`，应实现并审查 v4 适配器 |
-| verifier 绑定异常 | 核验 `pohVerifier()` 等于 `0x1325C3eD12d535Bc33A56305466159d370BDf6cE`；不匹配时停用相关流程并审查 |
+| verifier 绑定异常 | 核验 `pohVerifier()` 等于 `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`；不匹配时停用相关流程并审查 |
 | 核心合约地址错误 | 根据具名 broadcast 重新生成，让 manifest 的 RPC 校验拒绝错误 wiring |
 | 前端地址未更新 | 运行 manifest `--check`，检查 Actions 日志中的 `NEXT_PUBLIC_CHAIN=base-sepolia`，再清除 Pages 缓存并强制刷新 |
 | Gas 不足 | 从水龙头领取更多测试 ETH；可安全续跑时使用 `forge script --resume`，否则重新部署 |

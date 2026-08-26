@@ -25,7 +25,7 @@ IDKit / World proof
 | Core contracts | Deployed and RPC-validated; use [`../deployments/84532.json`](../deployments/84532.json) |
 | App / RP | `app_01728cabff1e05950af1ff18c06c9d38` / `rp_fd884ac4342cc4d1` |
 | Backend | Same-origin `/api/world-id`, using the official v4 Developer Portal API |
-| Adapter | `WorldIDV4AttestationVerifier` at `0x1325C3eD12d535Bc33A56305466159d370BDf6cE` |
+| Adapter | `WorldIDV4AttestationVerifier` at `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF` |
 | Registry binding | Adapter bound to `AgentRegistry` |
 | Enabled gates | PoH registration, guarantor eligibility, and juror eligibility |
 | GitHub Pages | Deployment-gate workflow modified but not merged |
@@ -64,7 +64,7 @@ Documentation or UI must not advertise one-guardian/24-hour recovery for the liv
 
 - Confirm `/api/world-id` remains same-origin and HTTPS-only.
 - Confirm signer secrets are server-only and absent from static output.
-- Verify `AgentRegistry.pohVerifier()` equals `0x1325C3eD12d535Bc33A56305466159d370BDf6cE`.
+- Verify `AgentRegistry.pohVerifier()` equals `0x219A3c4F80d1CE97Caf83f1Aa882a231cb1025FF`.
 - Monitor attester rotation and Registry verifier changes.
 - Test rejection of replayed, expired, wrong-action, wrong-signal, wrong-chain, and malformed requests.
 - Keep the unaudited/testnet-only/not-production-ready warning visible.
