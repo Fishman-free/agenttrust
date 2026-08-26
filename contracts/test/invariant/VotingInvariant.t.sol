@@ -207,6 +207,7 @@ contract VotingInvariantTest is StdInvariant, Test {
         vm.prank(buyer);
         escrow.dispute{value: 0.02 ether}(tradeId);
 
+        vm.warp(block.timestamp + escrow.EVIDENCE_WINDOW() + 1);
         openedAt = block.timestamp;
         vm.prank(makeAddr("invariant opener"));
         caseId = voting.openCase(tradeId);

@@ -53,16 +53,10 @@ contract DeployTest is Test {
         vm.setEnv("MAX_OPEN_STAKE", "6000000000000000000");
         (,, escrowAddress,) = script.run();
         assertEq(GuaranteeEscrow(escrowAddress).maxOpenStake(), 6 ether, "MAX_OPEN_STAKE override");
-    }
 
-    function test_deployUsesConfiguredPohVerifier() public {
-        vm.setEnv("PRIVATE_KEY", vm.toString(ANVIL_KEY));
         address configured = makeAddr("configured poh verifier");
         vm.setEnv("POH_VERIFIER", vm.toString(configured));
-        vm.setEnv("MAX_OPEN_STAKE", "5000000000000000000");
-
-        Deploy script = new Deploy();
-        (address registryAddress,,,) = script.run();
-        assertEq(AgentRegistry(registryAddress).pohVerifier(), configured);
+        (registryAddress,,,) = script.run();
+        assertEq(AgentRegistry(registryAddress).pohVerifier(), configured, "POH_VERIFIER override");
     }
 }

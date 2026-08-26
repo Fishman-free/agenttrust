@@ -156,6 +156,7 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         bytes calldata proof,
         address[] calldata guardianList
     ) external payable nonReentrant returns (uint256 tokenId) {
+        require(msg.value >= registrationDeposit, unicode"AgentRegistry: 注册押金不足");
         _anchorPoH(msg.sender, nullifier, proof);
         tokenId = _registerAgent(name, description, endpoint, guardianList, nullifier, registrationDeposit);
     }

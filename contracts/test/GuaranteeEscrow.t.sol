@@ -66,6 +66,12 @@ contract GuaranteeEscrowTest is Test {
         escrow.acceptGuarantee(tradeId);
     }
 
+    /// @notice 开案必须发生在举证窗口（1 天）结束之后、开案总时限（2 天）之内。
+    function _openArbitration(uint256 id) internal {
+        vm.warp(block.timestamp + escrow.EVIDENCE_WINDOW() + 1);
+        escrow.openArbitration(id);
+    }
+
     function _createAcceptedFunded(uint256 amount) internal returns (uint256 id) {
         vm.prank(buyer);
         id = escrow.createTrade(buyerId, sellerId, amount, amount / 10);
@@ -188,7 +194,7 @@ contract GuaranteeEscrowTest is Test {
         escrow.deliver(tradeId);
         vm.prank(buyer);
         escrow.dispute{value: 0.02 ether}(tradeId);
-        escrow.openArbitration(tradeId);
+        _openArbitration(tradeId);
 
         escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.BUYER_WINS, 0);
         (,, uint256 buyerWon,) = hub.reputation(buyerId);
@@ -203,7 +209,7 @@ contract GuaranteeEscrowTest is Test {
         escrow.deliver(tradeId);
         vm.prank(buyer);
         escrow.dispute{value: 0.02 ether}(tradeId);
-        escrow.openArbitration(tradeId);
+        _openArbitration(tradeId);
         escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.SELLER_WINS, 0);
         (,, uint256 won, uint256 lost) = hub.reputation(buyerId);
         assertEq(lost, 1, "buyer loses on seller win");
@@ -220,7 +226,7 @@ contract GuaranteeEscrowTest is Test {
         vm.deal(buyer, 1 ether);
         vm.prank(buyer);
         escrow.dispute{value: 0.02 ether}(second);
-        escrow.openArbitration(second);
+        _openArbitration(second);
         escrow.resolveDispute(second, GuaranteeEscrow.Verdict.PARTIAL_BUYER, 5000);
         (,, won, lost) = hub.reputation(buyerId);
         assertEq(won, 1, "partial verdict records buyer win");
@@ -639,7 +645,7 @@ contract GuaranteeEscrowTest is Test {
         escrow.deliver(tradeId);
         vm.prank(buyer);
         escrow.dispute{value: 0.02 ether}(tradeId);
-        escrow.openArbitration(tradeId);
+        _openArbitration(tradeId);
         hub.setOutcomeWriter(address(escrow), false);
 
         escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.SELLER_WINS, 9999);
@@ -694,6 +700,108 @@ contract GuaranteeEscrowTest is Test {
         assertEq(escrow.totalLiability(), 2.02 ether);
     }
 
+    function test_submitEvidenceRecordsAndUpdatesWithinWindow() public {
+        _acceptFundGuarantee();
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        vm.prank(buyer);
+        escrow.dispute{value: 0.02 ether}(tradeId);
+
+        uint256 disputedAt = escrow.getTrade(tradeId).disputedAt;
+        assertEq(escrow.evidenceWindowEnd(tradeId), disputedAt + escrow.EVIDENCE_WINDOW());
+
+        bytes32 cid = keccak256("ipfs-cid");
+        vm.prank(buyer);
+        escrow.submitEvidence(tradeId, cid, unicode"未收到交付物");
+
+        GuaranteeEscrow.EvidenceRecord memory record = escrow.evidence(tradeId, buyer);
+        assertTrue(record.exists);
+        assertEq(record.contentHash, cid);
+        assertEq(record.summary, unicode"未收到交付物");
+        assertEq(escrow.evidenceSubmissionCount(tradeId, buyer), 1);
+
+        // 窗口内覆盖更新（计数递增）
+        vm.prank(buyer);
+        escrow.submitEvidence(tradeId, bytes32(0), unicode"补充说明");
+        record = escrow.evidence(tradeId, buyer);
+        assertEq(record.contentHash, bytes32(0));
+        assertEq(record.summary, unicode"补充说明");
+        assertEq(escrow.evidenceSubmissionCount(tradeId, buyer), 2);
+
+        // 卖方同样可提交
+        vm.prank(seller);
+        escrow.submitEvidence(tradeId, keccak256("seller-cid"), unicode"已交付");
+        assertEq(escrow.evidenceSubmissionCount(tradeId, seller), 1);
+    }
+
+    function test_submitEvidenceGuards() public {
+        _acceptFundGuarantee();
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        vm.prank(buyer);
+        escrow.dispute{value: 0.02 ether}(tradeId);
+
+        // 非交易主体
+        vm.prank(guarantor);
+        vm.expectRevert(unicode"GuaranteeEscrow: 仅交易主体可举证");
+        escrow.submitEvidence(tradeId, keccak256("x"), "");
+
+        // 空证据（哈希与摘要均为空）
+        vm.prank(buyer);
+        vm.expectRevert(unicode"GuaranteeEscrow: 证据为空");
+        escrow.submitEvidence(tradeId, bytes32(0), "");
+
+        // 举证窗口外
+        vm.warp(block.timestamp + escrow.EVIDENCE_WINDOW() + 1);
+        vm.prank(buyer);
+        vm.expectRevert(unicode"GuaranteeEscrow: 举证窗口已关闭");
+        escrow.submitEvidence(tradeId, keccak256("x"), "late");
+
+        // 开案后禁止
+        escrow.openArbitration(tradeId);
+        vm.prank(buyer);
+        vm.expectRevert(unicode"GuaranteeEscrow: 案件已开案");
+        escrow.submitEvidence(tradeId, keccak256("x"), "after open");
+
+        // 非争议状态禁止
+        uint256 fresh = _createAcceptedFunded(1 ether);
+        vm.prank(buyer);
+        vm.expectRevert(unicode"GuaranteeEscrow: 仅争议中可举证");
+        escrow.submitEvidence(fresh, keccak256("x"), "not disputed");
+    }
+
+    function test_openArbitrationRequiresEvidenceWindowElapsed() public {
+        _acceptFundGuarantee();
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        vm.prank(buyer);
+        escrow.dispute{value: 0.02 ether}(tradeId);
+
+        vm.expectRevert(unicode"GuaranteeEscrow: 举证窗口未结束");
+        escrow.openArbitration(tradeId);
+
+        vm.warp(block.timestamp + escrow.EVIDENCE_WINDOW() + 1);
+        escrow.openArbitration(tradeId);
+        assertTrue(escrow.getTrade(tradeId).caseOpened);
+
+        // 超过开案总时限（2 天）后不可开案，只能走超时作废
+        uint256 second = _createAcceptedFunded(1 ether);
+        vm.prank(guarantor);
+        escrow.guarantee{value: 1 ether}(second, guarantorId, 1e18, 0.075 ether);
+        vm.prank(seller);
+        escrow.acceptGuarantee(second);
+        vm.prank(seller);
+        escrow.deliver(second);
+        vm.deal(buyer, 1 ether);
+        vm.prank(buyer);
+        escrow.dispute{value: 0.02 ether}(second);
+        vm.warp(block.timestamp + escrow.CASE_OPEN_WINDOW() + 1);
+        vm.expectRevert(unicode"GuaranteeEscrow: 开案超时");
+        escrow.openArbitration(second);
+        escrow.timeoutVoidDispute(second);
+        assertEq(uint8(escrow.tradeState(second)), uint8(GuaranteeEscrow.State.VOIDED));
+    }
+
     function test_tradeCreationSnapshotsRegistryAgentCount() public {
         uint256 countAtCreation = registry.agentCount();
         assertEq(escrow.eligibilityAgentCount(tradeId), countAtCreation);
@@ -712,7 +820,7 @@ contract GuaranteeEscrowTest is Test {
         vm.deal(seller, 0.02 ether);
         vm.prank(seller);
         escrow.dispute{value: 0.02 ether}(tradeId);
-        escrow.openArbitration(tradeId);
+        _openArbitration(tradeId);
         vm.expectEmit(true, false, false, true, address(escrow));
         emit TradeResolved(tradeId, GuaranteeEscrow.Verdict.BUYER_WINS, 10000);
         escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.BUYER_WINS, 0);
@@ -729,7 +837,7 @@ contract GuaranteeEscrowTest is Test {
         escrow.deliver(tradeId);
         vm.prank(buyer);
         escrow.dispute{value: 0.02 ether}(tradeId);
-        escrow.openArbitration(tradeId);
+        _openArbitration(tradeId);
         vm.expectEmit(true, false, false, true, address(escrow));
         emit TradeResolved(tradeId, GuaranteeEscrow.Verdict.SELLER_WINS, 0);
         escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.SELLER_WINS, 7777);
@@ -745,7 +853,7 @@ contract GuaranteeEscrowTest is Test {
         vm.deal(seller, 0.02 ether);
         vm.prank(seller);
         escrow.dispute{value: 0.02 ether}(tradeId);
-        escrow.openArbitration(tradeId);
+        _openArbitration(tradeId);
         vm.expectEmit(true, false, false, true, address(escrow));
         emit TradeResolved(tradeId, GuaranteeEscrow.Verdict.PARTIAL_BUYER, 4000);
         escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.PARTIAL_BUYER, 4000);
@@ -763,7 +871,7 @@ contract GuaranteeEscrowTest is Test {
         escrow.deliver(tradeId);
         vm.prank(buyer);
         escrow.dispute{value: 0.02 ether}(tradeId);
-        escrow.openArbitration(tradeId);
+        _openArbitration(tradeId);
 
         vm.expectRevert(unicode"GuaranteeEscrow: 部分裁决比例非法");
         escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.PARTIAL_BUYER, 0);
@@ -779,7 +887,7 @@ contract GuaranteeEscrowTest is Test {
         escrow.deliver(tradeId);
         vm.prank(buyer);
         escrow.dispute{value: 0.02 ether}(tradeId);
-        escrow.openArbitration(tradeId);
+        _openArbitration(tradeId);
         escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.PARTIAL_BUYER, share);
 
         uint256 buyerPrincipal = 1 ether * share / 10000;
@@ -800,7 +908,7 @@ contract GuaranteeEscrowTest is Test {
         vm.deal(seller, 0.02 ether);
         vm.prank(seller);
         escrow.dispute{value: 0.02 ether}(tradeId);
-        escrow.openArbitration(tradeId);
+        _openArbitration(tradeId);
         escrow.voidDispute(tradeId);
 
         assertEq(escrow.pendingWithdrawals(buyer), 1 ether);

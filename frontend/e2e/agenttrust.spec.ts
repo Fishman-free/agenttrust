@@ -105,6 +105,24 @@ test("disputed trade uses exact bond and six pre-registered identities through c
   await expect(page.getByText("精确争议保证金").locator("..")).toContainText("0.002 ETH");
   await page.getByRole("button", { name: "支付精确保证金并发起争议" }).click();
   await waitForTransaction(page, "争议已确认。");
+
+  // 举证窗口：买方提交证据（裸摘要），卖方先标记"未举证"，再提交自己的证据
+  await page.getByLabel("证据 CID 或摘要（0x…）").fill(`0x${"ab".repeat(32)}`);
+  await page.getByLabel("证据摘要").fill("E2E：交付物缺失截图");
+  await page.getByRole("button", { name: "提交证据" }).click();
+  await waitForTransaction(page, "证据已提交。");
+  await expect(page.getByText("买方证据", { exact: false }).locator("..")).toContainText("提交次数：1");
+  await expect(page.getByText("卖方证据", { exact: false }).locator("..")).toContainText("未举证");
+
+  await selectAccount(page, 1);
+  await page.getByLabel("证据 CID 或摘要（0x…）").fill(`0x${"cd".repeat(32)}`);
+  await page.getByLabel("证据摘要").fill("E2E：已按时交付记录");
+  await page.getByRole("button", { name: "提交证据" }).click();
+  await waitForTransaction(page, "证据已提交。");
+  await expect(page.getByText("卖方证据", { exact: false }).locator("..")).toContainText("提交次数：1");
+
+  // 举证窗口（1 天）结束后方可开案
+  await increaseTime(page, 86_401);
   await page.getByRole("button", { name: "openCase（任何人可调用）" }).click();
   await waitForTransaction(page, "案件已开设并自动载入。");
   const caseId = await page.getByLabel("Case ID").inputValue();
