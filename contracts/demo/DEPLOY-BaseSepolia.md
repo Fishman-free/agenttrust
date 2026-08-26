@@ -1,69 +1,123 @@
-# 真实部署准备：Base Sepolia 测试网
+# Base Sepolia Deployment Guide
 
-> **状态**：🚧 待环境具备后执行。本文档是部署前的**检查清单 + 分步流程**。
-> **约束**：当前开发环境（中国大陆，仅 VPN，无加密货币钱包/测试币）暂不具备执行条件。全部步骤已按「断点可续」设计——前置条件就绪后从断点继续即可，无需重做已完成部分。
+**English** | [简体中文](./DEPLOY-BaseSepolia.zh-CN.md)
 
----
+> **Current status: undeployed.** `deployments/84532.json` has `status: "undeployed"` and zero addresses. This is a preparation and execution guide, not evidence of a live deployment.
+>
+> The contracts have not received an independent audit and must not be treated as production-ready.
 
-## 1. 目标
+## 1. Deployment model
 
-把 AgentTrust 四合约（AgentRegistry / GuaranteeEscrow / SchellingVoting / ReputationHub）部署到 **Base Sepolia 测试网**，前端静态托管于 GitHub Pages（`NEXT_PUBLIC_CHAIN=base-sepolia` 分支）。
+Base Sepolia uses chain ID **84532**. The deployment has two parts:
 
-## 2. 前置条件检查清单
+1. **Four manifest-tracked core contracts:** `AgentRegistry`, `ReputationHub`, `GuaranteeEscrow`, and `SchellingVoting`. `script/Deploy.s.sol` deploys and wires these contracts, and `deployments/84532.json` tracks them.
+2. **One separately deployed and configured adapter:** `WorldIDPoHVerifier`. It is not tracked by the four-contract manifest. Deploy it first, then pass its address as the required `POH_VERIFIER` when running `Deploy.s.sol`.
 
-| # | 前置条件 | 当前状态 | 获取方式 |
-|---|---|---|---|
-| 1 | **测试网钱包私钥**（部署者/owner） | ❌ 缺失 | MetaMask / Rabby 新建钱包 → Base 网络 → 导出私钥 |
-| 2 | **Base Sepolia 测试 ETH**（Gas 费） | ❌ 缺失 | faucet：`https://faucet.quicknode.com/base/sepolia`、`https://base.org/faucets` |
-| 3 | Foundry（forge / cast / anvil） | ✅ 已装（`~/.foundry/bin`） | — |
-| 4 | 合约测试全绿（38 通过） | ✅ 已确认 | `NO_PROXY="127.0.0.1,localhost,::1" forge test` |
-| 5 | RPC 可达 `https://sepolia.base.org` | ⚠️ 视网络 | 大陆网络需确认可访问（必要时走代理/VPN） |
-| 6 | GitHub 远程仓库可 push | ✅ 已配代理 | `git config http.https://github.com.proxy http://127.0.0.1:7890` |
+`AnvilDevPoHVerifier` is local-only test infrastructure. `Deploy.s.sol` creates it automatically only on local Anvil chain `31337` when `POH_VERIFIER` is unset. Never deploy or configure it on Base Sepolia, any public network, or any network carrying value.
 
-> **执行断点**：只需 #1 #2 就绪 + #5 网络可达，即可从「步骤 1」继续。
+The frontend can be exported for GitHub Pages with `NEXT_PUBLIC_CHAIN=base-sepolia`, but it must remain explicitly unavailable/read-only while the manifest status is `undeployed`.
 
-## 3. 安全原则（硬性）
+## 2. Prerequisites
 
-- **私钥绝不进 git、绝不出现在对话/截图**。
-- 私钥写入 `contracts/.env`（`.gitignore` 已忽略 `.env`），Foundry 自动加载 `vm.envUint("PRIVATE_KEY")`。
-- 若在交互终端输入：用 `read -s`（不回显），不用明文 echo。
-- 部署完成后可立即轮换/冷存储该私钥（测试网私钥泄露影响仅限测试币）。
+- **Node.js >=20.9**.
+- Foundry (`forge`, `cast`, and `anvil`).
+- A dedicated testnet deployer wallet and its private key.
+- Base Sepolia test ETH for gas.
+- A Base Sepolia RPC, such as `https://sepolia.base.org`.
+- A BaseScan API key if using `--verify` during deployment.
+- A World Developer Portal staging `app_id` and a single action, for example `agenttrust-identity`.
+- The correct World ID group ID for the selected staging configuration; confirm it against the portal and official documentation.
+- All contract tests green. The authoritative baseline is **146 tests passed, 0 failed, 0 skipped across 10 suites**:
 
-## 4. 分步部署流程
+```bash
+NO_PROXY="127.0.0.1,localhost,::1" forge test --root contracts
+```
 
-### 步骤 1：写入私钥（不提交 git）
+Useful resources:
+
+- Base Sepolia faucets: `https://faucet.quicknode.com/base/sepolia` and `https://base.org/faucets`
+- Base Sepolia explorer: `https://sepolia.basescan.org`
+- Base Sepolia WorldIDRouter: `0x379c62556c665f1edd25f2c2a0f76bc70a53b2e4`
+- World ID address book: `https://docs.world.org/world-id/reference/address-book`
+
+## 3. Security requirements
+
+- Never commit a private key or include it in chat, logs, screenshots, shell history, or documentation.
+- Use a dedicated testnet key; do not reuse a wallet that controls real assets.
+- Store the key only in `contracts/.env`, which is ignored by git, or enter it with a non-echoing prompt such as `read -s`.
+- Do not use `echo` with a literal private key.
+- Confirm that `.env` is ignored before deployment.
+- The public Anvil keys and mnemonic in the demo are forbidden on Base Sepolia.
+
+## 4. Deployment procedure
+
+### Step 1: store the deployment key locally
 
 ```bash
 cd contracts
-printf 'PRIVATE_KEY=0x<你的测试网私钥，不带空格>\n' > .env
-# 确认 .env 已被 gitignore（git check-ignore .env 应返回该路径）
+printf 'PRIVATE_KEY=0x<your-testnet-private-key-without-spaces>\n' > .env
+# This command must print .env, confirming that git ignores it.
 git check-ignore .env
 ```
 
-### 步骤 2：部署四合约到 Base Sepolia（带合约验证）
+The command above is a template: replace the placeholder locally and never paste the resulting file or key into chat, a commit, or a screenshot. For a non-echoing interactive alternative:
+
+```bash
+cd contracts
+read -rsp "Base Sepolia private key: " PRIVATE_KEY; printf '\n'
+printf 'PRIVATE_KEY=%s\n' "$PRIVATE_KEY" > .env
+unset PRIVATE_KEY
+git check-ignore .env
+```
+
+### Step 2: deploy the real World ID adapter separately
+
+From the repository root, set deployment-specific values locally and deploy `WorldIDPoHVerifier`:
+
+```bash
+set -a
+. contracts/.env
+set +a
+export WORLD_ID_ROUTER=0x379c62556c665f1edd25f2c2a0f76bc70a53b2e4
+export WORLD_ID_GROUP_ID=<confirmed-group-id>
+export WORLD_ID_APP_ID='<staging-app-id>'
+export WORLD_ID_ACTION='agenttrust-identity'
+
+forge create contracts/src/WorldIDPoHVerifier.sol:WorldIDPoHVerifier \
+  --rpc-url https://sepolia.base.org \
+  --private-key "$PRIVATE_KEY" \
+  --constructor-args "$WORLD_ID_ROUTER" "$WORLD_ID_GROUP_ID" "$WORLD_ID_APP_ID" "$WORLD_ID_ACTION"
+```
+
+Record the deployed adapter address as `POH_VERIFIER`. Registration and recovery must use the same `action`; that shared action is required for the nullifier-hash identity anchor. The adapter still requires a real Base Sepolia/IDKit integration check before the PoH channel can be considered validated.
+
+### Step 3: deploy and configure the four core contracts
 
 ```bash
 cd contracts
 export PATH="$HOME/.foundry/bin:$PATH"
+export POH_VERIFIER=<deployed-WorldIDPoHVerifier-address>
 NO_PROXY="127.0.0.1,localhost,::1" \
   forge script script/Deploy.s.sol \
   --rpc-url https://sepolia.base.org \
   --broadcast --verify \
-  --etherscan-api-key $BASESCAN_API_KEY     # Base 用 basescan API key（可跳过 --verify 先部署）
+  --etherscan-api-key "$BASESCAN_API_KEY"
 ```
 
-部署脚本自动完成（`script/Deploy.s.sol`）：
-1. 顺序部署：AgentRegistry → ReputationHub → GuaranteeEscrow → SchellingVoting
-2. Hub 授权 Escrow/Voting 写入信誉
-3. **Escrow 所有权移交 Voting**（社区裁决可驱动 escrow，论文版语义）
+`POH_VERIFIER` is required for this public testnet procedure. Do not omit it: on Base Sepolia, an unset value does not deploy the Anvil development verifier; it leaves the PoH channel disabled. If verification credentials are not ready, omit `--verify` and `--etherscan-api-key`, deploy first, and verify later.
 
-### 步骤 3：记录四合约地址
+`Deploy.s.sol` performs the following wiring:
 
-部署记录位于 `broadcast/Deploy.s.sol/84532/run-latest.json`（Base Sepolia Chain ID 是 **84532**，不是 Base 主网的 8453）。不要手工复制无名称的地址列表；由 manifest 工具按 `contractName` 提取四个具名部署。
+1. Deploys `AgentRegistry` → `ReputationHub` → `GuaranteeEscrow` → `SchellingVoting`.
+2. Grants Escrow and Voting their Hub writer roles.
+3. Configures the guarantor exposure cap, obligation oracles, registration deposit, and `AgentRegistry.pohVerifier` using `POH_VERIFIER`.
+4. Transfers Escrow ownership to Voting so community rulings can drive escrow settlement.
 
-### 步骤 4：生成并验证部署 manifest
+### Step 4: inspect the broadcast and generate the four-contract manifest
 
-在仓库根目录执行：
+The core-contract broadcast is at `contracts/broadcast/Deploy.s.sol/84532/run-latest.json`. Base Sepolia's chain ID is **84532**, not Base mainnet's 8453. Do not copy an unnamed address list manually; the manifest tool extracts exactly one named `CREATE` for each of the four core contracts.
+
+From the repository root:
 
 ```bash
 node scripts/deployment-manifest.mjs --write \
@@ -71,66 +125,83 @@ node scripts/deployment-manifest.mjs --write \
   --broadcast contracts/broadcast/Deploy.s.sol/84532/run-latest.json \
   --rpc-url https://sepolia.base.org
 
-# cast 会检查 runtime hash、部署 receipt、Voting 参数、构造依赖、Hub 授权与 Escrow 所有权
+# Checks runtime hashes, deployment receipts, Voting parameters, constructor dependencies,
+# Hub roles, and Escrow ownership for the four manifest-tracked contracts.
 node scripts/deployment-manifest.mjs --check \
   --chain-id 84532 \
   --rpc-url https://sepolia.base.org
 ```
 
-`--write`/`--check` 分别是 `generate`/`check` 的计划兼容别名。写入命令要求 broadcast 对四个合约各有且仅有一条具名 `CREATE`，并要求同时提供 RPC，以捕获和核验 runtime bytecode hash；构造参数、deployer、交易哈希和可用的区块号也会写入 manifest。命令更新 `deployments/84532.json` 并重建 `frontend/lib/deployments.ts`。不要手改生成模块，也不要把地址重新硬编码进 `frontend/lib/config.ts`。
+`--write` and `--check` are compatibility aliases for `generate` and `check`. The write command updates `deployments/84532.json` and regenerates `frontend/lib/deployments.ts`. Do not edit the generated module or hard-code addresses in `frontend/lib/config.ts`.
 
-### 步骤 5：本地验证（可选，建议先做）
+The manifest intentionally tracks only the four core contracts. Record and review the separately deployed `WorldIDPoHVerifier` address through controlled deployment records, and verify its Registry configuration directly:
+
+```bash
+export REGISTRY=<AgentRegistry-address-from-manifest>
+cast call "$REGISTRY" "pohVerifier()(address)" --rpc-url https://sepolia.base.org
+```
+
+The returned address must equal `POH_VERIFIER`.
+
+### Step 5: build and test the frontend locally
 
 ```bash
 cd frontend
-NEXT_PUBLIC_CHAIN=base-sepolia npm run build     # 确认无编译错误
-# 本地联调：NEXT_PUBLIC_CHAIN=base-sepolia npm run dev  → 连 MetaMask(Base Sepolia) 跑一遍注册/担保
+NEXT_PUBLIC_CHAIN=base-sepolia npm run build
+# Interactive check:
+NEXT_PUBLIC_CHAIN=base-sepolia npm run dev
 ```
 
-### 步骤 6：GitHub Pages 重新部署
+Connect MetaMask to Base Sepolia and test the minimum registration/guaranteed-trade flow. Also complete the World ID registration and same-identity recovery checks before considering the PoH integration validated.
 
-当前 Pages 工作流被刻意限制为 **84532 未部署时的只读研究预览**。完成上面的链上 wiring 校验和审查后，先把 `.github/workflows/deploy-pages.yml` 的只读状态门改为已部署门，再发布：
+### Step 6: enable and publish GitHub Pages
+
+The Pages workflow is intentionally restricted to an explicit read-only research preview while chain 84532 is undeployed. After onchain wiring, manifest checks, World ID integration checks, and review are complete, change `.github/workflows/deploy-pages.yml` from the undeployed/read-only gate to the deployed gate, then publish:
 
 ```bash
 git add deployments/84532.json frontend/lib/deployments.ts .github/workflows/deploy-pages.yml
-git commit -m "feat: Base Sepolia 部署地址接入前端"
+git commit -m "feat: connect Base Sepolia deployment to frontend"
 git push
 ```
 
-在门禁修改前，工作流不会把一个已部署 manifest 误标为“只读预览”发布。
+Before that gate is changed, the workflow must not publish a deployed manifest while labeling it as a read-only preview.
 
-### 步骤 7：链上验证
+### Step 7: verify onchain state
 
-- 区块浏览器确认四合约已 verify（源码可读）：`https://sepolia.basescan.org/address/<地址>`
-- 门户验证：打开 `https://<你的用户名>.github.io/multiagent/`，MetaMask 切 Base Sepolia，跑「注册 Agent → 创建担保交易」最小闭环。
-- 手动 cast 抽查：
+- Confirm verified source for all four core contracts and the separately deployed `WorldIDPoHVerifier`: `https://sepolia.basescan.org/address/<address>`.
+- Open `https://<your-username>.github.io/multiagent/`, switch MetaMask to Base Sepolia, and complete at least “register Agent → create guaranteed trade.”
+- Spot-check Registry:
 
 ```bash
 export PATH="$HOME/.foundry/bin:$PATH"
-NO_PROXY="127.0.0.1,localhost,::1" cast call $REGISTRY "nextAgentId()" --rpc-url https://sepolia.base.org
+NO_PROXY="127.0.0.1,localhost,::1" cast call "$REGISTRY" "nextAgentId()" --rpc-url https://sepolia.base.org
+cast call "$REGISTRY" "pohVerifier()(address)" --rpc-url https://sepolia.base.org
 ```
 
-## 5. Gas 估算（粗略，供预算测试币）
+## 5. Gas planning
 
-| 项 | 估算 Gas | 备注 |
-|---|---|---|
-| 4 合约部署 | ~2.5–3.5M | Registry(ERC721)+Hub+Escrow+Voting |
-| Hub 授权 ×2 + Escrow 所有权转移 | ~0.1M | 部署脚本内完成 |
-| **合计** | ~3–4M Gas | Base Sepolia 低费率，通常 < 0.001 ETH 足够 |
+| Item | Rough gas | Notes |
+|---|---:|---|
+| Four core contracts | ~2.5–3.5M | Registry + Hub + Escrow + Voting |
+| Hub roles and core wiring | ~0.1M | Performed by `Deploy.s.sol` |
+| `WorldIDPoHVerifier` | Estimate separately | Separate deployment; not included in the four-contract manifest |
 
-> 实际以 `forge script --estimate-gas` 或部署输出为准。建议准备 ≥ 0.005 ETH 测试币覆盖余量。
+Use `forge script --estimate-gas` and actual deployment output as the source of truth. Keep a generous test-ETH buffer; estimates and network fees can change.
 
-## 6. 风险与回退
+## 6. Failure and recovery
 
-| 风险 | 应对 |
+| Failure | Response |
 |---|---|
-| RPC 不可达（大陆网络） | 走代理/VPN；或改用公共 RPC（`https://base-sepolia.public.blastapi.io` 等） |
-| 部署后地址填错 | manifest 工具按四个 `contractName` 提取，并用可选 RPC 校验拒绝错误 wiring |
-| 前端部署后地址未生效 | 运行 manifest `check`，检查 GitHub Actions 日志确认 `NEXT_PUBLIC_CHAIN=base-sepolia` 生效；清除 Pages 缓存后强刷 |
-| Gas 不足 | faucet 补领后再 `forge script --resume` 或重新部署 |
-| 私钥泄露（测试网） | 影响仅限测试币；更换新私钥重走本流程 |
+| RPC unavailable | Retry or use another reputable Base Sepolia RPC |
+| Wrong adapter inputs | Stop; redeploy `WorldIDPoHVerifier` with the confirmed router, group ID, app ID, and shared action |
+| `POH_VERIFIER` omitted or wrong | Do not publish; correct the value, redeploy the core contracts if necessary, and verify `pohVerifier()` |
+| Wrong core addresses | Regenerate from the named broadcast; let manifest RPC validation reject incorrect wiring |
+| Frontend addresses stale | Run manifest `--check`, inspect Actions logs for `NEXT_PUBLIC_CHAIN=base-sepolia`, then clear Pages cache and hard-refresh |
+| Insufficient gas | Obtain more faucet ETH, then use `forge script --resume` where safe or redeploy |
+| Testnet key exposed | Treat it as compromised, replace it, and repeat the deployment with a new dedicated testnet key |
 
-## 7. 衔接
+## 7. Related documentation
 
-- 本流程与 README「常见问题 Q6」、`contracts/demo/DEMO.md` 附注一致，本文档为完整版。
-- 主网（Base）部署：同流程，仅 RPC 换 `https://mainnet.base.org` + 真实私钥 + 更严格审计（另立文档）。
+- [Contracts README](../README.md)
+- [Local full-path demo](./DEMO.md)
+- [World ID integration notes](../../docs/world-id-integration.md)

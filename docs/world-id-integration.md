@@ -1,90 +1,118 @@
-# World ID 接入说明
+# World ID Integration
 
-> 状态：合约与前端骨架已实现（2026-08-26）；**真实 World ID 验证尚待一次 Base Sepolia 集成校验**（需申请 app_id 并在前端接入 IDKit）。本地 Anvil 与 CI 使用开发验证器模拟全部流程。
-> 设计依据：[`docs/superpowers/specs/2026-08-26-world-id-poh-tiered-recovery-design.md`](superpowers/specs/2026-08-26-world-id-poh-tiered-recovery-design.md)
+**English** | [简体中文](world-id-integration.zh-CN.md)
 
-## 1. 架构总览
+[← Back to feature walkthrough](feature-walkthrough.md) · [Anti-Sybil analysis](security/anti-sybil-analysis.md) · [Project README](../README.md)
 
+> Status: Contract and frontend scaffolding implemented as of 2026-08-26; **the real World ID adapter has not been deployed or validated on Base Sepolia**. Validation requires a World Developer Portal `app_id` and frontend IDKit integration. Local Anvil and CI use development/mock verifiers to simulate the flows; they are not evidence that real World ID verification works.
+> Verification baseline: **146 contract tests passed**.
+> Design reference: [`docs/superpowers/specs/2026-08-26-world-id-poh-tiered-recovery-design.md`](superpowers/specs/2026-08-26-world-id-poh-tiered-recovery-design.md)
+
+## 1. Architecture
+
+```text
+Frontend (IDKit creates proof) ──► AgentRegistry.registerAgentVerified / bindPoH
+                                      │
+                                      ▼
+                             WorldIDPoHVerifier.verifyAndConsume
+                                      │
+                                      ▼
+                            official WorldIDRouter.verifyProof (consuming)
+
+New wallet (recovery) ──► AgentRegistry.requestRecovery
+                                      │
+                                      ▼
+                             WorldIDPoHVerifier.verifySameIdentity (non-consuming)
+                                      │
+                                      ├─ query router for Semaphore verifier + latestRoot()
+                                      ├─ require proof.nullifierHash == registration anchor
+                                      │  (same action and same device)
+                                      └─ require proof.signalHash == H(newWallet), without consumption
 ```
-前端（IDKit 生成证明） ──► AgentRegistry.registerAgentVerified / bindPoH
-                              │
-                              ▼
-                     WorldIDPoHVerifier.verifyAndConsume
-                              │
-                              ▼
-                    官方 WorldIDRouter.verifyProof（一次性消费）
 
-新钱包（找回） ──► AgentRegistry.requestRecovery
-                              │
-                              ▼
-                     WorldIDPoHVerifier.verifySameIdentity（非消耗式）
-                              │
-                              ├─ 官方路由查表拿 Semaphore 验证器 + latestRoot()
-                              ├─ 校验 proof.nullifierHash == 注册锚点（同一 action 同一设备）
-                              └─ 校验 proof.signalHash == H(newWallet)，不标记消费
-```
+- Registration and upgrade are **consuming**: the router permits one use per identity per action.
+- Recovery is **non-consuming**: only the same device can reproduce the anchored `nullifierHash`. Replays do not execute recovery because the registry independently enforces nonce, expiry, and one-time execution.
 
-- 注册/升级 = **消费式**（router 保证一人一 action 一次）；
-- 找回 = **非消耗式**（同一设备才能复现同一 nullifierHash；重放无害，registry 有 nonce/过期/一次性执行门）。
+### Real adapter versus local test verifiers
 
-## 2. 官方部署地址
+- `WorldIDPoHVerifier` is the production-oriented adapter. It calls the official World ID router/Semaphore verification path and must be validated against actual IDKit output on the target chain.
+- `AnvilDevPoHVerifier` and `MockPoHVerifier` are local/testing substitutes with deliberately simplified behavior. They exercise registry state transitions but **do not validate a real World ID proof, router address, group root, or IDKit hashing convention**.
+- A passing local or CI flow must never be described as a successful Base Sepolia or production World ID integration.
 
-| 链 | WorldIDRouter |
+## 2. Official deployment addresses
+
+| Chain/network | WorldIDRouter |
 |---|---|
-| Base Sepolia（项目测试网） | `0x379c62556c665f1edd25f2c2a0f76bc70a53b2e4` |
+| Base Sepolia (project testnet target; adapter currently undeployed) | `0x379c62556c665f1edd25f2c2a0f76bc70a53b2e4` |
 | OP Sepolia | `0xe177f37af0a862a02edfea4f59c02668e9d0aaa4` |
-| Base 主网 | 以官方 [Address Book](https://docs.world.org/world-id/reference/address-book) 为准 |
+| Base mainnet | Use the official [Address Book](https://docs.world.org/world-id/reference/address-book) |
 
-Semaphore 验证器与组根：通过路由的 `verifierLookupTable(groupId)` / `latestRoot()` 链上查询，适配器不硬编码。
+The adapter queries the Semaphore verifier and group root through router methods `verifierLookupTable(groupId)` and `latestRoot()`; it does not hard-code them.
 
-## 3. 部署 WorldIDPoHVerifier
+> ⚠️ Chain distinction: Base Sepolia, OP Sepolia, and Base mainnet use different deployments and environments. Do not reuse an address, `app_id`, action environment, or proof across networks without confirming the official configuration.
+
+## 3. Deploy `WorldIDPoHVerifier`
 
 ```bash
 forge create contracts/src/WorldIDPoHVerifier.sol:WorldIDPoHVerifier \
   --rpc-url <RPC> \
   --private-key <PK> \
-  --constructor-args <router地址> <groupId> "<app_id>" "<action>"
+  --constructor-args <router-address> <groupId> "<app_id>" "<action>"
 ```
 
-然后在 Deploy 时注入：
+Then inject the adapter into the project deployment:
 
 ```bash
-POH_VERIFIER=<适配器地址> PRIVATE_KEY=<PK> forge script contracts/script/Deploy.s.sol --broadcast
+POH_VERIFIER=<adapter-address> PRIVATE_KEY=<PK> forge script contracts/script/Deploy.s.sol --broadcast
 ```
 
-- `app_id` / `action` 在 World Developer Portal 创建（staging 与 production 分开）；
-- **注册与找回必须共用同一个 action**（如 `agenttrust-identity`），仅 signal 不同——这是 nullifierHash 锚点相等的前提；
-- groupId 用目标链官方值（staging 通常为 `1`，以 portal/官方文档为准）。
+- Create `app_id` and `action` in the World Developer Portal; keep staging and production separate.
+- **Registration and recovery must use the same action**, such as `agenttrust-identity`, with different signals. Equal `nullifierHash` anchors depend on this.
+- Use the official `groupId` for the target network. Staging commonly uses `1`, but the portal and current official documentation are authoritative.
+- After deployment, configure the registry with `setPoHVerifier` and verify the resulting on-chain address before exposing the PoH UI.
 
-## 4. 哈希约定（前端必须与适配器一致）
+## 4. Hashing conventions (frontend and adapter must match)
 
-适配器（Solidity）：
+Adapter implementation in Solidity:
 
 ```solidity
 signalHash        = uint256(keccak256(abi.encodePacked(wallet))) >> 8;
 externalNullifier = uint256(keccak256(abi.encodePacked(appId, action))) >> 8;
 ```
 
-前端接入 IDKit 时必须核对实际生成的 `nullifier_hash` 与 `external_nullifier` 是否与上述约定一致；若 IDKit 版本采用不同归约（如模 SNARK 域），需在 TS 侧实现等价预哈希并保证提交链上的 `nullifier` 与证明公开输入一致。**集成校验清单见 §6，未通过校验前不要在生产链开启 PoH 通道。**
+When integrating IDKit, verify that the generated `nullifier_hash` and `external_nullifier` use exactly these conventions. If the selected IDKit version reduces values differently, for example modulo the SNARK field, implement an equivalent TypeScript pre-hash and ensure that the submitted on-chain `nullifier` matches the proof’s public input.
 
-## 5. 已知限制（协议边界，不隐瞒）
+> ⚠️ **Do not enable the PoH path on a production chain until every item in §6 passes.** Local mock success does not validate these hashing assumptions.
 
-1. **一设备一身份**：World ID 的身份按设备发放，同一人类多台设备可获多个身份 → 链上实际保证为"一设备一 ID"。押金、信誉、守护人为第二道防线。
-2. **Orb 级强制链上做不到**：router 只验组归属（含设备级验证身份），不暴露验证级别；如需 Orb-only，只能在产品层引导。
-3. **同人找回依赖设备**：S 路径（同人证明）仅在注册设备可用时成立；设备丢失走 G 路径（全守护人 + 48h 否决窗）。
-4. **无同人证明即无找回**：普通注册（无 nullifier 锚点）丢失私钥 = 永久损失，前端已强警示；`bindPoH` 是唯一补救（且需在丢钥前完成）。
+## 5. Known limitations and residual risks
 
-## 6. Base Sepolia 集成校验清单（上线前必做）
+1. **One identity per device, not necessarily per human:** World ID identities are device-based. A person with multiple devices may obtain multiple identities, so the on-chain guarantee is “one device, one ID.” Deposits, reputation, and guardians provide secondary defenses.
+2. **Orb-only enforcement is unavailable on-chain:** the router proves group membership, including device-level verified identities, but does not expose the verification level. Orb-only onboarding can only be encouraged at the product layer.
+3. **Same-identity recovery depends on the device:** the S path works only while the registration device is available. Device loss falls back to the G path with all guardians and a 48-hour veto window.
+4. **No PoH anchor means no identity recovery:** a standard registration that loses its key is permanently inaccessible. `bindPoH` is the only remedy and must be completed before key loss.
+5. **Router and verifier dependency:** `WorldIDPoHVerifier` depends on official router and Semaphore behavior. Upgrades, group-root availability, or network configuration changes can break verification.
+6. **Governance control:** the registry owner can call `setPoHVerifier`; compromise or misuse could replace the trusted verifier. Operational controls and on-chain monitoring remain necessary.
+7. **Integration remains unvalidated:** the adapter’s hash convention and real IDKit output have not yet been checked end-to-end on Base Sepolia.
 
-1. 在 Developer Portal 创建 staging app，创建单一 action `agenttrust-identity`；
-2. 部署 `WorldIDPoHVerifier`（§3）并 `setPoHVerifier`；
-3. 用世界 App 生成一次注册证明：确认 `registerAgentVerified` 成功、`usedPoHNullifiers` 置位、`isPoHVerified` 为真；
-4. 同一设备生成 signal=newWallet 的找回证明：确认 `verifySameIdentity` 通过（非消耗，router 无消费记录）且 S 路径参数（24h）生效；
-5. 换设备/空证明：确认降级 G 路径（48h、全守护人）；
-6. 前端接入 `@worldcoin/idkit`（app_id/action 走 env），本地与 E2E 继续走 mock 分支；
-7. 复核 §4 哈希约定与 IDKit 实际输出一致。
+## 6. Required Base Sepolia validation checklist
 
-## 7. 本地开发
+Base Sepolia is the intended integration testnet, but the adapter is **currently undeployed there**. Complete and record all of the following before treating the integration as live:
 
-- Anvil（31337）：`Deploy.s.sol` 自动部署 `AnvilDevPoHVerifier`（非空证明有效、nullifier 一次性消费、同人证明恒真），前端可直接体验注册/升级/找回全流程；
-- 覆盖 S/G 两路径：测试中用 `MockPoHVerifier.setSameIdentityFailure` 强制同人证明失败。
+1. Create a staging app in the Developer Portal and one action named `agenttrust-identity`.
+2. Deploy `WorldIDPoHVerifier` as described in §3, call `setPoHVerifier`, and verify both addresses on Base Sepolia.
+3. Generate a registration proof in World App; confirm `registerAgentVerified` succeeds, `usedPoHNullifiers` is set, and `isPoHVerified` returns true.
+4. On the same device, generate a recovery proof with `signal = newWallet`; confirm non-consuming `verifySameIdentity` succeeds, the router has no consumption record for recovery, and S-path parameters apply (one guardian and 24-hour veto window).
+5. Test from a different device and with an empty/invalid proof; confirm fallback to the G path (all guardians and 48-hour veto window).
+6. Integrate `@worldcoin/idkit` in the frontend, with `app_id` and action supplied through environment configuration; keep local and E2E execution on an explicit mock branch.
+7. Confirm the §4 hashing conventions against actual IDKit output and proof public inputs.
+8. Confirm chain IDs, router address, explorer records, and frontend write readiness all identify Base Sepolia—not Local Anvil (31337), OP Sepolia, or Base mainnet.
+
+## 7. Local development
+
+- On Local Anvil (31337), `Deploy.s.sol` automatically deploys `AnvilDevPoHVerifier`. It accepts any non-empty proof, consumes each nullifier once, and treats same-identity proofs as valid, allowing registration, upgrade, and recovery flows to be demonstrated locally.
+- Tests cover both S and G paths by using `MockPoHVerifier.setSameIdentityFailure` to force same-identity verification failure.
+- These verifiers are mocks. Never configure their addresses on Base Sepolia, OP Sepolia, Base mainnet, or any production deployment.
+
+---
+
+[← Back to feature walkthrough](feature-walkthrough.md) · [Anti-Sybil analysis](security/anti-sybil-analysis.md) · [Project README](../README.md)

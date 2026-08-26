@@ -1,124 +1,138 @@
-# AgentTrust 一键 Docker 启动
+# AgentTrust: one-command Docker setup
 
-本项目通过 `docker compose up` 一条命令启动完整本地开发环境——**无需手动安装 Node.js / Foundry / anvil**（Docker 之外零依赖）。
+**English** | [简体中文](DOCKER.zh-CN.md)
 
+Start the complete local environment with one command. Apart from Docker, no local Node.js, Foundry, or Anvil installation is required.
+
+```text
+Open http://localhost:3000 in a browser
 ```
-浏览器打开 http://localhost:3000
-```
 
-## 前置要求
+## Prerequisites
 
-- **Docker**（Docker Desktop，含 Docker Compose）
-- 首次构建会拉取 Foundry 与 Node/nginx 镜像，需能访问 Docker Hub / ghcr.io
+- **Docker Desktop** with Docker Compose
+- Access to Docker Hub and `ghcr.io` for the initial Foundry, Node, and nginx image pulls
 
-> **Windows 注意**：若宿主机配置了系统代理，`cast`/`forge` 访问 localhost 可能报 502。
-> 本 compose 的 `setup` 容器**在容器内网**访问 `anvil` 服务，不经过宿主代理，不受影响；
-> 浏览器连 `http://127.0.0.1:8545` 是浏览器直连，同样不受影响。
+> **Windows proxy note:** host proxy settings can cause `cast` or `forge` calls to localhost to return 502. The Compose `setup` container connects to the `anvil` service over the internal Docker network, so it bypasses the host proxy. The browser connects directly to `http://127.0.0.1:8545`.
 
-## 一键启动
+## Start everything
 
 ```bash
-docker compose up -d --build     # 后台构建并启动
-docker compose ps                # 三个服务：anvil/setup/frontend
+docker compose up -d --build     # build and start in the background
+docker compose ps                # anvil, setup, and frontend
 ```
 
-等待 `frontend` 变 `healthy` 后，浏览器打开 **http://127.0.0.1:3000**。RPC 与前端端口均只绑定宿主回环地址，不对局域网暴露：
+Wait until `frontend` is `healthy`, then open **http://127.0.0.1:3000**. The frontend and RPC ports bind only to the host loopback interface and are not exposed to the LAN.
 
 ```bash
-docker compose ps   # 看到 frontend 状态为 healthy 即可
+docker compose ps   # frontend should report healthy
 ```
 
-## 验证
+## Validate the environment
 
 ```bash
-# 前端页面（返回 HTML）
+# Frontend HTML
 curl http://localhost:3000
 
-# anvil RPC（返回 JSON，含 chainId 等）
+# Anvil RPC JSON, including chainId
 curl http://localhost:8545
 
-# 查看部署日志（确认四合约部署 + 校验通过）
+# Deployment and four-contract validation logs
 docker compose logs setup
 ```
 
-## 工作原理
+The authoritative contract-test result is **146 tests passed, 0 failed, 0 skipped across 10 suites**. Run the tests outside this runtime-only Compose flow with the command documented in [`README.md`](README.md).
 
-| 服务 | 说明 |
+## How it works
+
+| Service | Role |
 |---|---|
-| `anvil` | 固定 Foundry v1.7.1；`127.0.0.1:8545`；用 `--state /home/foundry/state.json --state-interval 1` 持久化到命名卷 |
-| `setup` | 一次性容器：部署或复用四个具名合约，并按 manifest 校验 runtime bytecode hash、Voting 参数、依赖 getter、Hub 授权和 Escrow 所有权；**成功后退出** |
-| `frontend` | 静态导出前端（nginx），仅映射 `127.0.0.1:3000`；`/healthz` 同时要求 nginx 可用和 setup 原子写入 readiness marker |
+| `anvil` | Pinned Foundry v1.7.1 node at `127.0.0.1:8545`; persists state in a named volume through `--state /home/foundry/state.json --state-interval 1` |
+| `setup` | One-shot container that deploys or reuses four named contracts and validates runtime bytecode hashes, voting parameters, dependency getters, Hub authorization, and Escrow ownership; exits after success |
+| `frontend` | Statically exported frontend served by nginx at `127.0.0.1:3000`; `/healthz` requires both nginx and the readiness marker written atomically by `setup` |
 
-### 网络模型（两个不同的 8545）
+### Network model: two meanings of port 8545
 
-| 谁连链 | 连哪 | 为什么 |
+| Client | Endpoint | Reason |
 |---|---|---|
-| `setup` 容器（部署） | `http://anvil:8545` | compose 内网服务名，跨容器访问 |
-| 浏览器（前端页面） | `http://127.0.0.1:8545` | 浏览器在宿主机，anvil 已映射到宿主 8545 |
+| `setup` container | `http://anvil:8545` | Docker Compose service discovery between containers |
+| Browser frontend | `http://127.0.0.1:8545` | The browser runs on the host, where Anvil is mapped to port 8545 |
 
-浏览器 RPC 来自 `deployments/31337.json` 生成的 `frontend/lib/deployments.ts`，当前为 `http://127.0.0.1:8545`。
+The browser RPC value comes from `deployments/31337.json` through generated `frontend/lib/deployments.ts`; it is currently `http://127.0.0.1:8545`.
 
-### 合约地址与状态
+### Contract addresses and deployment state
 
-`deployments/31337.json` 记录默认 Anvil 账户前四次 CREATE 的规范确定性地址；`deployments/84532.json` 明确标记 Base Sepolia 为 `undeployed`。`frontend/lib/config.ts` 不保存地址字面量，只选择生成的 manifest。
+`deployments/31337.json` records the canonical deterministic addresses produced by the first four `CREATE` operations from the default Anvil account. `deployments/84532.json` explicitly marks Base Sepolia as `undeployed`; Base Sepolia is currently **read-only and has no active contract deployment**. `frontend/lib/config.ts` selects a generated manifest and contains no address literals.
 
 ```bash
-node scripts/deployment-manifest.mjs --write  # generate 的别名；修改 manifest 后重建 TypeScript
-node scripts/deployment-manifest.mjs --check  # check 的别名；CI 校验 schema、元数据、规范地址与生成文件同步
+node scripts/deployment-manifest.mjs --write  # alias: generate; rebuild TypeScript after manifest changes
+node scripts/deployment-manifest.mjs --check  # alias: check; validate schema, metadata, canonical addresses, and generated output
 ```
 
-`setup` 会从 `broadcast/Deploy.s.sol/31337/run-latest.json` 要求每个 `contractName` **恰好一条 `CREATE`**，并要求地址与 manifest 逐一匹配。manifest 还记录 runtime bytecode hash、构造参数，以及 broadcast 可提供的 deployer、交易哈希和区块号。随后用 `cast` 校验四份 runtime hash、Escrow/Voting 依赖、Voting 的 `caseStake`/`commitWindow`/`revealWindow`、Hub 两项 writer 授权以及 Escrow 所有权。
+`setup` reads `broadcast/Deploy.s.sol/31337/run-latest.json` and requires exactly one `CREATE` for each `contractName`, with every address matching the manifest. The manifest also stores runtime bytecode hashes, constructor arguments, and any deployer, transaction hash, and block number available from the broadcast. `cast` then validates all four runtime hashes, Escrow and Voting dependencies, Voting `caseStake`/`commitWindow`/`revealWindow`, both Hub writer grants, and Escrow ownership.
 
-校验成功后，`setup` 才会原子写入共享卷中的 readiness marker；nginx 的 `/healthz` 在 marker 缺失时返回 503。因此健康状态不是单纯的“nginx 进程活着”。任一步失败都会移除 marker，并阻止首次 `frontend` 启动或让已运行前端变为 unhealthy。
+Only after every validation succeeds does `setup` atomically write the readiness marker to the shared volume. nginx returns 503 from `/healthz` while the marker is absent, so health means more than “nginx is running.” Any setup failure removes the marker and either blocks the first frontend start or makes a running frontend unhealthy.
 
-## 常用命令
+## Common commands
 
 ```bash
-# 启动
+# Start
 docker compose up -d --build
 
-# 查看状态 / 日志
+# Status and logs
 docker compose ps
 docker compose logs -f frontend
 docker compose logs setup
 
-# 停止容器并保留 Anvil 状态卷；普通 up 会自动校验 hash/wiring 后安全复用
+# Stop containers but preserve Anvil state; the next up revalidates hashes and wiring before reuse
 docker compose down
 docker compose up -d
 
-# 停止后保留容器和状态
+# Stop without removing containers or state
 docker compose stop
 
-# 连同链状态彻底重置（下次会重新部署到规范地址）
+# Remove chain state and redeploy to canonical addresses on the next start
 docker compose down --volumes
 ```
 
-## 常见问题
+## Troubleshooting
 
-**Q：`docker compose ps` 里 `setup` 显示 `Exited (0)`？**
-正常——setup 是一次性服务，部署成功即退出（退出码 0）。`frontend` 依赖其成功完成才会启动。
+### `setup` reports `Exited (0)`
 
-**Q：浏览器打开页面，连接钱包提示网络切换？**
-anvil 链 id 为 31337（Chain ID 31337 / 网络名 "Local Anvil"）。建议使用浏览器插件钱包并自定义 RPC：`http://127.0.0.1:8545`。也可直接使用测试私钥（anvil 默认账户）：
+This is expected. `setup` is a one-shot service and exits with code 0 after successful deployment and validation. `frontend` starts only after that successful completion.
+
+### The wallet asks to switch networks
+
+Anvil uses Chain ID `31337` and network name `Local Anvil`. Configure a browser wallet with RPC `http://127.0.0.1:8545`. For local testing only, you can import the default Anvil key:
+
 `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
 
-**Q：想用生产测试网（Base Sepolia）？**
-该场景为静态部署（如 GitHub Pages），非本 compose 覆盖范围；参考根目录 `README.md` 与 `frontend/lib/config.ts`。
+### Can I use Base Sepolia?
 
-**Q：`docker compose up` 报端口占用 / anvil 容器起不来（8545 冲突）？**
-宿主机上若已有进程占用 8545（例如手动启动的本地 `anvil` 或旧版演示进程），会与 Docker 的 anvil 容器端口映射冲突。解决：
-1. 先停掉占用 8545 的进程：`tasklist | grep anvil` 找到 PID，`taskkill //PID <PID> //F`
-2. 或改 docker-compose.yml 的端口映射（`127.0.0.1:8545:8545` 改为 `127.0.0.1:8546:8545`），并同步修改 `deployments/31337.json` 的 `rpcUrl` 后重新生成模块
-3. 确认释放后重新 `docker compose up -d`
+Base Sepolia (Chain ID 84532) is currently **undeployed and read-only**. Static testnet publishing is outside this Compose setup. See [`README.md`](README.md), [`contracts/demo/DEPLOY-BaseSepolia.md`](contracts/demo/DEPLOY-BaseSepolia.md), and `frontend/lib/config.ts`.
 
-**Q：setup 报 `partial canonical deployment detected`、`stale or unknown runtime bytecode` 或 wiring 校验失败？**
-持久卷保存了不完整、旧版本或未知链状态。执行 `docker compose down --volumes` 清除 Anvil 与 readiness 命名卷，再重新启动。普通 `docker compose down`/`up` 会直接复用且重新校验匹配当前 manifest 的状态，无需额外环境变量；脚本仍拒绝不明状态，以免 nonce 或旧 bytecode 与当前前端不一致。
+### Port 8545 is already in use
 
-**Q：首次构建很慢 / 拉镜像失败？**
-Foundry 与 Node/nginx 镜像合计较大（约 500MB+），首次 `--build` 需几分钟。若拉取超时，可先手动预热：`docker pull ghcr.io/foundry-rs/foundry:stable`、`docker pull nginx:stable-alpine`。
+A host Anvil or older demo process is probably using the port.
 
-## 相关文件
+1. Find and stop it with `tasklist | grep anvil`, then `taskkill //PID <PID> //F`.
+2. Alternatively, change `127.0.0.1:8545:8545` to `127.0.0.1:8546:8545` in `docker-compose.yml`, update `rpcUrl` in `deployments/31337.json`, and regenerate the frontend module.
+3. Run `docker compose up -d` again after the port is free.
 
-- `docker-compose.yml` —— 三服务编排
-- `contracts/Dockerfile` + `contracts/scripts/deploy.sh` —— setup 镜像与部署脚本
-- `frontend/Dockerfile` + `frontend/nginx.conf` —— 前端镜像（多阶段构建 + nginx 静态服务）
+### `partial canonical deployment detected`, `stale or unknown runtime bytecode`, or wiring validation fails
+
+The persistent volume contains incomplete, outdated, or unknown chain state. Run `docker compose down --volumes`, then rebuild. A normal `docker compose down` followed by `up` reuses matching state only after revalidation; the setup script rejects unknown state to avoid nonce, bytecode, or frontend-manifest drift.
+
+### The first build is slow or an image pull fails
+
+The Foundry, Node, and nginx images total roughly 500 MB or more. If a pull times out, prefetch with `docker pull ghcr.io/foundry-rs/foundry:stable` and `docker pull nginx:stable-alpine`.
+
+## Related files and guides
+
+- `docker-compose.yml` — three-service orchestration
+- `contracts/Dockerfile` and `contracts/scripts/deploy.sh` — setup image and deployment script
+- `frontend/Dockerfile` and `frontend/nginx.conf` — multi-stage frontend image and nginx static server
+- [`README.md`](README.md) — English project overview
+- [`docs/USAGE.md`](docs/USAGE.md) — English usage guide
+- [`docs/feature-walkthrough.md`](docs/feature-walkthrough.md) — complete feature walkthrough
+- [`docs/world-id-integration.md`](docs/world-id-integration.md) — World ID integration
