@@ -48,6 +48,9 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         bool outcomePending;
         bool outcomeRecorded;
         ReputationHub.Outcome pendingOutcome;
+        bool buyerOutcomePending;
+        bool buyerOutcomeRecorded;
+        ReputationHub.Outcome pendingBuyerOutcome;
         State state;
         uint256 createdAt;
         uint256 acceptedAt;
@@ -72,14 +75,21 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     uint256 public constant MAX_COVERAGE = 2e18;
     uint256 public constant MAX_PREMIUM_BPS = 2000;
     uint256 public constant DISPUTE_BOND_BPS = 200;
+    uint256 public constant PREMIUM_TIER1_THRESHOLD = 1 ether;
+    uint256 public constant PREMIUM_TIER2_THRESHOLD = 10 ether;
+    uint256 public constant PREMIUM_TIER1_SURCHARGE_BPS = 100;
+    uint256 public constant PREMIUM_TIER2_SURCHARGE_BPS = 250;
+    uint256 public constant DEFAULT_MAX_OPEN_STAKE = 5 ether;
 
     AgentRegistry public immutable registry;
     ReputationHub public immutable hub;
     uint256 public nextTradeId;
     uint256 public totalLiability;
+    uint256 public maxOpenStake;
     mapping(uint256 => Trade) private _trades;
     mapping(address => uint256) public pendingWithdrawals;
     mapping(address => uint256) public openTradeCount;
+    mapping(address => uint256) public openStakeBySubject;
 
     event TradeCreated(uint256 indexed tradeId, uint256 buyerAgentId, uint256 sellerAgentId, uint256 amount);
     event TradeAccepted(uint256 indexed tradeId, address indexed sellerSubject);
@@ -95,6 +105,9 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     event TradeVoided(uint256 indexed tradeId);
     event OutcomeDeferred(uint256 indexed tradeId, ReputationHub.Outcome outcome);
     event OutcomeRecorded(uint256 indexed tradeId, ReputationHub.Outcome outcome);
+    event BuyerOutcomeDeferred(uint256 indexed tradeId, ReputationHub.Outcome outcome);
+    event BuyerOutcomeRecorded(uint256 indexed tradeId, ReputationHub.Outcome outcome);
+    event MaxOpenStakeUpdated(uint256 value);
     event WithdrawalCredited(address indexed account, uint256 amount);
     event Withdrawal(address indexed account, address indexed recipient, uint256 amount);
 
@@ -102,6 +115,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         require(registry_ != address(0) && hub_ != address(0), unicode"GuaranteeEscrow: 依赖地址为零");
         registry = AgentRegistry(registry_);
         hub = ReputationHub(hub_);
+        maxOpenStake = DEFAULT_MAX_OPEN_STAKE;
     }
 
     modifier existingTrade(uint256 tradeId) {
@@ -167,8 +181,10 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
 
     function retryOutcome(uint256 tradeId) external nonReentrant existingTrade(tradeId) returns (bool recorded) {
         Trade storage t = _trades[tradeId];
-        require(t.outcomePending, unicode"GuaranteeEscrow: 无待记录结果");
-        return _tryRecord(t, t.pendingOutcome);
+        require(t.outcomePending || t.buyerOutcomePending, unicode"GuaranteeEscrow: 无待记录结果");
+        recorded = true;
+        if (t.outcomePending) recorded = _tryRecordSeller(t, t.pendingOutcome) && recorded;
+        if (t.buyerOutcomePending) recorded = _tryRecordBuyer(t, t.pendingBuyerOutcome) && recorded;
     }
 
     function acceptTrade(uint256 tradeId) external existingTrade(tradeId) {
@@ -203,6 +219,13 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         return coverageBps * 1e14;
     }
 
+    /// @notice Tier surcharge (bps) applied on top of the score-based rate, rising with amount.
+    function premiumTierSurchargeBps(uint256 amount) public pure returns (uint256) {
+        if (amount > PREMIUM_TIER2_THRESHOLD) return PREMIUM_TIER2_SURCHARGE_BPS;
+        if (amount > PREMIUM_TIER1_THRESHOLD) return PREMIUM_TIER1_SURCHARGE_BPS;
+        return 0;
+    }
+
     function quoteGuaranteeTerms(uint256 sellerAgentId, uint256 amount, uint256 maxPremium)
         public
         view
@@ -214,10 +237,24 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         uint256 coverageBps = 5000 + riskBps / 2;
         minCoverage = coverageBps * 1e14;
         minStake = Math.mulDiv(amount, minCoverage, 1e18, Math.Rounding.Ceil);
-        uint256 referencePremiumBps = riskBps * coverageBps * MAX_PREMIUM_BPS / 10000 ** 2;
+        uint256 referencePremiumBps =
+            riskBps * coverageBps * MAX_PREMIUM_BPS / 10000 ** 2 + premiumTierSurchargeBps(amount);
         referencePremium = Math.mulDiv(amount, referencePremiumBps, 10000);
         uint256 premiumCap = Math.mulDiv(amount, MAX_PREMIUM_BPS, 10000);
         insurable = amount != 0 && maxPremium >= referencePremium && maxPremium <= premiumCap;
+    }
+
+    /// @notice Operator-adjustable per-subject cap on total open guarantee stakes.
+    function setMaxOpenStake(uint256 value) external onlyOwner {
+        require(value != 0, unicode"GuaranteeEscrow: 敞口上限不能为零");
+        maxOpenStake = value;
+        emit MaxOpenStakeUpdated(value);
+    }
+
+    /// @notice Remaining stake a subject may still offer as guarantor under the exposure cap.
+    function remainingGuaranteeCapacity(address subject) external view returns (uint256) {
+        uint256 open = openStakeBySubject[subject];
+        return open < maxOpenStake ? maxOpenStake - open : 0;
     }
 
     function requiredDisputeBond(uint256 tradeId) public view existingTrade(tradeId) returns (uint256) {
@@ -251,6 +288,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         require(premium <= t.maxPremium, unicode"GuaranteeEscrow: 保费高于买方上限");
         uint256 stake = requiredStake(tradeId, coverage);
         require(msg.value == stake, unicode"GuaranteeEscrow: 担保质押金额不符");
+        require(openStakeBySubject[subject] + stake <= maxOpenStake, unicode"GuaranteeEscrow: 担保人敞口超限");
         t.guarantorAgentId = guarantorAgentId;
         t.guarantorSubject = subject;
         t.coverage = coverage;
@@ -260,6 +298,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         t.guaranteeOfferedAt = block.timestamp;
         t.guarantorObligationOpen = true;
         openTradeCount[subject]++;
+        openStakeBySubject[subject] += stake;
         totalLiability += msg.value;
         emit GuaranteeOffered(tradeId, guarantorAgentId, subject, coverage, premium);
     }
@@ -293,7 +332,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         require(msg.sender == t.buyerSubject, unicode"GuaranteeEscrow: 仅买方主体可确认");
         require(block.timestamp <= t.deliveredAt + CONFIRM_WINDOW, unicode"GuaranteeEscrow: 确认超时");
         _release(t);
-        _recordBestEffort(t, ReputationHub.Outcome.COMPLETED);
+        _recordBestEffort(t, ReputationHub.Outcome.COMPLETED, ReputationHub.Outcome.COMPLETED);
     }
 
     function dispute(uint256 tradeId) external payable nonReentrant existingTrade(tradeId) {
@@ -345,7 +384,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
             _credit(t.sellerSubject, t.amount - t.premium);
             _credit(t.guarantorSubject, t.stake + t.premium);
             _allocateDisputeBond(t, t.sellerSubject);
-            _recordBestEffort(t, ReputationHub.Outcome.WON);
+            _recordBestEffort(t, ReputationHub.Outcome.WON, ReputationHub.Outcome.LOST);
         } else {
             // Both buyer shares round down; the seller and guarantor receive the exact remainders.
             uint256 buyerRefund = Math.mulDiv(t.amount, actualBuyerShareBps, 10000);
@@ -354,7 +393,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
             _credit(t.sellerSubject, t.amount - buyerRefund);
             _credit(t.guarantorSubject, t.stake - buyerStake);
             _allocateDisputeBond(t, verdict == Verdict.BUYER_WINS ? t.buyerSubject : t.disputeInitiator);
-            _recordBestEffort(t, ReputationHub.Outcome.LOST);
+            _recordBestEffort(t, ReputationHub.Outcome.LOST, ReputationHub.Outcome.WON);
         }
         emit TradeResolved(tradeId, verdict, actualBuyerShareBps);
     }
@@ -370,7 +409,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         require(t.state == State.DELIVERED, unicode"GuaranteeEscrow: 状态错误");
         require(block.timestamp > t.deliveredAt + CONFIRM_WINDOW, unicode"GuaranteeEscrow: 未到超时");
         _release(t);
-        _recordBestEffort(t, ReputationHub.Outcome.COMPLETED);
+        _recordBestEffort(t, ReputationHub.Outcome.COMPLETED, ReputationHub.Outcome.COMPLETED);
     }
 
     function timeoutCancelUnaccepted(uint256 tradeId) external existingTrade(tradeId) {
@@ -386,6 +425,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         require(t.state == State.ACCEPTED, unicode"GuaranteeEscrow: 状态错误");
         require(block.timestamp > t.acceptedAt + FUND_WINDOW, unicode"GuaranteeEscrow: 未到超时");
         _markTerminal(t, State.VOIDED);
+        _recordBuyerOnlyBestEffort(t, ReputationHub.Outcome.DEFAULTED);
         emit TradeVoided(tradeId);
     }
 
@@ -410,7 +450,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
             require(block.timestamp > t.guaranteedAt + DELIVER_WINDOW, unicode"GuaranteeEscrow: 未到超时");
             _markTerminal(t, State.RESOLVED);
             _credit(t.buyerSubject, t.amount + t.stake);
-            _recordBestEffort(t, ReputationHub.Outcome.DEFAULTED);
+            _recordBestEffort(t, ReputationHub.Outcome.DEFAULTED, ReputationHub.Outcome.COMPLETED);
             emit TradeResolved(tradeId, Verdict.BUYER_WINS, 10000);
         }
     }
@@ -467,6 +507,7 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         if (t.guarantorObligationOpen) {
             t.guarantorObligationOpen = false;
             openTradeCount[t.guarantorSubject]--;
+            openStakeBySubject[t.guarantorSubject] -= t.stake;
         }
         t.state = terminalState;
     }
@@ -478,12 +519,21 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         _credit(recipient, bond);
     }
 
-    function _recordBestEffort(Trade storage t, ReputationHub.Outcome outcome) private {
+    function _recordBestEffort(Trade storage t, ReputationHub.Outcome sellerOutcome, ReputationHub.Outcome buyerOutcome)
+        private
+    {
         require(!t.outcomeRecorded && !t.outcomePending, unicode"GuaranteeEscrow: 结果已处理");
-        _tryRecord(t, outcome);
+        require(!t.buyerOutcomeRecorded && !t.buyerOutcomePending, unicode"GuaranteeEscrow: 结果已处理");
+        _tryRecordSeller(t, sellerOutcome);
+        _tryRecordBuyer(t, buyerOutcome);
     }
 
-    function _tryRecord(Trade storage t, ReputationHub.Outcome outcome) private returns (bool recorded) {
+    function _recordBuyerOnlyBestEffort(Trade storage t, ReputationHub.Outcome buyerOutcome) private {
+        require(!t.buyerOutcomeRecorded && !t.buyerOutcomePending, unicode"GuaranteeEscrow: 结果已处理");
+        _tryRecordBuyer(t, buyerOutcome);
+    }
+
+    function _tryRecordSeller(Trade storage t, ReputationHub.Outcome outcome) private returns (bool recorded) {
         bool wasPending = t.outcomePending;
         try hub.recordOutcome(keccak256(abi.encode(address(this), t.id)), t.sellerAgentId, outcome) {
             t.outcomePending = false;
@@ -494,6 +544,21 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
             t.pendingOutcome = outcome;
             t.outcomePending = true;
             if (!wasPending) emit OutcomeDeferred(t.id, outcome);
+            return false;
+        }
+    }
+
+    function _tryRecordBuyer(Trade storage t, ReputationHub.Outcome outcome) private returns (bool recorded) {
+        bool wasPending = t.buyerOutcomePending;
+        try hub.recordOutcome(keccak256(abi.encode(address(this), t.id, uint256(1))), t.buyerAgentId, outcome) {
+            t.buyerOutcomePending = false;
+            t.buyerOutcomeRecorded = true;
+            emit BuyerOutcomeRecorded(t.id, outcome);
+            return true;
+        } catch {
+            t.pendingBuyerOutcome = outcome;
+            t.buyerOutcomePending = true;
+            if (!wasPending) emit BuyerOutcomeDeferred(t.id, outcome);
             return false;
         }
     }

@@ -173,6 +173,34 @@ export default function TradePage() {
     query: { enabled: configured && Boolean(trade) && parsedTradeId !== undefined && parsedCoverage !== undefined, retry: false },
   });
 
+  const tierSurchargeRead = useReadContract({
+    address: CONTRACT_ADDRESSES.guaranteeEscrow,
+    abi: guaranteeEscrowAbi,
+    functionName: "premiumTierSurchargeBps",
+    args: parsedAmount === undefined ? undefined : [parsedAmount],
+    query: { enabled: configured && parsedAmount !== undefined, retry: false },
+  });
+
+  const guarantorOpenStakeRead = useReadContract({
+    address: CONTRACT_ADDRESSES.guaranteeEscrow,
+    abi: guaranteeEscrowAbi,
+    functionName: "openStakeBySubject",
+    args: address ? [address] : undefined,
+    query: { enabled: configured && Boolean(address), refetchInterval: 4_000 },
+  });
+
+  const maxOpenStakeRead = useReadContract({
+    address: CONTRACT_ADDRESSES.guaranteeEscrow,
+    abi: guaranteeEscrowAbi,
+    functionName: "maxOpenStake",
+    query: { enabled: configured, refetchInterval: 4_000 },
+  });
+
+  const remainingCapacity =
+    guarantorOpenStakeRead.data !== undefined && maxOpenStakeRead.data !== undefined
+      ? (guarantorOpenStakeRead.data < maxOpenStakeRead.data ? maxOpenStakeRead.data - guarantorOpenStakeRead.data : 0n)
+      : undefined;
+
   const withdrawalRead = useReadContract({
     address: CONTRACT_ADDRESSES.guaranteeEscrow,
     abi: guaranteeEscrowAbi,
@@ -389,6 +417,7 @@ export default function TradePage() {
               <div><dt className="text-gray-500">最低覆盖率</dt><dd>{percent(quote[0])}</dd></div>
               <div><dt className="text-gray-500">最低质押</dt><dd>{eth(quote[1])}</dd></div>
               <div><dt className="text-gray-500">参考保费</dt><dd>{eth(quote[2])}</dd></div>
+              <div><dt className="text-gray-500">档位附加费率</dt><dd>{tierSurchargeRead.data === undefined ? "—" : `${Number(tierSurchargeRead.data) / 100}%`}</dd></div>
               <div><dt className="text-gray-500">可承保</dt><dd>{quote[3] ? "是" : "否（调整最高保费）"}</dd></div>
             </dl>
           ) : <p className="text-gray-500 mt-1">填写有效参数后显示链上报价。</p>}
@@ -449,6 +478,7 @@ export default function TradePage() {
                   <label className="field-label">保费（ETH）<input aria-label="保费（ETH）" value={premium} onChange={(event) => setPremium(event.target.value)} className="field-input" /></label>
                 </div>
                 <p className="text-sm">requiredStake 链上精确值：<strong>{eth(stakeRead.data)}</strong></p>
+                <p className="text-sm">当前账户剩余可担保额度：<strong>{remainingCapacity === undefined ? "—" : `${eth(remainingCapacity)} ETH`}</strong>（上限 {eth(maxOpenStakeRead.data)} ETH）</p>
                 <ActionButton label={`提供担保并质押 ${eth(stakeRead.data)}`} readiness={guaranteeReady} onClick={offerGuarantee} primary />
                 {!guaranteeReady.ready && <p className="text-xs text-gray-500">{guaranteeReady.reason}</p>}
               </div>

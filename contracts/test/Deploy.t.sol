@@ -40,19 +40,26 @@ contract DeployTest is Test {
         assertEq(registry.registrationDeposit(), 0.01 ether);
     }
 
-    function test_deployAutoInstallsDevPohVerifierOnAnvil() public {
+    function test_deployEnvConfiguration() public {
         vm.setEnv("PRIVATE_KEY", vm.toString(ANVIL_KEY));
         vm.setEnv("POH_VERIFIER", vm.toString(address(0)));
 
         Deploy script = new Deploy();
-        (address registryAddress,,,) = script.run();
+        (address registryAddress,, address escrowAddress,) = script.run();
         assertNotEq(AgentRegistry(registryAddress).pohVerifier(), address(0), "anvil must get a dev PoH verifier");
+        assertEq(GuaranteeEscrow(escrowAddress).maxOpenStake(), 5 ether, "default exposure cap");
+
+        // 同一测试内覆盖 env 并再次运行脚本（跨测试 env 缓存行为不可靠，不跨测试断言覆盖）。
+        vm.setEnv("MAX_OPEN_STAKE", "6000000000000000000");
+        (,, escrowAddress,) = script.run();
+        assertEq(GuaranteeEscrow(escrowAddress).maxOpenStake(), 6 ether, "MAX_OPEN_STAKE override");
     }
 
     function test_deployUsesConfiguredPohVerifier() public {
         vm.setEnv("PRIVATE_KEY", vm.toString(ANVIL_KEY));
         address configured = makeAddr("configured poh verifier");
         vm.setEnv("POH_VERIFIER", vm.toString(configured));
+        vm.setEnv("MAX_OPEN_STAKE", "5000000000000000000");
 
         Deploy script = new Deploy();
         (address registryAddress,,,) = script.run();

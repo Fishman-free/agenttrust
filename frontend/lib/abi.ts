@@ -2338,6 +2338,19 @@ export const guaranteeEscrowAbi = [
   },
   {
     "type": "function",
+    "name": "DEFAULT_MAX_OPEN_STAKE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "DELIVER_WINDOW",
     "inputs": [],
     "outputs": [
@@ -2417,6 +2430,58 @@ export const guaranteeEscrowAbi = [
   {
     "type": "function",
     "name": "MAX_PREMIUM_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PREMIUM_TIER1_SURCHARGE_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PREMIUM_TIER1_THRESHOLD",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PREMIUM_TIER2_SURCHARGE_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PREMIUM_TIER2_THRESHOLD",
     "inputs": [],
     "outputs": [
       {
@@ -2680,6 +2745,21 @@ export const guaranteeEscrowAbi = [
             "internalType": "enum ReputationHub.Outcome"
           },
           {
+            "name": "buyerOutcomePending",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "buyerOutcomeRecorded",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "pendingBuyerOutcome",
+            "type": "uint8",
+            "internalType": "enum ReputationHub.Outcome"
+          },
+          {
             "name": "state",
             "type": "uint8",
             "internalType": "enum GuaranteeEscrow.State"
@@ -2787,6 +2867,19 @@ export const guaranteeEscrowAbi = [
   },
   {
     "type": "function",
+    "name": "maxOpenStake",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "minimumCoverage",
     "inputs": [
       {
@@ -2829,6 +2922,25 @@ export const guaranteeEscrowAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "openStakeBySubject",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -2883,6 +2995,25 @@ export const guaranteeEscrowAbi = [
   },
   {
     "type": "function",
+    "name": "premiumTierSurchargeBps",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
     "name": "quoteGuaranteeTerms",
     "inputs": [
       {
@@ -2934,6 +3065,25 @@ export const guaranteeEscrowAbi = [
         "name": "",
         "type": "address",
         "internalType": "contract AgentRegistry"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "remainingGuaranteeCapacity",
+    "inputs": [
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -3028,6 +3178,19 @@ export const guaranteeEscrowAbi = [
         "internalType": "bool"
       }
     ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setMaxOpenStake",
+    "inputs": [
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
@@ -3261,6 +3424,44 @@ export const guaranteeEscrowAbi = [
   },
   {
     "type": "event",
+    "name": "BuyerOutcomeDeferred",
+    "inputs": [
+      {
+        "name": "tradeId",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "outcome",
+        "type": "uint8",
+        "internalType": "enum ReputationHub.Outcome",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "BuyerOutcomeRecorded",
+    "inputs": [
+      {
+        "name": "tradeId",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "outcome",
+        "type": "uint8",
+        "internalType": "enum ReputationHub.Outcome",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "GuaranteeAccepted",
     "inputs": [
       {
@@ -3308,6 +3509,19 @@ export const guaranteeEscrowAbi = [
       },
       {
         "name": "premium",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MaxOpenStakeUpdated",
+    "inputs": [
+      {
+        "name": "value",
         "type": "uint256",
         "internalType": "uint256",
         "indexed": false

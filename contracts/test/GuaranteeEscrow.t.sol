@@ -96,6 +96,172 @@ contract GuaranteeEscrowTest is Test {
         escrow.guarantee{value: 1 ether}(tradeId, strangerId, 1e18, 0.075 ether);
     }
 
+    function test_premiumTiersAddSurchargeWithAmount() public view {
+        assertEq(escrow.premiumTierSurchargeBps(0.5 ether), 0, "T0");
+        assertEq(escrow.premiumTierSurchargeBps(1 ether), 0, "T0 boundary");
+        assertEq(escrow.premiumTierSurchargeBps(1 ether + 1), 100, "T1");
+        assertEq(escrow.premiumTierSurchargeBps(10 ether), 100, "T1 boundary");
+        assertEq(escrow.premiumTierSurchargeBps(10 ether + 1), 250, "T2");
+
+        // 新卖家 50 分：基准 750 bps，随档位上浮
+        (,, uint256 t0Premium,) = escrow.quoteGuaranteeTerms(sellerId, 0.5 ether, 0.1 ether);
+        assertEq(t0Premium, 0.0375 ether);
+        (,, uint256 t1Premium,) = escrow.quoteGuaranteeTerms(sellerId, 2 ether, 0.4 ether);
+        assertEq(t1Premium, 0.17 ether, "750 + 100 bps");
+        (,, uint256 t2Premium,) = escrow.quoteGuaranteeTerms(sellerId, 20 ether, 4 ether);
+        assertEq(t2Premium, 2 ether, "750 + 250 bps");
+    }
+
+    function test_guaranteeBlockedWhenExposureCapExceeded() public {
+        escrow.setMaxOpenStake(1.5 ether);
+        assertEq(escrow.remainingGuaranteeCapacity(guarantor), 1.5 ether);
+
+        // 第一笔：stake 1 ether 占满大部分额度
+        _acceptFundGuarantee();
+        assertEq(escrow.openStakeBySubject(guarantor), 1 ether);
+        assertEq(escrow.remainingGuaranteeCapacity(guarantor), 0.5 ether);
+
+        // 第二笔：0.8 ether stake 会使敞口超限
+        uint256 second = _createAcceptedFunded(1 ether);
+        vm.prank(guarantor);
+        vm.expectRevert(unicode"GuaranteeEscrow: 担保人敞口超限");
+        escrow.guarantee{value: 0.8 ether}(second, guarantorId, 0.8e18, 0.075 ether);
+        assertEq(escrow.openStakeBySubject(guarantor), 1 ether, "rejected offer must not change exposure");
+
+        // 提高上限后可报价
+        escrow.setMaxOpenStake(2 ether);
+        vm.prank(guarantor);
+        escrow.guarantee{value: 0.8 ether}(second, guarantorId, 0.8e18, 0.075 ether);
+        assertEq(escrow.openStakeBySubject(guarantor), 1.8 ether);
+        assertEq(escrow.remainingGuaranteeCapacity(guarantor), 0.2 ether);
+    }
+
+    function test_openStakeReleasesOnTerminalStates() public {
+        _acceptFundGuarantee();
+        assertEq(escrow.openStakeBySubject(guarantor), 1 ether);
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        vm.prank(buyer);
+        escrow.confirm(tradeId);
+        assertEq(escrow.openStakeBySubject(guarantor), 0, "stake released on completion");
+        assertEq(escrow.remainingGuaranteeCapacity(guarantor), escrow.maxOpenStake());
+    }
+
+    function test_setMaxOpenStakeRequiresOwnerAndNonZero() public {
+        vm.prank(stranger);
+        vm.expectRevert();
+        escrow.setMaxOpenStake(6 ether);
+        vm.expectRevert(unicode"GuaranteeEscrow: 敞口上限不能为零");
+        escrow.setMaxOpenStake(0);
+        escrow.setMaxOpenStake(6 ether);
+        assertEq(escrow.maxOpenStake(), 6 ether);
+    }
+
+    function test_buyerOutcomeRecordedOnCompletion() public {
+        _acceptFundGuarantee();
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        vm.prank(buyer);
+        escrow.confirm(tradeId);
+
+        (uint256 buyerCompleted,,,) = hub.reputation(buyerId);
+        (uint256 sellerCompleted,,,) = hub.reputation(sellerId);
+        assertEq(buyerCompleted, 1, "buyer completed recorded");
+        assertEq(sellerCompleted, 1, "seller completed recorded");
+    }
+
+    function test_buyerDefaultedWhenFundingTimesOut() public {
+        vm.prank(seller);
+        escrow.acceptTrade(tradeId);
+        vm.warp(block.timestamp + escrow.FUND_WINDOW() + 1);
+        escrow.timeoutCancelUnfunded(tradeId);
+
+        (uint256 completed, uint256 defaulted,,) = hub.reputation(buyerId);
+        assertEq(defaulted, 1, "buyer defaulted on funding timeout");
+        assertEq(completed, 0);
+        assertEq(hub.reputationScore(sellerId), 50, "seller keeps no record on buyer funding default");
+    }
+
+    function test_buyerWonAndLostRecordedByDisputeVerdict() public {
+        _acceptFundGuarantee();
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        vm.prank(buyer);
+        escrow.dispute{value: 0.02 ether}(tradeId);
+        escrow.openArbitration(tradeId);
+
+        escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.BUYER_WINS, 0);
+        (,, uint256 buyerWon,) = hub.reputation(buyerId);
+        (,,, uint256 sellerLost) = hub.reputation(sellerId);
+        assertEq(buyerWon, 1, "buyer wins dispute");
+        assertEq(sellerLost, 1, "seller loses dispute");
+    }
+
+    function test_buyerLostAndPartialWinnerRecordedByDisputeVerdict() public {
+        _acceptFundGuarantee();
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        vm.prank(buyer);
+        escrow.dispute{value: 0.02 ether}(tradeId);
+        escrow.openArbitration(tradeId);
+        escrow.resolveDispute(tradeId, GuaranteeEscrow.Verdict.SELLER_WINS, 0);
+        (,, uint256 won, uint256 lost) = hub.reputation(buyerId);
+        assertEq(lost, 1, "buyer loses on seller win");
+        assertEq(won, 0);
+
+        // 部分裁决：买方主张部分成立记 WON
+        uint256 second = _createAcceptedFunded(1 ether);
+        vm.prank(guarantor);
+        escrow.guarantee{value: 1 ether}(second, guarantorId, 1e18, 0.075 ether);
+        vm.prank(seller);
+        escrow.acceptGuarantee(second);
+        vm.prank(seller);
+        escrow.deliver(second);
+        vm.deal(buyer, 1 ether);
+        vm.prank(buyer);
+        escrow.dispute{value: 0.02 ether}(second);
+        escrow.openArbitration(second);
+        escrow.resolveDispute(second, GuaranteeEscrow.Verdict.PARTIAL_BUYER, 5000);
+        (,, won, lost) = hub.reputation(buyerId);
+        assertEq(won, 1, "partial verdict records buyer win");
+        assertEq(lost, 1);
+    }
+
+    function test_buyerCompletedOnGuaranteedDeliveryTimeout() public {
+        _acceptFundGuarantee();
+        vm.warp(block.timestamp + escrow.DELIVER_WINDOW() + 1);
+        escrow.timeoutRefund(tradeId);
+
+        (uint256 buyerCompleted,,,) = hub.reputation(buyerId);
+        (uint256 sellerCompleted, uint256 sellerDefaulted,,) = hub.reputation(sellerId);
+        assertEq(buyerCompleted, 1, "buyer completed obligation on seller delivery timeout");
+        assertEq(sellerDefaulted, 1);
+        assertEq(sellerCompleted, 0);
+    }
+
+    function test_retryOutcomeRetriesBothRoles() public {
+        _acceptFundGuarantee();
+        vm.prank(seller);
+        escrow.deliver(tradeId);
+        hub.setOutcomeWriter(address(escrow), false);
+        vm.prank(buyer);
+        escrow.confirm(tradeId);
+
+        GuaranteeEscrow.Trade memory t = escrow.getTrade(tradeId);
+        assertTrue(t.outcomePending, "seller outcome deferred");
+        assertTrue(t.buyerOutcomePending, "buyer outcome deferred");
+
+        hub.setOutcomeWriter(address(escrow), true);
+        assertTrue(escrow.retryOutcome(tradeId));
+        t = escrow.getTrade(tradeId);
+        assertTrue(t.outcomeRecorded);
+        assertTrue(t.buyerOutcomeRecorded);
+        bytes32 buyerOutcomeId = keccak256(abi.encode(address(escrow), tradeId, uint256(1)));
+        assertTrue(hub.recordedOutcomes(buyerOutcomeId));
+        vm.expectRevert(unicode"GuaranteeEscrow: 无待记录结果");
+        escrow.retryOutcome(tradeId);
+    }
+
     function test_openTradeCountLifecycleAcrossRelease() public {
         assertEq(escrow.openTradeCount(buyer), 1, "buyer enrolled at create");
         assertEq(escrow.openTradeCount(seller), 0, "seller not enrolled until accept");
@@ -306,9 +472,10 @@ contract GuaranteeEscrowTest is Test {
     ) public {
         uint256 amount = bound(uint256(rawAmount), 1, 100 ether);
         uint256 coverage = bound(uint256(rawCoverage), 1e18, escrow.MAX_COVERAGE());
-        uint256 referencePremium = (amount * 750) / 10000;
         uint256 maximumPremium = amount / 10;
+        (,, uint256 referencePremium,) = escrow.quoteGuaranteeTerms(sellerId, amount, maximumPremium);
         uint256 premium = bound(uint256(rawPremium), referencePremium, maximumPremium);
+        escrow.setMaxOpenStake(type(uint256).max);
         uint256 id = _createAcceptedFunded(amount);
         uint256 expectedStake = (amount * coverage + 1e18 - 1) / 1e18;
 
@@ -327,7 +494,7 @@ contract GuaranteeEscrowTest is Test {
         uint256 amount = bound(uint256(rawAmount), 1, 100 ether);
         uint256 maxCoverage = escrow.MAX_COVERAGE();
         uint256 id = _createAcceptedFunded(amount);
-        uint256 referencePremium = amount * 750 / 10000;
+        (,, uint256 referencePremium,) = escrow.quoteGuaranteeTerms(sellerId, amount, amount / 10);
         uint256 belowMinimum = bound(uint256(rawCoverage), 0, 0.75e18 - 1);
 
         vm.prank(guarantor);
