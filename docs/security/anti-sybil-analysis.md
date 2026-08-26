@@ -56,13 +56,13 @@ An operator creates N EOAs, contract wallets, or ERC-4337 wallets and registers 
 A purely on-chain system cannot distinguish one human from many wallets. It can only increase cost. Human uniqueness depends on an external proof system whose result is verified on-chain.
 
 The implemented PoH layer is described in [World ID integration](../world-id-integration.md):
-- `WorldIDPoHVerifier` is the real adapter design. Registration and upgrade call official `WorldIDRouter.verifyProof` through the consuming path; recovery uses non-consuming same-identity verification based on matching `nullifierHash` plus a signal bound to the new wallet.
+- `WorldIDPoHVerifier` is the legacy adapter design for deprecated World ID V1/Contracts 3.0. Its consuming registration/upgrade and non-consuming same-identity recovery model is design input only; a v4-compatible replacement is required.
 - **Dual-path registration:** the ordinary path uses a 3× deposit, has no recovery anchor, and cannot guarantee or serve as a juror; the PoH path uses the standard deposit and unlocks all roles. This preserves permissionless buyer/seller onboarding.
 - `bindPoH` consumes an unused nullifier, creates the anchor, unlocks privileged roles and recovery, and refunds the deposit difference.
 - `registerAgentVerified` requires a valid unused nullifier; `usedPoHNullifiers` provides a registry-level replay defense in addition to router consumption.
 - `GuaranteeEscrow.guarantee` and `SchellingVoting.commitVote` enforce the PoH role gates.
 
-> ⚠️ `WorldIDPoHVerifier` is not the same as `AnvilDevPoHVerifier` or `MockPoHVerifier`. Local Anvil and CI mocks exercise contract transitions but do not validate actual World ID proofs. The adapter is **not yet deployed or validated on Base Sepolia**, so the real integration remains pending.
+> ⚠️ `WorldIDPoHVerifier` is not the same as `AnvilDevPoHVerifier` or `MockPoHVerifier`. Local Anvil and CI mocks exercise contract transitions but do not validate actual World ID proofs. App `app_01728cabff1e05950af1ff18c06c9d38` and RP `rp_fd884ac4342cc4d1` are registered. Base Sepolia uses same-origin `/api/world-id`, the official v4 Developer Portal API, server-only trusted-attester keys, and Registry-bound adapter `0x1325C3eD12d535Bc33A56305466159d370BDf6cE`. PoH registration and guarantor/juror gates are enabled through backend attestation, not direct onchain World verification. Recovery uses all guardians plus a 48-hour veto because `verifySameIdentity` returns `false`.
 
 ### Path 4: Buying or borrowing an ID (reduced by identity semantics)
 Because the Agent ID is ERC-721, an attacker can buy or rent an NFT with a strong reputation.
@@ -96,7 +96,7 @@ A subject may register immediately before trade creation and qualify for that tr
 | `contracts/test/WorldIDPoHVerifier.t.sol` | Adapter parameter forwarding, non-consuming checks, and rejection paths using fake router/Semaphore verifiers |
 | `deployments/31337.json`, `frontend/lib/*.ts` | Regenerated for the registry runtime-bytecode change |
 
-Current verification baseline: `forge test` **146 contract tests passed**; `npm test` 69/69 passed; manifest and ABI `--check` passed.
+Current verification baseline: `forge test` **159 contract tests passed**; `npm test` 69/69 passed; manifest and ABI `--check` passed.
 
 ### Tiered recovery properties
 
@@ -106,14 +106,14 @@ Current verification baseline: `forge test` **146 contract tests passed**; `npm 
 - **G path:** missing or failed same-identity proof → all guardians + 48-hour veto window.
 - Recovery has a seven-day execution period and migrates NFT control, responsible subject, deposit, eligibility snapshot, guardians, and nullifier anchor without resetting reputation.
 - Recovery and deregistration require both escrow `openTradeCount` and voting `openCommitmentCount` to be zero.
-- Local Anvil deploys `AnvilDevPoHVerifier` for demos/E2E. A real chain must configure `POH_VERIFIER` with a deployed and validated `WorldIDPoHVerifier`.
+- Local Anvil deploys `AnvilDevPoHVerifier` for demos/E2E. A public chain must not configure the legacy adapter; it requires a deployed, reviewed, and validated World ID v4 adapter.
 
 ---
 
 ## 5. Residual risks
 
 1. **World ID uniqueness is device-based:** one human with multiple devices may obtain multiple identities. The practical on-chain property is “one device, one ID,” with deposits, reputation, and guardians as secondary defenses.
-2. **The real adapter remains unvalidated:** `WorldIDPoHVerifier` depends on the official router and Semaphore verifier. Its hash convention must be checked against actual IDKit output after obtaining `app_id`. It is **currently undeployed on Base Sepolia**.
+2. **Backend-attestation trust:** the legacy adapter is obsolete, while the live adapter trusts server-signed attestations after the official v4 Developer Portal API check. Backend or attester compromise can issue false PoH attestations; this is not direct onchain World verification.
 3. **Verifier governance:** `setPoHVerifier` is owner-controlled. A compromised or malicious owner can substitute the verifier.
 4. **Recovery trust assumptions:** S-path identity assurance requires the original World ID device. G-path security depends on guardian honesty and availability during the 48-hour veto window; guardian collusion can steal an identity.
 5. **Unlinked wallets remain opaque:** one entity can create multiple ordinary buyer/seller identities. PoH role gates reduce the highest-impact attack surface but do not eliminate fake trading or reputation farming.
@@ -126,7 +126,7 @@ Current verification baseline: `forge test` **146 contract tests passed**; `npm 
 
 ## 6. Future directions
 
-- Complete the Base Sepolia deployment and end-to-end IDKit validation in the [World ID integration checklist](../world-id-integration.md); do not describe PoH as production-live before it passes.
+- Implement a v4 adapter and complete the Base Sepolia end-to-end checklist in [World ID integration](../world-id-integration.md); do not describe PoH as live or production-ready before it passes.
 - Add random juror selection and quadratic/additional staking to raise vote-stacking costs.
 - Introduce progressive deposit or vote-stake requirements for low-reputation subjects.
 - Add off-chain clustering of suspicious funding sources and registration timing as a frontend warning layer, without treating heuristics as proof of shared identity.

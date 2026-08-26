@@ -122,7 +122,7 @@ npm run dev                      # 打开 http://localhost:3000
 
 ---
 
-> **权威测试基线**：10 个套件共 **146 tests passed, 0 failed, 0 skipped**。
+> **权威测试基线**：**159 tests passed, 0 failed, 0 skipped**。
 
 ## 4. 钱包准备（MetaMask）
 
@@ -295,7 +295,9 @@ cast rpc evm_mine --rpc-url http://127.0.0.1:8545                 # 挖一个块
 
 ## 9. 进阶：部署到 Base Sepolia 测试网
 
-Base Sepolia（Chain ID 84532）当前**尚未部署且仅提供只读研究预览**。部署流程见 [`contracts/demo/DEPLOY-BaseSepolia.zh-CN.md`](../contracts/demo/DEPLOY-BaseSepolia.zh-CN.md)：测试网私钥 → faucet 领取测试 ETH → `forge script --broadcast --verify` → 生成 manifest → GitHub Pages 发布。
+Base Sepolia（Chain ID 84532）四个核心合约已部署并通过 manifest RPC 校验；核心地址与部署元数据以 [`../deployments/84532.json`](../deployments/84532.json) 为准。https://agenttrust.site 已在东京 Caddy 上线且 HTTPS 有效，`www` 重定向到主域名；GitHub Pages 部署门禁工作流已修改但尚未合并。
+
+World ID app `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。由于 Base Sepolia 没有可用的 v4 直接验证，同源 `/api/world-id` 调用官方 v4 Developer Portal API，并使用仅保存在服务器的可信证明人密钥签名；已绑定 Registry 的适配器 `0x1325C3eD12d535Bc33A56305466159d370BDf6cE` 验证该证明。该后端信任模型已启用 PoH 注册和担保人/陪审门禁，但并非 World 证明直接链上验证。`verifySameIdentity` 返回 `false`，因此找回要求全部守护人 + 48 小时否决窗。合约仍未经审计、仅限测试网，不具备生产可用性。详见 [`contracts/demo/DEPLOY-BaseSepolia.zh-CN.md`](../contracts/demo/DEPLOY-BaseSepolia.zh-CN.md)。
 
 ---
 

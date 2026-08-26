@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { formatEther, isAddress } from "viem";
 import { agentRegistryAbi, guaranteeEscrowAbi, schellingVotingAbi } from "@/lib/abi";
-import { CHAIN_ID, CONTRACT_ADDRESSES, WRITE_BLOCK_REASON, WRITES_ENABLED, activeChain, isZeroAddress } from "@/lib/config";
+import { CHAIN_ID, CHAIN_MODE, CONTRACT_ADDRESSES, WRITE_BLOCK_REASON, WRITES_ENABLED, activeChain, isZeroAddress } from "@/lib/config";
 import { parseAgentRegistered } from "@/lib/receipt-events";
+import { WorldIdButton } from "@/app/components/world-id-button";
+import type { RegistryAttestation } from "@/lib/world-id";
 import { getWriteReadiness } from "@/lib/write-readiness";
 import { TransactionStatus, useTransactionFeedback } from "@/app/components/transaction-status";
 import { formatMessage, useLocale } from "@/lib/locale";
@@ -49,10 +51,11 @@ export default function AgentsPage() {
   const [guardian2, setGuardian2] = useState("");
   const [guardian3, setGuardian3] = useState("");
   const [verifiedMode, setVerifiedMode] = useState(false);
-  const [nullifier, setNullifier] = useState("");
-  const [proof, setProof] = useState("0x01");
-  const [bindNullifier, setBindNullifier] = useState("");
-  const [bindProof, setBindProof] = useState("0x01");
+  const [attestation, setAttestation] = useState<RegistryAttestation>();
+  const [mockNullifier, setMockNullifier] = useState("");
+  const [mockProof, setMockProof] = useState("0x01");
+  const [bindMockNullifier, setBindMockNullifier] = useState("");
+  const [bindMockProof, setBindMockProof] = useState("0x01");
   const [recoverySubject, setRecoverySubject] = useState("");
   const [opLabel, setOpLabel] = useState<string>();
   const refreshedReceipt = useRef<string | undefined>(undefined);
@@ -69,6 +72,14 @@ export default function AgentsPage() {
   const depositEth = depositData === undefined ? "0" : formatEther(depositData);
   const plainDeposit = depositData === undefined ? undefined : depositData * 3n;
   const plainDepositEth = plainDeposit === undefined ? "0" : formatEther(plainDeposit);
+  const { data: poHVerifier } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "pohVerifier",
+    query: { enabled: registryConfigured },
+  });
+  const verifierBound = poHVerifier !== undefined && !isZeroAddress(poHVerifier);
+  const isLocalMock = CHAIN_MODE === "anvil";
 
   const { data: lockedDeposit, refetch: refetchDeposit } = useReadContract({
     address: CONTRACT_ADDRESSES.agentRegistry,
@@ -186,7 +197,9 @@ export default function AgentsPage() {
             ? a.guardianDuplicate
             : undefined;
 
-  const verifiedInputsValid = !verifiedMode || (NULLIFIER_PATTERN.test(nullifier.trim()) && proof.trim() !== "");
+  const verifiedNullifier = isLocalMock ? mockNullifier.trim() : attestation?.nullifier;
+  const verifiedProof = isLocalMock ? mockProof.trim() : attestation?.proof;
+  const verifiedInputsValid = !verifiedMode || (Boolean(verifierBound || isLocalMock) && NULLIFIER_PATTERN.test(verifiedNullifier ?? "") && Boolean(verifiedProof));
   const inputValid = Boolean(name.trim() && desc.trim() && endpoint.trim()) && !guardianError && verifiedInputsValid;
   const busy = registration.isPending || registrationFeedback.phase === "confirming";
   const opsBusy = operations.isPending || operationsFeedback.phase === "confirming";
@@ -218,10 +231,10 @@ export default function AgentsPage() {
     WRITES_ENABLED && isConnected && chainId === CHAIN_ID && !opsBusy && Boolean(activeSubject)
     && !deregistered && !hasLiveRecovery && !obligationReason && Boolean(lockedDeposit !== undefined);
 
-  const bindNullifierValid = NULLIFIER_PATTERN.test(bindNullifier.trim());
+  const bindMockValid = NULLIFIER_PATTERN.test(bindMockNullifier.trim()) && bindMockProof.trim() !== "";
   const bindReady =
-    WRITES_ENABLED && isConnected && chainId === CHAIN_ID && !opsBusy && Boolean(activeSubject)
-    && !deregistered && poHVerified === false && bindNullifierValid && bindProof.trim() !== "";
+    isLocalMock && WRITES_ENABLED && isConnected && chainId === CHAIN_ID && !opsBusy && Boolean(activeSubject)
+    && !deregistered && poHVerified === false && bindMockValid;
 
   function register() {
     if (!readiness.ready) {
@@ -237,8 +250,8 @@ export default function AgentsPage() {
           name.trim(),
           desc.trim(),
           endpoint.trim(),
-          nullifier.trim() as `0x${string}`,
-          proof.trim() as `0x${string}`,
+          verifiedNullifier as `0x${string}`,
+          verifiedProof as `0x${string}`,
           filledGuardians,
         ],
         value: depositData,
@@ -332,19 +345,15 @@ export default function AgentsPage() {
                 />
                 {a.verifiedModeHelp}
               </label>
-              {verifiedMode && (
-                <>
-                  <label className="field-label">
-                    {a.nullifier}
-                    <input aria-label={a.nullifierAria} placeholder="0x…" value={nullifier} onChange={(e) => setNullifier(e.target.value)}
-                      className="field-input" />
-                  </label>
-                  <label className="field-label">
-                    {a.proof}
-                    <input aria-label={a.proofAria} placeholder="0x01" value={proof} onChange={(e) => setProof(e.target.value)}
-                      className="field-input" />
-                  </label>
-                </>
+              {verifiedMode && address && (
+                isLocalMock ? (
+                  <>
+                    <label className="field-label">{a.nullifier}<input aria-label={a.nullifierAria} placeholder="0x…" value={mockNullifier} onChange={(e) => setMockNullifier(e.target.value)} className="field-input" /></label>
+                    <label className="field-label">{a.proof}<input aria-label={a.proofAria} placeholder="0x01" value={mockProof} onChange={(e) => setMockProof(e.target.value)} className="field-input" /></label>
+                  </>
+                ) : verifierBound ? (
+                  <WorldIdButton subject={address} disabled={busy} label={a.worldIdButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={setAttestation} />
+                ) : <p className="form-warning" role="status">{a.verifierMissing}</p>
               )}
               <p className="form-hint">
                 {a.depositHelp}
@@ -383,24 +392,15 @@ export default function AgentsPage() {
                     <p className="text-sm">
                       {a.notVerifiedRisk}
                     </p>
-                    <label className="field-label">
-                      {a.bindNullifier}
-                      <input aria-label={a.bindNullifier} placeholder="0x…" value={bindNullifier}
-                        onChange={(e) => setBindNullifier(e.target.value)} className="field-input" />
-                    </label>
-                    <label className="field-label">
-                      {a.bindProof}
-                      <input aria-label={a.bindProof} placeholder="0x01" value={bindProof}
-                        onChange={(e) => setBindProof(e.target.value)} className="field-input" />
-                    </label>
-                    <button
-                      className="button button-primary"
-                      disabled={!bindReady}
-                      title={bindReady ? undefined : a.bindInvalid}
-                      onClick={() => runOperation("bindPoH", [bindNullifier.trim(), bindProof.trim()], a.bindSuccess)}
-                    >
-                      {a.bindButton}
-                    </button>
+                    {isLocalMock ? (
+                      <>
+                        <label className="field-label">{a.bindNullifier}<input aria-label={a.bindNullifier} placeholder="0x…" value={bindMockNullifier} onChange={(e) => setBindMockNullifier(e.target.value)} className="field-input" /></label>
+                        <label className="field-label">{a.bindProof}<input aria-label={a.bindProof} placeholder="0x01" value={bindMockProof} onChange={(e) => setBindMockProof(e.target.value)} className="field-input" /></label>
+                        <button className="button button-primary" disabled={!bindReady} title={bindReady ? undefined : a.bindInvalid} onClick={() => runOperation("bindPoH", [bindMockNullifier.trim(), bindMockProof.trim()], a.bindSuccess)}>{a.bindButton}</button>
+                      </>
+                    ) : verifierBound && address ? (
+                      <WorldIdButton subject={address} disabled={opsBusy} label={a.bindButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={(value) => runOperation("bindPoH", [value.nullifier, value.proof], a.bindSuccess)} />
+                    ) : <p className="form-warning" role="status">{a.verifierMissing}</p>}
                   </div>
                 )}
                 {!deregistered && (

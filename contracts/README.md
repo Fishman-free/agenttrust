@@ -15,11 +15,11 @@ Four core contracts are tracked in each deployment manifest:
 | `src/SchellingVoting.sol` | Dispute resolution through staked Schelling-point community voting |
 | `src/ReputationHub.sol` | Onchain attestations; only authorized Escrow/Voting writers may update reputation, and self-review is forbidden |
 
-`src/WorldIDPoHVerifier.sol` is the real World ID proof-of-humanity adapter. It is deployed and configured separately and is not one of the four manifest-tracked core contracts. `AnvilDevPoHVerifier`, defined in `script/Deploy.s.sol`, is local-only test infrastructure and must never be deployed to a public or valuable network.
+World ID app `app_01728cabff1e05950af1ff18c06c9d38` and RP `rp_fd884ac4342cc4d1` are registered. `src/WorldIDPoHVerifier.sol` is a legacy adapter for deprecated World ID V1/Contracts 3.0 and is not the live integration. Because a v4 direct verifier is unavailable on Base Sepolia, the project uses an explicit backend-attestation architecture: the same-origin `/api/world-id` service calls the official v4 Developer Portal API and signs with server-only trusted-attester keys; `WorldIDV4AttestationVerifier` at `0x1325C3eD12d535Bc33A56305466159d370BDf6cE` verifies those attestations and is bound to the Registry. This is not direct onchain World verification. `AnvilDevPoHVerifier`, defined in `script/Deploy.s.sol`, remains local-only test infrastructure and must never be deployed publicly.
 
 ## Tests
 
-The authoritative Foundry baseline is **146 tests passed, 0 failed, 0 skipped across 10 suites**, including unit, fuzz, E2E, and invariant coverage.
+The authoritative Foundry baseline is **159 tests passed, 0 failed, 0 skipped**, including unit, fuzz, E2E, and invariant coverage.
 
 ```bash
 export PATH="$HOME/.foundry/bin:$PATH"
@@ -48,7 +48,7 @@ The published key is an insecure, disposable Anvil key. Never use it on a public
 
 The script deploys Registry → Hub → Escrow → Voting, grants Escrow/Voting their Hub writer roles, transfers Escrow ownership to Voting, configures obligation oracles and registration parameters, and—only on chain `31337` when `POH_VERIFIER` is unset—deploys the local-only `AnvilDevPoHVerifier`.
 
-A public-network deployment requires a separately deployed real `WorldIDPoHVerifier` address in `POH_VERIFIER`; see the [Base Sepolia deployment guide](./demo/DEPLOY-BaseSepolia.md).
+The four Base Sepolia core contracts are deployed and RPC-validated; addresses are in [`../deployments/84532.json`](../deployments/84532.json). The separate `WorldIDV4AttestationVerifier` is deployed at `0x1325C3eD12d535Bc33A56305466159d370BDf6cE` and bound to the Registry. PoH registration and guarantor/juror gates are enabled through the trusted backend-attestation model. `verifySameIdentity` returns `false`, so Base Sepolia recovery always uses all guardians plus a 48-hour veto. See the [Base Sepolia deployment guide](./demo/DEPLOY-BaseSepolia.md).
 
 ## Demo
 

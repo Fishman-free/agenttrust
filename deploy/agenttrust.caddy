@@ -1,0 +1,25 @@
+agenttrust.site {
+	root * /var/www/agenttrust
+	encode zstd gzip
+
+	handle /api/world-id/* {
+		reverse_proxy 127.0.0.1:8322
+	}
+
+	handle {
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		Cross-Origin-Opener-Policy same-origin-allow-popups
+		-Server
+	}
+
+}
+
+www.agenttrust.site {
+	redir https://agenttrust.site{uri} permanent
+}

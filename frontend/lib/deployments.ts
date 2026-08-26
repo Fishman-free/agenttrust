@@ -64,25 +64,55 @@ export const DEPLOYMENTS = {
     "schemaVersion": 2,
     "chainId": 84532,
     "chainName": "Base Sepolia",
-    "status": "undeployed",
+    "status": "deployed",
     "rpcUrl": "https://sepolia.base.org",
     "contracts": {
-      "agentRegistry": "0x0000000000000000000000000000000000000000",
-      "reputationHub": "0x0000000000000000000000000000000000000000",
-      "guaranteeEscrow": "0x0000000000000000000000000000000000000000",
-      "schellingVoting": "0x0000000000000000000000000000000000000000"
+      "agentRegistry": "0x3c11214d546fa64e95983e4316108570c4a36e5a",
+      "reputationHub": "0x97a0b60e1e5036e45afe055f792e52cc088b8fec",
+      "guaranteeEscrow": "0xd89e86ea83c65c00c3c29423b1424f250023b1eb",
+      "schellingVoting": "0x7cbe8a427ad8b74dfac10da1dacf8d838145a570"
     },
     "runtimeBytecodeHashes": {
-      "agentRegistry": null,
-      "reputationHub": null,
-      "guaranteeEscrow": null,
-      "schellingVoting": null
+      "agentRegistry": "0xe928340fde1154896b0b39fbc28ef9fb7da4e5686608da762846b63179f63fc3",
+      "reputationHub": "0x97d8f0ea00a4213196ec249cf24fd4fc8a9381074ecebcae010f3ce669f8c4c2",
+      "guaranteeEscrow": "0x6f57fdca4c2315ff7bc39dcda9562240ea007cd64dcf27355efa910511c43555",
+      "schellingVoting": "0xad21053524f872a3953e7da79153f3f384505f6ff48a08f8a6127e691a804627"
     },
     "deploymentMetadata": {
-      "agentRegistry": null,
-      "reputationHub": null,
-      "guaranteeEscrow": null,
-      "schellingVoting": null
+      "agentRegistry": {
+        "constructorArgs": [],
+        "deployer": "0x1fb11c41b42615590467029cb3ce2949b3f4ee53",
+        "transactionHash": "0x427e6895bb992ebe8733729c95e740497876c6584df73ff9abdf11c5261610ac",
+        "blockNumber": 45997272
+      },
+      "reputationHub": {
+        "constructorArgs": [],
+        "deployer": "0x1fb11c41b42615590467029cb3ce2949b3f4ee53",
+        "transactionHash": "0x002b8672c12b1ff76184f485ed0d01c4a8daf9f398c085b794c51c3de612862e",
+        "blockNumber": 45997272
+      },
+      "guaranteeEscrow": {
+        "constructorArgs": [
+          "0x3C11214D546fA64E95983e4316108570C4A36E5a",
+          "0x97a0B60e1E5036e45AFE055f792E52CC088B8feC"
+        ],
+        "deployer": "0x1fb11c41b42615590467029cb3ce2949b3f4ee53",
+        "transactionHash": "0xc00f1dc0e06bf7b4abfe0d3fd04ca18454431c97fbb97809774cefd3fd2cb987",
+        "blockNumber": 45997272
+      },
+      "schellingVoting": {
+        "constructorArgs": [
+          "0xD89E86eA83c65C00c3C29423B1424F250023b1EB",
+          "0x3C11214D546fA64E95983e4316108570C4A36E5a",
+          "0x97a0B60e1E5036e45AFE055f792E52CC088B8feC",
+          "100000000000000000",
+          "86400",
+          "86400"
+        ],
+        "deployer": "0x1fb11c41b42615590467029cb3ce2949b3f4ee53",
+        "transactionHash": "0x09bfacc30de0c7b51b3bb8006b0385ede046414229fc3f3051d5f882693e3f5f",
+        "blockNumber": 45997272
+      }
     },
     "votingParameters": {
       "caseStake": "100000000000000000",

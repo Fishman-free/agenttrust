@@ -44,7 +44,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            world-id-service/package-lock.json
       - run: forge build --root contracts
       - run: node scripts/gen-abi.mjs --check
       - run: node scripts/deployment-manifest.mjs --check
@@ -54,6 +56,14 @@ jobs:
         working-directory: frontend
       - run: npm test
         working-directory: frontend
+      - run: npm ci
+        working-directory: world-id-service
+      - run: npm run lint
+        working-directory: world-id-service
+      - run: npm test
+        working-directory: world-id-service
+      - run: npm run build
+        working-directory: world-id-service
       - run: npm run build
         working-directory: frontend
         env:

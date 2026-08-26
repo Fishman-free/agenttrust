@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "chainId": 84532,
+  "chainName": "Base Sepolia",
+  "status": "deployed",
+  "verificationModel": "world-id-v4-backend-attestation",
+  "directWorldIdVerificationOnBase": false,
+  "registry": "0x3c11214d546fa64e95983e4316108570c4a36e5a",
+  "adapter": "0x1325c3ed12d535bc33a56305466159d370bdf6ce",
+  "trustedAttester": "0xbe4913ba4b2275f761f273a424a357f1273b871f",
+  "action": "agenttrust-register-v1",
+  "actionHash": "0xa647a1b8184f1adab4305dbdda21ec0bef11e5c941e6aee6638dbae98f99057c",
+  "worldId": {
+    "protocolVersion": "4.0",
+    "appId": "app_01728cabff1e05950af1ff18c06c9d38",
+    "rpId": "rp_fd884ac4342cc4d1",
+    "verificationEndpoint": "https://developer.world.org/api/v4/verify/rp_fd884ac4342cc4d1"
+  },
+  "backend": {
+    "origin": "https://agenttrust.site",
+    "apiBase": "https://agenttrust.site/api/world-id",
+    "sameIdentityFastRecovery": false
+  },
+  "transactions": {
+    "deployAdapter": "0xf898891c8b8f34f15faa50d16c4b087c793dc856ca0f8839e92b15e518c6ea56",
+    "bindAdapter": "0x9a0051ffc9e656285d053fd1f04fc38efcf638fee27136e729612f500a24bdb6"
+  }
+}

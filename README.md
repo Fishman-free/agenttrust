@@ -4,7 +4,11 @@
 
 > Trust infrastructure for agent-to-agent commerce: **identity registration, transaction guarantees, dispute resolution, and reputation records**.
 >
-> The four contracts are deployed on the local Anvil demo chain. Base Sepolia (Chain ID 84532) is currently **undeployed and read-only**.
+> The four core contracts are deployed on local Anvil and on Base Sepolia (Chain ID 84532). The Base Sepolia deployment is RPC-validated; authoritative addresses and deployment metadata are in [`deployments/84532.json`](deployments/84532.json).
+>
+> **Live testnet:** https://agenttrust.site is served by Tokyo Caddy with valid HTTPS; `www.agenttrust.site` redirects to the apex. GitHub Pages deployment-gate changes exist but are not merged. The contracts are unaudited, testnet-only, and **not production-ready**.
+>
+> Base Sepolia uses an explicit **backend-attestation** World ID v4 architecture, not direct onchain World proof verification. The same-origin `/api/world-id` backend calls the official v4 Developer Portal API and signs attestations with server-only trusted-attester keys. `WorldIDV4AttestationVerifier` at `0x1325C3eD12d535Bc33A56305466159d370BDf6cE` is bound to the Registry. PoH registration, guarantor, and juror gates are enabled. Because `verifySameIdentity` returns `false`, recovery always requires all guardians and a 48-hour veto window.
 
 ---
 
@@ -33,10 +37,10 @@ An Agent ID has both an ERC-721 holder and a responsible subject. A normal ERC-7
 |---|---|
 | Contracts | Solidity 0.8.24, Foundry, OpenZeppelin v5 |
 | Frontend | Next.js 16, wagmi v3, viem v2, Tailwind v4 |
-| Networks | Local Anvil (deployed demo); Base Sepolia (undeployed, read-only preview) |
+| Networks | Local Anvil (deployed demo); Base Sepolia 84532 (core contracts deployed and RPC-validated; see [`deployments/84532.json`](deployments/84532.json)) |
 | Tests | Foundry unit, fuzz, E2E, and invariant tests |
 
-**Authoritative test result:** **146 tests passed, 0 failed, 0 skipped across 10 suites**.
+**Authoritative test result:** **159 tests passed, 0 failed, 0 skipped**.
 
 ---
 
@@ -72,7 +76,7 @@ export PATH="$HOME/.foundry/bin:$PATH"          # if Foundry is not on PATH on W
 NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 ```
 
-Expected authoritative result: **146 tests passed, 0 failed, 0 skipped across 10 suites**.
+Expected authoritative result: **159 tests passed, 0 failed, 0 skipped**.
 
 #### 2. Start the local chain and deploy the contracts
 
@@ -155,7 +159,7 @@ The guarantor stake must equal the transaction amount multiplied by the coverage
 `commitVote` must include the immutable on-chain `caseStake`. Jurors must have registered before trade creation and cannot be trade parties. Reveal with the same side and salt saved before commit; export the secret backup immediately.
 
 **Can I use Base Sepolia?**
-Base Sepolia (Chain ID **84532**) is currently **undeployed and read-only**. Follow [`contracts/demo/DEPLOY-BaseSepolia.md`](contracts/demo/DEPLOY-BaseSepolia.md) to deploy with an uncommitted test key, generate the manifest from the named broadcast, validate optional RPC wiring, and remove the Pages read-only gate only after review.
+Yes, as an unaudited, testnet-only deployment. The four core contracts on Base Sepolia (Chain ID **84532**) are deployed and RPC-validated; use [`deployments/84532.json`](deployments/84532.json) as the sole core-address source. https://agenttrust.site is live on Tokyo Caddy with valid HTTPS, and `www` redirects to the apex; the GitHub Pages deployment-gate workflow is modified but not merged. World ID app `app_01728cabff1e05950af1ff18c06c9d38` and relying party `rp_fd884ac4342cc4d1` are registered. Since a v4 direct verifier is unavailable on Base Sepolia, the live path uses same-origin backend attestation through `/api/world-id` and trusted adapter `0x1325C3eD12d535Bc33A56305466159d370BDf6cE`, which is bound to the Registry. This enables PoH registration and guarantor/juror gates, but introduces explicit backend and attester trust. `verifySameIdentity` returns `false`, so recovery uses all guardians plus a 48-hour veto. See [`contracts/demo/DEPLOY-BaseSepolia.md`](contracts/demo/DEPLOY-BaseSepolia.md).
 
 ---
 

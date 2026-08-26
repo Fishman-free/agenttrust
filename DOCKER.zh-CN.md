@@ -43,7 +43,7 @@ curl http://localhost:8545
 docker compose logs setup
 ```
 
-权威合约测试结果为：**10 个套件共 146 tests passed, 0 failed, 0 skipped**。Compose 只负责运行环境；测试命令见 [`README.zh-CN.md`](README.zh-CN.md)。
+权威合约测试结果为：**159 tests passed, 0 failed, 0 skipped**。Compose 只负责运行环境；测试命令见 [`README.zh-CN.md`](README.zh-CN.md)。
 
 ## 工作原理
 
@@ -64,7 +64,7 @@ docker compose logs setup
 
 ### 合约地址与状态
 
-`deployments/31337.json` 记录默认 Anvil 账户前四次 CREATE 的规范确定性地址；`deployments/84532.json` 明确标记 Base Sepolia 为 `undeployed`。`frontend/lib/config.ts` 不保存地址字面量，只选择生成的 manifest。
+`deployments/31337.json` 记录本地规范确定性地址；[`deployments/84532.json`](deployments/84532.json) 记录已部署并通过 RPC 校验的 Base Sepolia 核心合约。`frontend/lib/config.ts` 不保存地址字面量，只选择生成的 manifest。Docker Compose 仍仅用于本地，不会部署或修改公共测试网。
 
 ```bash
 node scripts/deployment-manifest.mjs --write  # generate 的别名；修改 manifest 后重建 TypeScript
@@ -107,7 +107,7 @@ anvil 链 id 为 31337（Chain ID 31337 / 网络名 "Local Anvil"）。建议使
 `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
 
 ### 可以使用 Base Sepolia 吗？
-Base Sepolia（Chain ID 84532）当前尚未部署且仅提供只读研究预览；该场景不在本 compose 覆盖范围。参考 [`README.zh-CN.md`](README.zh-CN.md) 与 `frontend/lib/config.ts`。
+World ID app `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。Base Sepolia（Chain ID 84532）上的四个核心合约已部署并通过 RPC 校验，核心地址以 [`deployments/84532.json`](deployments/84532.json) 为准；本 Compose 仍仅覆盖本地环境。https://agenttrust.site 已在东京 Caddy 上线且 HTTPS 有效，`www` 重定向到主域名；GitHub Pages 部署门禁工作流已修改但尚未合并。Base Sepolia PoH 使用已绑定的 `WorldIDV4AttestationVerifier`（`0x1325C3eD12d535Bc33A56305466159d370BDf6cE`）和同源 `/api/world-id` 后端。这是通过 World ID 官方 v4 Developer Portal API 完成的可信后端证明，并非 World 证明直接链上验证。PoH 注册、担保人和陪审门禁已启用；由于 `verifySameIdentity` 返回 `false`，找回采用全部守护人 + 48 小时否决窗。该部署未经审计、仅限测试网，不具备生产可用性。详见 [`contracts/demo/DEPLOY-BaseSepolia.zh-CN.md`](contracts/demo/DEPLOY-BaseSepolia.zh-CN.md)。
 
 ### 端口 8545 已被占用
 宿主机上若已有进程占用 8545（例如手动启动的本地 `anvil` 或旧版演示进程），会与 Docker 的 anvil 容器端口映射冲突。解决：

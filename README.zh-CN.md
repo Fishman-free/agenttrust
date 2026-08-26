@@ -3,7 +3,11 @@
 [English](README.md) | **简体中文**
 
 > 为智能体间商务提供 **身份注册、交易担保、争议裁决、信誉记录** 的可信基础设施。
-> 区块链方案：四合约已部署于本地 anvil 演示链；Base Sepolia（Chain ID 84532）当前尚未部署，仅提供只读研究预览。
+> 四个核心合约已部署于本地 Anvil 演示链和 Base Sepolia（Chain ID 84532）；Base Sepolia 部署已通过 RPC 校验，权威地址与部署元数据见 [`deployments/84532.json`](deployments/84532.json)。
+>
+> **测试网站点已上线：**https://agenttrust.site 由东京 Caddy 提供服务，HTTPS 证书有效；`www.agenttrust.site` 会重定向到主域名。GitHub Pages 部署门禁工作流已修改但尚未合并。合约未经审计、仅限测试网，**不具备生产可用性**。
+>
+> Base Sepolia 采用明确的 **后端证明（backend-attestation）** World ID v4 架构，并非 World 证明直接链上验证。同源 `/api/world-id` 后端调用官方 v4 Developer Portal API，再使用仅保存在服务器的可信证明人密钥签名；`WorldIDV4AttestationVerifier` 已部署到 `0x1325C3eD12d535Bc33A56305466159d370BDf6cE` 并绑定 Registry。PoH 注册、担保人和陪审门禁已启用。由于 `verifySameIdentity` 返回 `false`，找回固定要求全部守护人批准并经过 48 小时否决窗。
 
 ---
 
@@ -34,8 +38,8 @@ Agent ID 同时记录 ERC-721 持有人和责任主体。普通 ERC-721 转让�
 |---|---|
 | 合约 | Solidity 0.8.24 + Foundry + OpenZeppelin v5 |
 | 前端 | Next.js 16 + wagmi v3 + viem v2 + Tailwind v4 |
-| 链 | 本地 anvil（已部署演示）/ Base Sepolia（尚未部署、只读预览） |
-| 测试 | Foundry：10 个套件，146 个测试（unit、fuzz、E2E、invariant） |
+| 链 | 本地 Anvil（已部署演示）/ Base Sepolia 84532（核心合约已部署并通过 RPC 校验；见 [`deployments/84532.json`](deployments/84532.json)） |
+| 测试 | Foundry：159 个测试（unit、fuzz、E2E、invariant） |
 
 ---
 
@@ -71,7 +75,7 @@ export PATH="$HOME/.foundry/bin:$PATH"          # Windows：foundry 不在 PATH 
 NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 ```
 
-✅ 权威测试基线：**10 个套件共 146 tests passed, 0 failed, 0 skipped**（包含 unit、fuzz、E2E 与 invariant）
+✅ 权威测试基线：**159 tests passed, 0 failed, 0 skipped**（包含 unit、fuzz、E2E 与 invariant）
 
 #### 第二步：启动本地演示链 + 部署合约
 
@@ -151,7 +155,7 @@ Foundry 装在 `~/.foundry/bin`，不在 PATH。先执行 `export PATH="$HOME/.f
 `commitVote` 必须发送链上不可变 `caseStake`，且 juror 必须在交易创建前注册并非交易相关方。Reveal 必须使用 commit 前保存的同一 side/salt；请先导出页面中的 secret 备份。
 
 **Q6: 部署到真实链（Base Sepolia）？**
-Base Sepolia（Chain ID **84532**）当前**尚未部署且仅可只读**。部署流程见 [`contracts/demo/DEPLOY-BaseSepolia.zh-CN.md`](contracts/demo/DEPLOY-BaseSepolia.zh-CN.md)：设置测试网私钥（勿提交 git）→ 部署 → 从具名 broadcast 生成 manifest → 用可选 RPC wiring 校验 → 审查后解除 Pages 只读门。
+可以，但仅可视为未经审计、仅限测试网的部署。Base Sepolia（Chain ID **84532**）四个核心合约已部署并通过 RPC 校验，核心地址以 [`deployments/84532.json`](deployments/84532.json) 为准。https://agenttrust.site 已在东京 Caddy 上线且 HTTPS 有效，`www` 会重定向到主域名；GitHub Pages 部署门禁工作流已修改但尚未合并。World ID app `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1` 已注册。由于 Base Sepolia 没有可用的 v4 直接验证器，线上采用同源 `/api/world-id` 后端证明与已绑定 Registry 的可信适配器 `0x1325C3eD12d535Bc33A56305466159d370BDf6cE`。PoH 注册和担保人/陪审门禁已启用，但必须明确依赖后端与可信证明人；`verifySameIdentity` 返回 `false`，因此找回使用全部守护人 + 48 小时否决窗。详见 [`contracts/demo/DEPLOY-BaseSepolia.zh-CN.md`](contracts/demo/DEPLOY-BaseSepolia.zh-CN.md)。
 
 ---
 

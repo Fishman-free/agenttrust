@@ -1,6 +1,5 @@
-# GitHub Pages publishes an explicit read-only Base Sepolia research preview.
-# A writable build remains disabled until deployments/84532.json contains a verified deployment.
-name: Deploy read-only research preview
+# GitHub Pages publishes the RPC-validated Base Sepolia deployment.
+name: Deploy Base Sepolia app
 
 on:
   workflow_run:
@@ -38,8 +37,8 @@ jobs:
       - name: Check generated deployment configuration
         run: node scripts/deployment-manifest.mjs check
 
-      - name: Enforce explicit read-only Base Sepolia preview
-        run: node -e "const d=require('./deployments/84532.json'); if(d.status!=='undeployed') throw new Error('Pages is intentionally read-only; update this workflow only after a separately approved and verified deployment')"
+      - name: Enforce verified Base Sepolia deployment
+        run: node -e "const d=require('./deployments/84532.json'); if(d.status!=='deployed'||Object.values(d.contracts).some(a=>/^0x0{40}$/i.test(a))) throw new Error('Pages requires a nonzero, deployed Base Sepolia manifest')"
 
       - name: Install dependencies
         run: npm ci
@@ -49,7 +48,7 @@ jobs:
         run: npm test -- __tests__/config.test.ts
         working-directory: frontend
 
-      - name: Build read-only Base Sepolia preview
+      - name: Build Base Sepolia app
         run: npm run build
         working-directory: frontend
         env:
