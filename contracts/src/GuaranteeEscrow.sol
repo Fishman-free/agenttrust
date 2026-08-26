@@ -26,6 +26,13 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
         PARTIAL_BUYER
     }
 
+    struct EvidenceRecord {
+        bool exists;
+        bytes32 contentHash;
+        string summary;
+        uint256 submittedAt;
+    }
+
     struct Trade {
         bool exists;
         uint256 id;
@@ -71,7 +78,8 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     uint256 public constant GUARANTEE_ACCEPT_WINDOW = 1 days;
     uint256 public constant DELIVER_WINDOW = 1 days;
     uint256 public constant CONFIRM_WINDOW = 1 days;
-    uint256 public constant CASE_OPEN_WINDOW = 1 days;
+    uint256 public constant EVIDENCE_WINDOW = 1 days;
+    uint256 public constant CASE_OPEN_WINDOW = 2 days;
     uint256 public constant MAX_COVERAGE = 2e18;
     uint256 public constant MAX_PREMIUM_BPS = 2000;
     uint256 public constant DISPUTE_BOND_BPS = 200;
@@ -87,6 +95,8 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     uint256 public totalLiability;
     uint256 public maxOpenStake;
     mapping(uint256 => Trade) private _trades;
+    mapping(uint256 => mapping(address => EvidenceRecord)) private _evidence;
+    mapping(uint256 => mapping(address => uint256)) public evidenceSubmissionCount;
     mapping(address => uint256) public pendingWithdrawals;
     mapping(address => uint256) public openTradeCount;
     mapping(address => uint256) public openStakeBySubject;
@@ -101,6 +111,9 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     event TradeDelivered(uint256 indexed tradeId);
     event TradeDisputed(uint256 indexed tradeId);
     event ArbitrationOpened(uint256 indexed tradeId);
+    event EvidenceSubmitted(
+        uint256 indexed tradeId, address indexed subject, bytes32 contentHash, string summary, uint256 submittedAt
+    );
     event TradeResolved(uint256 indexed tradeId, Verdict verdict, uint256 buyerShareBps);
     event TradeVoided(uint256 indexed tradeId);
     event OutcomeDeferred(uint256 indexed tradeId, ReputationHub.Outcome outcome);
@@ -356,9 +369,47 @@ contract GuaranteeEscrow is Ownable, ReentrancyGuard {
     function openArbitration(uint256 tradeId) external onlyOwner existingTrade(tradeId) {
         Trade storage t = _trades[tradeId];
         require(t.state == State.DISPUTED && !t.caseOpened, unicode"GuaranteeEscrow: 不可开案");
+        require(block.timestamp >= t.disputedAt + EVIDENCE_WINDOW, unicode"GuaranteeEscrow: 举证窗口未结束");
         require(block.timestamp <= t.disputedAt + CASE_OPEN_WINDOW, unicode"GuaranteeEscrow: 开案超时");
         t.caseOpened = true;
         emit ArbitrationOpened(tradeId);
+    }
+
+    /// @notice Single-round evidence submission: one record per party, updatable inside the window.
+    function submitEvidence(uint256 tradeId, bytes32 contentHash, string calldata summary)
+        external
+        existingTrade(tradeId)
+    {
+        Trade storage t = _trades[tradeId];
+        require(t.state == State.DISPUTED, unicode"GuaranteeEscrow: 仅争议中可举证");
+        require(!t.caseOpened, unicode"GuaranteeEscrow: 案件已开案");
+        require(block.timestamp <= t.disputedAt + EVIDENCE_WINDOW, unicode"GuaranteeEscrow: 举证窗口已关闭");
+        require(
+            msg.sender == t.buyerSubject || msg.sender == t.sellerSubject,
+            unicode"GuaranteeEscrow: 仅交易主体可举证"
+        );
+        require(contentHash != bytes32(0) || bytes(summary).length != 0, unicode"GuaranteeEscrow: 证据为空");
+
+        EvidenceRecord storage record = _evidence[tradeId][msg.sender];
+        record.exists = true;
+        record.contentHash = contentHash;
+        record.summary = summary;
+        record.submittedAt = block.timestamp;
+        evidenceSubmissionCount[tradeId][msg.sender]++;
+        emit EvidenceSubmitted(tradeId, msg.sender, contentHash, summary, block.timestamp);
+    }
+
+    function evidence(uint256 tradeId, address subject)
+        external
+        view
+        existingTrade(tradeId)
+        returns (EvidenceRecord memory)
+    {
+        return _evidence[tradeId][subject];
+    }
+
+    function evidenceWindowEnd(uint256 tradeId) external view existingTrade(tradeId) returns (uint256) {
+        return _trades[tradeId].disputedAt + EVIDENCE_WINDOW;
     }
 
     function resolveDispute(uint256 tradeId, Verdict verdict, uint256 buyerShareBps)

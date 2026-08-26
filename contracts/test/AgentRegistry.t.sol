@@ -206,6 +206,14 @@ contract AgentRegistryTest is Test {
         registry.deregister();
     }
 
+    function test_verifiedRegistrationRequiresDeposit() public {
+        _installVerifier();
+        registry.setRegistrationDeposit(1 ether);
+        vm.prank(alice);
+        vm.expectRevert(unicode"AgentRegistry: 注册押金不足");
+        registry.registerAgentVerified{value: 0.5 ether}("A", "", "", keccak256("human-alice"), hex"01", _guardians());
+    }
+
     function test_dualChannelPlainWorksAlongsideVerifier() public {
         MockPoHVerifier verifier = _installVerifier();
 

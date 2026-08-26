@@ -89,6 +89,7 @@ contract E2ETest is Test {
         vm.prank(buyer);
         escrow.dispute{value: 0.02 ether}(tradeId);
 
+        vm.warp(block.timestamp + escrow.EVIDENCE_WINDOW() + 1);
         vm.prank(makeAddr("case opener"));
         uint256 caseId = voting.openCase(tradeId);
         bytes32 salt = keccak256("e2e");

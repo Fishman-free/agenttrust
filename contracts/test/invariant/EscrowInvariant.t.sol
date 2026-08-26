@@ -407,6 +407,7 @@ contract EscrowLivenessScenarioTest is Test {
         assertEq(uint8(escrow.tradeState(unopened)), uint8(GuaranteeEscrow.State.VOIDED));
 
         uint256 opened = _disputed();
+        vm.warp(block.timestamp + escrow.EVIDENCE_WINDOW() + 1);
         escrow.openArbitration(opened);
         escrow.voidDispute(opened);
         assertEq(uint8(escrow.tradeState(opened)), uint8(GuaranteeEscrow.State.VOIDED));

@@ -2377,6 +2377,19 @@ export const guaranteeEscrowAbi = [
   },
   {
     "type": "function",
+    "name": "EVIDENCE_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "FUND_WINDOW",
     "inputs": [],
     "outputs": [
@@ -2594,6 +2607,95 @@ export const guaranteeEscrowAbi = [
   {
     "type": "function",
     "name": "eligibilityAgentCount",
+    "inputs": [
+      {
+        "name": "tradeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "evidence",
+    "inputs": [
+      {
+        "name": "tradeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct GuaranteeEscrow.EvidenceRecord",
+        "components": [
+          {
+            "name": "exists",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "contentHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "summary",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "submittedAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "evidenceSubmissionCount",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "evidenceWindowEnd",
     "inputs": [
       {
         "name": "tradeId",
@@ -3233,6 +3335,29 @@ export const guaranteeEscrowAbi = [
   },
   {
     "type": "function",
+    "name": "submitEvidence",
+    "inputs": [
+      {
+        "name": "tradeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "contentHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "summary",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "timeoutAutoRelease",
     "inputs": [
       {
@@ -3455,6 +3580,43 @@ export const guaranteeEscrowAbi = [
         "name": "outcome",
         "type": "uint8",
         "internalType": "enum ReputationHub.Outcome",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "EvidenceSubmitted",
+    "inputs": [
+      {
+        "name": "tradeId",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "subject",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "contentHash",
+        "type": "bytes32",
+        "internalType": "bytes32",
+        "indexed": false
+      },
+      {
+        "name": "summary",
+        "type": "string",
+        "internalType": "string",
+        "indexed": false
+      },
+      {
+        "name": "submittedAt",
+        "type": "uint256",
+        "internalType": "uint256",
         "indexed": false
       }
     ],

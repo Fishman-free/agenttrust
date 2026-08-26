@@ -90,6 +90,7 @@ contract SchellingVotingTest is Test {
         escrow.deliver(tradeId);
         vm.prank(buyer);
         escrow.dispute{value: 0.02 ether}(tradeId);
+        vm.warp(block.timestamp + escrow.EVIDENCE_WINDOW() + 1);
         vm.prank(opener);
         caseId = voting.openCase(tradeId);
     }
