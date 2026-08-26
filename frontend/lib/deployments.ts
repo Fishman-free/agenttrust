@@ -13,10 +13,10 @@ export const DEPLOYMENTS = {
       "schellingVoting": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9"
     },
     "runtimeBytecodeHashes": {
-      "agentRegistry": "0xe928340fde1154896b0b39fbc28ef9fb7da4e5686608da762846b63179f63fc3",
+      "agentRegistry": "0xb831b82412784516cebba6a25dc66a1b5b8ef240eb5f69839b20a763fb53202b",
       "reputationHub": "0x97d8f0ea00a4213196ec249cf24fd4fc8a9381074ecebcae010f3ce669f8c4c2",
-      "guaranteeEscrow": "0x1370d9dc5a01a695e0024c8d5a668a900bb392eeb75121278d6c504bb3767b5e",
-      "schellingVoting": "0xabad59804d1987706cce268b27c37afb700e48cfd89731ca9c391243f6293b7d"
+      "guaranteeEscrow": "0x2a6d23546de08fb937f2a4d142ea50d23637ce6a46c1b7b97d9df77b8793f83c",
+      "schellingVoting": "0x0cbeba04aba9987e623652536892b8f3bbe6efb962ea7b37e082336078a69465"
     },
     "deploymentMetadata": {
       "agentRegistry": {
@@ -47,6 +47,7 @@ export const DEPLOYMENTS = {
           "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
           "100000000000000000",
           "86400",
+          "86400",
           "86400"
         ],
         "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
@@ -57,6 +58,7 @@ export const DEPLOYMENTS = {
     "votingParameters": {
       "caseStake": "100000000000000000",
       "commitWindow": 86400,
+      "randomCommitWindow": 86400,
       "revealWindow": 86400
     }
   },
@@ -87,6 +89,7 @@ export const DEPLOYMENTS = {
     "votingParameters": {
       "caseStake": "100000000000000000",
       "commitWindow": 86400,
+      "randomCommitWindow": 86400,
       "revealWindow": 86400
     }
   }

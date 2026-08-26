@@ -77,7 +77,7 @@ test("normal trade completes through the UI with three accounts, withdrawals, an
   await expect(page.getByText("Proof of Humanity (World ID) is not complete")).toBeVisible();
   await page.getByLabel("Bind nullifier (0x… 64 hex digits; any unused value on testnet)").fill(`0x${(200).toString(16).padStart(64, "0")}`);
   await page.getByRole("button", { name: "Bind PoH (upgrade to verified identity)" }).click();
-  await waitForTransaction(page, "Humanity proof bound; the deposit difference was returned.");
+  await waitForTransaction(page, "Humanity proof bound.");
   await expect(page.getByText(/Human verification:/)).toContainText("Verified (World ID)");
   const tradeId = await createDeliveredTrade(page, ids);
   await selectAccount(page, 0);
@@ -107,7 +107,7 @@ test("disputed trade uses exact bond and six pre-registered identities through c
   await page.goto("/agents/");
   await connectWallet(page);
   const ids: string[] = [];
-  for (let index = 0; index < 6; index++) {
+  for (let index = 0; index < 8; index++) {
     ids.push(index < 2
       ? await registerAgent(page, index, `DisputeIdentity${index}`)
       : await registerAgentVerified(page, index, `DisputeIdentity${index}`));
@@ -145,24 +145,40 @@ test("disputed trade uses exact bond and six pre-registered identities through c
   const caseId = await page.getByLabel("Case ID").inputValue();
   expect(caseId).toMatch(/^\d+$/);
   await expect(page.getByText("Trade case").locator("..")).toContainText(`Case #${caseId}`);
-  await expect(page.getByText("Eligible Agent snapshot count").locator("..")).toContainText("6");
+  await expect(page.getByText("Eligible Agent snapshot count").locator("..")).toContainText("8");
   await expect(page.getByText("Current immutable caseStake").locator("..")).toContainText("0.1 ETH");
 
-  for (const [index, side] of [[3, "Buyer"], [4, "Buyer"], [5, "Seller"]] as const) {
+  for (const [index, side] of [[3, "Buyer"], [4, "Buyer"]] as const) {
     await selectAccount(page, index);
     await page.getByRole("radio", { name: side }).check();
     await page.getByRole("button", { name: "Generate secret and submit commitment" }).click();
     await waitForTransaction(page, "Commitment confirmed; local secret marked committed.");
   }
-  await expect(page.getByText("Committed", { exact: true }).first().locator("..")).toContainText("3");
+  await expect(page.getByText("Committed", { exact: true }).first().locator("..")).toContainText("2");
+
+  await increaseTime(page, 86_401);
+  await expect(page.getByRole("button", { name: "Draw random jury" })).toBeEnabled();
+  await page.getByRole("button", { name: "Draw random jury" }).click();
+  await waitForTransaction(page, "Random jury drawn.");
+  await expect(page.getByText("Randomly invited", { exact: true }).first().locator("..")).toContainText("3");
+
+  for (const [index, side] of [[5, "Seller"], [6, "Buyer"], [7, "Buyer"]] as const) {
+    await selectAccount(page, index);
+    await expect(page.getByRole("button", { name: "Generate secret and submit commitment" })).toBeEnabled();
+    await page.getByRole("radio", { name: side }).check();
+    await page.getByRole("button", { name: "Generate secret and submit commitment" }).click();
+    await waitForTransaction(page, "Commitment confirmed; local secret marked committed.");
+  }
+  await expect(page.getByText("Committed", { exact: true }).first().locator("..")).toContainText("5");
+
   await increaseTime(page, 86_401);
   await expect(page.getByText("Phase", { exact: true }).first().locator("..")).toContainText("Reveal");
-  for (const index of [3, 4, 5]) {
+  for (const index of [3, 4, 5, 6, 7]) {
     await selectAccount(page, index);
     await page.getByRole("button", { name: "Reveal with saved secret" }).click();
     await waitForTransaction(page, "Reveal confirmed; local secret marked revealed.");
   }
-  await expect(page.getByText("Buyer votes", { exact: true }).locator("..")).toContainText("2");
+  await expect(page.getByText("Buyer votes", { exact: true }).locator("..")).toContainText("4");
   await expect(page.getByText("Seller votes", { exact: true }).locator("..")).toContainText("1");
   await increaseTime(page, 86_401);
   await expect(page.getByText("Phase", { exact: true }).first().locator("..")).toContainText("Awaiting settlement");
@@ -198,15 +214,15 @@ test("disputed trade uses exact bond and six pre-registered identities through c
   expect(rejectedClaim.message).toMatch(/receipt status 0x0|revert|slashed/i);
   await expect(page.getByText(/^Pending withdrawal:/)).toContainText("0 ETH");
 
-  for (const index of [3, 4]) {
+  for (const index of [3, 4, 6, 7]) {
     await selectAccount(page, index);
     await page.getByRole("button", { name: "Claim" }).click();
     await waitForTransaction(page, "Claim credited to pending withdrawals.");
-    await expect(page.getByText(/^Pending withdrawal:/)).toContainText("0.15 ETH");
+    await expect(page.getByText(/^Pending withdrawal:/)).toContainText("0.125 ETH");
     await page.getByRole("button", { name: "Withdraw to current account" }).click();
     await waitForTransaction(page, "Balance withdrawn.");
   }
-  for (const index of [3, 4, 5]) {
+  for (const index of [3, 4, 5, 6, 7]) {
     await selectAccount(page, index);
     await page.getByRole("button", { name: "Finalize my juror metrics" }).click();
     await waitForTransaction(page, "Juror metrics finalized.");

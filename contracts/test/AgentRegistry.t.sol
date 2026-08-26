@@ -92,25 +92,25 @@ contract AgentRegistryTest is Test {
         assertEq(registry.responsibleParty(id), alice, "NFT transfer must not rewrite legal subject");
     }
 
-    function test_plainRegistrationLocksTripleDepositAndCreditsOverpayment() public {
+    function test_plainRegistrationLocksStandardDepositAndCreditsOverpayment() public {
         registry.setRegistrationDeposit(1 ether);
         RejectEther rejector = new RejectEther();
         vm.deal(address(rejector), 4 ether);
 
         rejector.register{value: 4 ether}(registry, _guardians());
-        assertEq(registry.deposits(address(rejector)), 3 ether, "plain channel locks 3x deposit");
-        assertEq(registry.pendingWithdrawals(address(rejector)), 1 ether);
+        assertEq(registry.deposits(address(rejector)), 1 ether, "plain channel locks standard deposit");
+        assertEq(registry.pendingWithdrawals(address(rejector)), 3 ether);
 
         address recipient = makeAddr("recipient");
         rejector.withdraw(registry, payable(recipient));
-        assertEq(recipient.balance, 1 ether);
+        assertEq(recipient.balance, 3 ether);
     }
 
-    function test_plainRegistrationRequiresTripleDeposit() public {
+    function test_plainRegistrationRequiresDeposit() public {
         registry.setRegistrationDeposit(1 ether);
         vm.prank(alice);
         vm.expectRevert(unicode"AgentRegistry: 注册押金不足");
-        registry.registerAgent{value: 2 ether}("A", "", "", _guardians());
+        registry.registerAgent{value: 0.5 ether}("A", "", "", _guardians());
     }
 
     function test_sameSubjectCannotClaimTwoCommunityIds() public {
@@ -152,14 +152,14 @@ contract AgentRegistryTest is Test {
 
     function test_deregisterRefundsDepositAndRetiresIdentity() public {
         registry.setRegistrationDeposit(1 ether);
-        uint256 id = _registerAs(alice, 3 ether);
+        uint256 id = _registerAs(alice, 1 ether);
         assertEq(registry.agentCount(), 1);
-        assertEq(registry.deposits(alice), 3 ether, "plain channel locks 3x");
+        assertEq(registry.deposits(alice), 1 ether, "plain channel locks standard deposit");
 
         vm.prank(alice);
         registry.deregister();
 
-        assertEq(registry.pendingWithdrawals(alice), 3 ether, "full deposit refunded via pull payment");
+        assertEq(registry.pendingWithdrawals(alice), 1 ether, "full deposit refunded via pull payment");
         assertEq(registry.deposits(alice), 0);
         assertTrue(registry.deregistered(alice));
         assertFalse(registry.activeSubjects(alice));
@@ -170,10 +170,10 @@ contract AgentRegistryTest is Test {
         assertEq(registry.balanceOf(alice), 0, "NFT burned");
         assertEq(registry.responsibleParty(id), alice, "profile stays readable by ID");
 
-        vm.deal(alice, 3 ether);
+        vm.deal(alice, 1 ether);
         vm.prank(alice);
         vm.expectRevert(unicode"AgentRegistry: 主体已注册");
-        registry.registerAgent{value: 3 ether}("Second", "", "", _guardians());
+        registry.registerAgent{value: 1 ether}("Second", "", "", _guardians());
 
         vm.prank(alice);
         vm.expectRevert(unicode"AgentRegistry: 主体未激活");
@@ -217,7 +217,7 @@ contract AgentRegistryTest is Test {
     function test_dualChannelPlainWorksAlongsideVerifier() public {
         MockPoHVerifier verifier = _installVerifier();
 
-        // 普通通道在验证器启用后仍然开放，押金 3x
+        // 普通通道在验证器启用后仍然开放，押金同标准档
         vm.prank(bob);
         uint256 plainId = registry.registerAgent{value: 0}("Bob", "", "", _guardians());
         assertEq(registry.ownerOf(plainId), bob);
@@ -270,12 +270,12 @@ contract AgentRegistryTest is Test {
         assertEq(registry.pohVerifier(), address(0));
     }
 
-    function test_bindPoHAnchorsRefundsExcessAndUnlocksCapabilities() public {
+    function test_bindPoHAnchorsAndUnlocksCapabilities() public {
         _installVerifier();
         registry.setRegistrationDeposit(1 ether);
-        _registerAs(alice, 3 ether);
+        _registerAs(alice, 1 ether);
         assertFalse(registry.isPoHVerified(alice));
-        assertEq(registry.deposits(alice), 3 ether);
+        assertEq(registry.deposits(alice), 1 ether);
 
         bytes32 nullifier = keccak256("human-alice");
         vm.prank(alice);
@@ -286,12 +286,12 @@ contract AgentRegistryTest is Test {
         assertTrue(registry.usedPoHNullifiers(nullifier));
         assertTrue(registry.isPoHVerified(alice));
         assertEq(registry.deposits(alice), 1 ether, "deposit retained at standard level");
-        assertEq(registry.pendingWithdrawals(alice), 2 ether, "difference refunded");
+        assertEq(registry.pendingWithdrawals(alice), 0 ether, "no excess to refund");
 
         // 注销时退标准档押金
         vm.prank(alice);
         registry.deregister();
-        assertEq(registry.pendingWithdrawals(alice), 3 ether);
+        assertEq(registry.pendingWithdrawals(alice), 1 ether);
     }
 
     function test_bindPoHRejectsAlreadyAnchoredInactiveAndReusedNullifier() public {
@@ -637,8 +637,8 @@ contract AgentRegistryTest is Test {
 
     function test_slashDepositAclAndAccounting() public {
         registry.setRegistrationDeposit(1 ether);
-        _registerAs(alice, 3 ether);
-        assertEq(registry.deposits(alice), 3 ether);
+        _registerAs(alice, 1 ether);
+        assertEq(registry.deposits(alice), 1 ether);
 
         vm.prank(makeAddr("stranger"));
         vm.expectRevert();
@@ -652,12 +652,12 @@ contract AgentRegistryTest is Test {
         address victim = makeAddr("victim");
         vm.prank(makeAddr("attacker"));
         registry.slashDeposit(alice, victim, 0.5 ether);
-        assertEq(registry.deposits(alice), 2.5 ether);
+        assertEq(registry.deposits(alice), 0.5 ether);
         assertEq(registry.pendingWithdrawals(victim), 0.5 ether);
 
         vm.prank(makeAddr("attacker"));
         vm.expectRevert(unicode"AgentRegistry: 罚没金额无效");
-        registry.slashDeposit(alice, victim, 2.6 ether);
+        registry.slashDeposit(alice, victim, 0.6 ether);
 
         vm.prank(makeAddr("attacker"));
         vm.expectRevert(unicode"AgentRegistry: 罚没收款人为零");

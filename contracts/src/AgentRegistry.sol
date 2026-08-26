@@ -14,9 +14,9 @@ interface ISubjectObligationOracle {
 /// NFT transfers do not change responsibility.
 ///
 /// Dual registration channels:
-///  - Plain: 3x deposit, no recovery anchor, cannot guarantee or serve as juror.
+///  - Plain: standard deposit, no recovery anchor, cannot guarantee or serve as juror.
 ///  - PoH (World ID): standard deposit, graded recovery, full capabilities.
-/// A plain subject can upgrade anytime via `bindPoH` (refunds the deposit difference).
+/// A plain subject can upgrade anytime via `bindPoH` (both channels pay the same deposit).
 ///
 /// Graded recovery for PoH-bound identities:
 ///  - SAME_IDENTITY (same-device World ID proof): >=1 guardian approval + 24h veto window.
@@ -24,7 +24,6 @@ interface ISubjectObligationOracle {
 contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
     uint256 public constant MIN_GUARDIANS = 2;
     uint256 public constant MAX_GUARDIANS = 3;
-    uint256 public constant PLAIN_DEPOSIT_MULTIPLIER = 3;
     uint256 public constant RECOVERY_DELAY_POH = 24 hours;
     uint256 public constant RECOVERY_DELAY_GUARDIAN = 48 hours;
     uint256 public constant RECOVERY_EXECUTION_WINDOW = 7 days;
@@ -134,7 +133,7 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         emit SlashSourceSet(source, authorized);
     }
 
-    /// @notice Plain registration: 3x deposit, no recovery anchor, no guarantor/juror roles.
+    /// @notice Plain registration: standard deposit, no recovery anchor, no guarantor/juror roles.
     /// Stays available even when a PoH verifier is configured (dual channel).
     function registerAgent(
         string memory name,
@@ -142,9 +141,8 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         string memory endpoint,
         address[] calldata guardianList
     ) external payable nonReentrant returns (uint256 tokenId) {
-        uint256 deposit = registrationDeposit * PLAIN_DEPOSIT_MULTIPLIER;
-        require(msg.value >= deposit, unicode"AgentRegistry: 注册押金不足");
-        tokenId = _registerAgent(name, description, endpoint, guardianList, bytes32(0), deposit);
+        require(msg.value >= registrationDeposit, unicode"AgentRegistry: 注册押金不足");
+        tokenId = _registerAgent(name, description, endpoint, guardianList, bytes32(0), registrationDeposit);
     }
 
     /// @notice PoH registration: standard deposit, graded recovery, full capabilities.
@@ -161,8 +159,8 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         tokenId = _registerAgent(name, description, endpoint, guardianList, nullifier, registrationDeposit);
     }
 
-    /// @notice Upgrades a plain subject to PoH: anchors the World ID nullifier, refunds the
-    /// deposit difference (3x -> 1x) and unlocks recovery plus guarantor/juror roles.
+    /// @notice Upgrades a plain subject to PoH: anchors the World ID nullifier and unlocks
+    /// recovery plus guarantor/juror roles. Any excess deposit is refunded.
     function bindPoH(bytes32 nullifier, bytes calldata proof) external nonReentrant {
         require(activeSubjects[msg.sender] && !deregistered[msg.sender], unicode"AgentRegistry: 主体未激活");
         require(subjectNullifier[msg.sender] == bytes32(0), unicode"AgentRegistry: 已有 PoH 锚点");
@@ -400,6 +398,11 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         address subject = agents[agentId].owner;
         require(subject != address(0), unicode"AgentRegistry: 智能体不存在");
         return subject;
+    }
+
+    /// @notice Non-reverting subject lookup by agent id, used by random jury selection.
+    function subjectAt(uint256 agentId) external view returns (address) {
+        return agents[agentId].owner;
     }
 
     function isRegisteredSubjectAt(address subject, uint256 snapshotBlock) external view returns (bool) {

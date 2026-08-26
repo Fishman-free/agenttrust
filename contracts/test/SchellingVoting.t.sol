@@ -45,13 +45,14 @@ contract SchellingVotingTest is Test {
         registry.setPoHVerifier(address(verifier));
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
-        voting = new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 1 days, 1 days);
+        escrow.setMaxOpenStake(type(uint256).max);
+        voting = new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 1 days, 1 days, 1 days);
         hub.setOutcomeWriter(address(escrow), true);
         hub.setJurorMetricWriter(address(voting), true);
         escrow.transferOwnership(address(voting));
-        vm.deal(buyer, 3 ether);
+        vm.deal(buyer, 103.02 ether);
         vm.deal(seller, 1 ether);
-        vm.deal(guarantor, 2 ether);
+        vm.deal(guarantor, 101 ether);
         vm.prank(buyer);
         buyerId = registry.registerAgent("Buyer", "", "", _guardians());
         vm.prank(seller);
@@ -72,7 +73,7 @@ contract SchellingVotingTest is Test {
         vm.prank(plainJuror);
         registry.registerAgent("Plain Juror", "", "", _guardians());
         vm.prank(buyer);
-        tradeId = escrow.createTrade(buyerId, sellerId, 1 ether, 0.2 ether);
+        tradeId = escrow.createTrade(buyerId, sellerId, 101 ether, 20 ether);
         vm.deal(postCreationJuror, 1 ether);
         vm.prank(postCreationJuror);
         registry.registerAgentVerified(
@@ -81,15 +82,15 @@ contract SchellingVotingTest is Test {
         vm.prank(seller);
         escrow.acceptTrade(tradeId);
         vm.prank(buyer);
-        escrow.fund{value: 1 ether}(tradeId);
+        escrow.fund{value: 101 ether}(tradeId);
         vm.prank(guarantor);
-        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.1 ether);
+        escrow.guarantee{value: 101 ether}(tradeId, guarantorId, 1e18, 15 ether);
         vm.prank(seller);
         escrow.acceptGuarantee(tradeId);
         vm.prank(seller);
         escrow.deliver(tradeId);
         vm.prank(buyer);
-        escrow.dispute{value: 0.02 ether}(tradeId);
+        escrow.dispute{value: 2.02 ether}(tradeId);
         vm.warp(block.timestamp + escrow.EVIDENCE_WINDOW() + 1);
         vm.prank(opener);
         caseId = voting.openCase(tradeId);
@@ -123,7 +124,7 @@ contract SchellingVotingTest is Test {
         assertEq(voting.openCommitmentCount(jurors[0]), 1, "commit increments once");
         assertEq(voting.openCommitmentCount(jurors[3]), 1);
 
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 2 days);
         _reveal(jurors[0], SchellingVoting.Side.BUYER);
         _reveal(jurors[1], SchellingVoting.Side.BUYER);
         _reveal(jurors[2], SchellingVoting.Side.SELLER);
@@ -154,7 +155,7 @@ contract SchellingVotingTest is Test {
 
     function test_nonexistentCaseRejectedIncludingDefaultCaseZero() public {
         SchellingVoting fresh =
-            new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 1 days, 1 days);
+            new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 1 days, 1 days, 1 days);
         vm.prank(jurors[0]);
         vm.expectRevert(unicode"SchellingVoting: 案件不存在");
         fresh.commitVote{value: STAKE}(0, bytes32(uint256(1)));
@@ -177,47 +178,40 @@ contract SchellingVotingTest is Test {
         voting.caseIdForTrade(tradeWithoutCase);
     }
 
-    function test_caseDetailsTracksConfigurationCountsAndResult() public {
-        (
-            uint256 indexedTradeId,
-            uint256 stake,
-            uint256 commitDeadline,
-            uint256 revealDeadline,
-            uint256 eligibilityAgentCount,,,,,,,
-        ) = voting.caseDetails(caseId);
-        assertEq(indexedTradeId, tradeId);
-        assertEq(stake, STAKE);
-        assertEq(commitDeadline, block.timestamp + 1 days);
-        assertEq(revealDeadline, block.timestamp + 2 days);
-        assertEq(eligibilityAgentCount, escrow.eligibilityAgentCount(tradeId));
+    function test_caseDetailsTracksConfiguration() public view {
+        SchellingVoting.CaseDetailsView memory view_ = voting.caseDetails(caseId);
+        assertEq(view_.tradeId, tradeId);
+        assertEq(view_.stake, STAKE);
+        assertEq(view_.commitDeadline, block.timestamp + 1 days);
+        assertEq(view_.revealDeadline, block.timestamp + 3 days);
+        assertEq(view_.eligibilityAgentCount, escrow.eligibilityAgentCount(tradeId));
+        assertEq(view_.jurySize, 13, "amount > 100 ether seats the largest panel");
+        assertEq(view_.voluntarySeats, 6, "floor(N/2) volunteers");
+        assertEq(view_.randomSeats, 7, "ceil(N/2) random");
+        assertEq(view_.randomCommitDeadline, block.timestamp + 2 days);
+        assertEq(view_.randomInvitedCount, 0);
+        assertFalse(view_.randomSelected);
+    }
 
+    function test_caseDetailsTracksCountsAndResult() public {
         _commit(jurors[0], SchellingVoting.Side.BUYER);
         _commit(jurors[1], SchellingVoting.Side.BUYER);
         _commit(jurors[2], SchellingVoting.Side.BUYER);
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 2 days);
         _reveal(jurors[0], SchellingVoting.Side.BUYER);
         _reveal(jurors[1], SchellingVoting.Side.BUYER);
         _reveal(jurors[2], SchellingVoting.Side.BUYER);
         vm.warp(block.timestamp + 1 days);
         voting.settle(caseId);
 
-        (
-            ,,,,,
-            uint256 committedCount,
-            uint256 buyerVotes,
-            uint256 sellerVotes,
-            uint256 abstentions,
-            bool settled,
-            bool effective,
-            SchellingVoting.Side winner
-        ) = voting.caseDetails(caseId);
-        assertEq(committedCount, 3);
-        assertEq(buyerVotes, 3);
-        assertEq(sellerVotes, 0);
-        assertEq(abstentions, 0);
-        assertTrue(settled);
-        assertTrue(effective);
-        assertEq(uint8(winner), uint8(SchellingVoting.Side.BUYER));
+        SchellingVoting.CaseDetailsView memory view_ = voting.caseDetails(caseId);
+        assertEq(view_.committedCount, 3);
+        assertEq(view_.votesForBuyer, 3);
+        assertEq(view_.votesForSeller, 0);
+        assertEq(view_.abstentions, 0);
+        assertTrue(view_.settled);
+        assertTrue(view_.effective);
+        assertEq(uint8(view_.winner), uint8(SchellingVoting.Side.BUYER));
     }
 
     function test_jurorStatusTracksCommitRevealAndClaimLifecycle() public {
@@ -234,7 +228,7 @@ contract SchellingVotingTest is Test {
         assertEq(uint8(side), uint8(SchellingVoting.Side.BUYER));
         assertFalse(claimed);
 
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 2 days);
         _reveal(jurors[0], SchellingVoting.Side.SELLER);
         (committed, revealed, side, claimed) = voting.jurorStatus(caseId, jurors[0]);
         assertTrue(committed);
@@ -261,7 +255,7 @@ contract SchellingVotingTest is Test {
         vm.expectRevert(unicode"SchellingVoting: 不在揭示窗口");
         voting.revealVote(caseId, SchellingVoting.Side.BUYER, SALT);
 
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 2 days);
         vm.prank(jurors[2]);
         vm.expectRevert(unicode"SchellingVoting: 提交窗口已结束");
         voting.commitVote{value: STAKE}(caseId, bytes32(uint256(1)));
@@ -284,7 +278,7 @@ contract SchellingVotingTest is Test {
         _commit(jurors[0], SchellingVoting.Side.BUYER);
         _commit(jurors[1], SchellingVoting.Side.BUYER);
         _commit(jurors[2], SchellingVoting.Side.SELLER);
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 2 days);
         _reveal(jurors[0], SchellingVoting.Side.BUYER);
         _reveal(jurors[1], SchellingVoting.Side.BUYER);
         _reveal(jurors[2], SchellingVoting.Side.SELLER);
@@ -294,7 +288,7 @@ contract SchellingVotingTest is Test {
         (bool effective, SchellingVoting.Side winner) = voting.caseResult(caseId);
         assertTrue(effective);
         assertEq(uint8(winner), uint8(SchellingVoting.Side.BUYER));
-        assertEq(escrow.pendingWithdrawals(buyer), 2.02 ether);
+        assertEq(escrow.pendingWithdrawals(buyer), 204.02 ether);
 
         vm.expectRevert(unicode"SchellingVoting: 已结算");
         voting.settle(caseId);
@@ -324,7 +318,7 @@ contract SchellingVotingTest is Test {
         for (uint256 i; i < 5; ++i) {
             _commit(jurors[i], i < 3 ? SchellingVoting.Side.BUYER : SchellingVoting.Side.SELLER);
         }
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 2 days);
         for (uint256 i; i < 5; ++i) {
             _reveal(jurors[i], i < 3 ? SchellingVoting.Side.BUYER : SchellingVoting.Side.SELLER);
         }
@@ -335,8 +329,8 @@ contract SchellingVotingTest is Test {
         assertFalse(effective);
         assertEq(uint8(winner), uint8(SchellingVoting.Side.ABSTAIN));
         assertEq(uint8(escrow.tradeState(tradeId)), uint8(GuaranteeEscrow.State.VOIDED));
-        assertEq(escrow.pendingWithdrawals(buyer), 1.02 ether);
-        assertEq(escrow.pendingWithdrawals(guarantor), 1 ether);
+        assertEq(escrow.pendingWithdrawals(buyer), 103.02 ether);
+        assertEq(escrow.pendingWithdrawals(guarantor), 101 ether);
     }
 
     function test_tradeCreationSnapshotExcludesLaterIdentity() public {
@@ -373,7 +367,7 @@ contract SchellingVotingTest is Test {
         for (uint256 i; i < 5; ++i) {
             _commit(jurors[i], SchellingVoting.Side.BUYER);
         }
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 2 days);
         for (uint256 i; i < 3; ++i) {
             _reveal(jurors[i], SchellingVoting.Side.BUYER);
         }
@@ -394,7 +388,7 @@ contract SchellingVotingTest is Test {
     function test_unrevealedOrInsufficientCaseIsVoidedAndRefundable() public {
         _commit(jurors[0], SchellingVoting.Side.BUYER);
         _commit(jurors[1], SchellingVoting.Side.BUYER);
-        vm.warp(block.timestamp + 2 days);
+        vm.warp(block.timestamp + 3 days);
         voting.settle(caseId);
         vm.prank(jurors[0]);
         voting.claim(caseId);
@@ -416,13 +410,13 @@ contract SchellingVotingTest is Test {
 
     function test_constructorRejectsInvalidFixedConfiguration() public {
         vm.expectRevert(unicode"SchellingVoting: 依赖地址为零");
-        new SchellingVoting(address(0), address(registry), address(hub), STAKE, 1 days, 1 days);
+        new SchellingVoting(address(0), address(registry), address(hub), STAKE, 1 days, 1 days, 1 days);
         vm.expectRevert(unicode"SchellingVoting: 质押必须大于零");
-        new SchellingVoting(address(escrow), address(registry), address(hub), 0, 1 days, 1 days);
+        new SchellingVoting(address(escrow), address(registry), address(hub), 0, 1 days, 1 days, 1 days);
         vm.expectRevert(unicode"SchellingVoting: 窗口必须大于零");
-        new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 0, 1 days);
+        new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 0, 1 days, 1 days);
         vm.expectRevert(unicode"SchellingVoting: 窗口过长");
-        new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 7 days + 1, 1 days);
+        new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 7 days + 1, 1 days, 1 days);
     }
 
     function test_commitRequiresCurrentHubEligibility() public {
@@ -432,11 +426,76 @@ contract SchellingVotingTest is Test {
         voting.commitVote{value: STAKE}(caseId, bytes32(uint256(1)));
     }
 
+    function test_jurySizeForAmountLadder() public view {
+        assertEq(voting.jurySizeForAmount(0), 5, "T1");
+        assertEq(voting.jurySizeForAmount(1 ether), 5, "T1 boundary");
+        assertEq(voting.jurySizeForAmount(1 ether + 1), 7, "T2");
+        assertEq(voting.jurySizeForAmount(10 ether), 7, "T2 boundary");
+        assertEq(voting.jurySizeForAmount(10 ether + 1), 9, "T3");
+        assertEq(voting.jurySizeForAmount(50 ether), 9, "T3 boundary");
+        assertEq(voting.jurySizeForAmount(50 ether + 1), 11, "T4");
+        assertEq(voting.jurySizeForAmount(100 ether), 11, "T4 boundary");
+        assertEq(voting.jurySizeForAmount(100 ether + 1), 13, "T5");
+        assertEq(voting.jurySizeForAmount(1000 ether), 13, "T5 far");
+    }
+
+    function test_selectRandomJuryGatingAndIdempotency() public {
+        vm.expectRevert(unicode"SchellingVoting: 志愿窗口未结束");
+        voting.selectRandomJury(caseId);
+
+        vm.warp(block.timestamp + 1 days);
+        voting.selectRandomJury(caseId);
+        vm.expectRevert(unicode"SchellingVoting: 已抽取陪审团");
+        voting.selectRandomJury(caseId);
+    }
+
+    function test_selectRandomJuryNeverInvitesIneligibleSubjects() public {
+        vm.warp(block.timestamp + 1 days);
+        voting.selectRandomJury(caseId);
+
+        assertFalse(voting.isRandomInvited(caseId, buyer), "party buyer never invited");
+        assertFalse(voting.isRandomInvited(caseId, seller), "party seller never invited");
+        assertFalse(voting.isRandomInvited(caseId, guarantor), "party guarantor never invited");
+        assertFalse(voting.isRandomInvited(caseId, postCreationJuror), "post-snapshot never invited");
+        assertFalse(voting.isRandomInvited(caseId, opener), "non-registered opener never invited");
+    }
+
+    function test_randomInvitedJurorCanCommitInRandomWindow() public {
+        _commit(jurors[0], SchellingVoting.Side.BUYER);
+
+        vm.warp(block.timestamp + 1 days);
+        voting.selectRandomJury(caseId);
+
+        // Committed volunteers are excluded from the random draw.
+        assertFalse(voting.isRandomInvited(caseId, jurors[0]), "volunteer excluded from random draw");
+
+        address invited;
+        for (uint256 i = 1; i < 5; ++i) {
+            if (voting.isRandomInvited(caseId, jurors[i])) {
+                invited = jurors[i];
+                break;
+            }
+        }
+        assertTrue(invited != address(0), "expected at least one random invite");
+
+        bytes32 commitment = voting.voteCommitment(caseId, invited, SchellingVoting.Side.BUYER, SALT);
+        vm.prank(invited);
+        voting.commitVote{value: STAKE}(caseId, commitment);
+        assertEq(voting.openCommitmentCount(invited), 1);
+    }
+
+    function test_nonInvitedSubjectCannotCommitInRandomWindow() public {
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(jurors[0]);
+        vm.expectRevert(unicode"SchellingVoting: 非随机抽中陪审员");
+        voting.commitVote{value: STAKE}(caseId, bytes32(uint256(1)));
+    }
+
     function test_finalizeJurorMetricsIsPermissionlessAndDomainSeparated() public {
         _commit(jurors[0], SchellingVoting.Side.BUYER);
         _commit(jurors[1], SchellingVoting.Side.BUYER);
         _commit(jurors[2], SchellingVoting.Side.SELLER);
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 2 days);
         _reveal(jurors[0], SchellingVoting.Side.BUYER);
         _reveal(jurors[1], SchellingVoting.Side.BUYER);
         _reveal(jurors[2], SchellingVoting.Side.SELLER);
@@ -469,7 +528,7 @@ contract SchellingVotingTest is Test {
         _commit(jurors[1], SchellingVoting.Side.BUYER);
         _commit(jurors[2], SchellingVoting.Side.BUYER);
         hub.setJurorMetricWriter(address(voting), false);
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 2 days);
         _reveal(jurors[0], SchellingVoting.Side.BUYER);
         _reveal(jurors[1], SchellingVoting.Side.BUYER);
         _reveal(jurors[2], SchellingVoting.Side.BUYER);
@@ -486,7 +545,7 @@ contract SchellingVotingTest is Test {
         _commit(jurors[0], SchellingVoting.Side.ABSTAIN);
         vm.expectRevert(unicode"SchellingVoting: 未结算");
         voting.finalizeJurorMetrics(caseId, jurors[0]);
-        vm.warp(block.timestamp + 2 days);
+        vm.warp(block.timestamp + 3 days);
         voting.settle(caseId);
         vm.expectRevert(unicode"SchellingVoting: 主体未提交");
         voting.finalizeJurorMetrics(caseId, jurors[1]);

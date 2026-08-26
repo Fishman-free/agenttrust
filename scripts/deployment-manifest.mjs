@@ -96,13 +96,14 @@ function expectConstructorArgs(manifest, path) {
     fail(`${path}: GuaranteeEscrow constructorArgs do not match registry/hub`);
   }
   const votingArgs = m.schellingVoting.constructorArgs;
-  if (votingArgs.length !== 6
+  if (votingArgs.length !== 7
     || normalize(votingArgs[0] ?? "") !== normalize(c.guaranteeEscrow)
     || normalize(votingArgs[1] ?? "") !== normalize(c.agentRegistry)
     || normalize(votingArgs[2] ?? "") !== normalize(c.reputationHub)
     || votingArgs[3] !== p.caseStake
     || votingArgs[4] !== String(p.commitWindow)
-    || votingArgs[5] !== String(p.revealWindow)) {
+    || votingArgs[5] !== String(p.randomCommitWindow)
+    || votingArgs[6] !== String(p.revealWindow)) {
     fail(`${path}: SchellingVoting constructorArgs do not match wiring/votingParameters`);
   }
 }
@@ -120,7 +121,7 @@ function validateManifest(manifest, path) {
   if (!p || typeof p !== "object" || !DECIMAL_PATTERN.test(p.caseStake ?? "") || BigInt(p.caseStake) <= 0n) {
     fail(`${path}: votingParameters.caseStake must be a positive decimal string`);
   }
-  for (const key of ["commitWindow", "revealWindow"]) {
+  for (const key of ["commitWindow", "randomCommitWindow", "revealWindow"]) {
     if (!Number.isSafeInteger(p[key]) || p[key] <= 0) fail(`${path}: votingParameters.${key} must be a positive integer`);
   }
   for (const key of CONTRACT_KEYS) {
@@ -312,6 +313,7 @@ function validateRpc(manifest, rpcUrl) {
   if (cast(rpcUrl, ["call", c.reputationHub, "jurorMetricWriters(address)(bool)", c.schellingVoting]) !== "true") fail("ReputationHub has not authorized SchellingVoting");
   expectUint(cast(rpcUrl, ["call", c.schellingVoting, "caseStake()(uint256)"]), manifest.votingParameters.caseStake, "SchellingVoting.caseStake");
   expectUint(cast(rpcUrl, ["call", c.schellingVoting, "commitWindow()(uint256)"]), manifest.votingParameters.commitWindow, "SchellingVoting.commitWindow");
+  expectUint(cast(rpcUrl, ["call", c.schellingVoting, "randomCommitWindow()(uint256)"]), manifest.votingParameters.randomCommitWindow, "SchellingVoting.randomCommitWindow");
   expectUint(cast(rpcUrl, ["call", c.schellingVoting, "revealWindow()(uint256)"]), manifest.votingParameters.revealWindow, "SchellingVoting.revealWindow");
   console.log(`validated runtime bytecode, deployment metadata, parameters, and wiring on chain ${manifest.chainId} via ${rpcUrl}`);
 }

@@ -14,6 +14,7 @@ contract VotingHandler is Test {
     uint256 public immutable caseId;
     uint256 public immutable stake;
     uint256 public immutable commitDeadline;
+    uint256 public immutable randomCommitDeadline;
     uint256 public immutable revealDeadline;
     address[] internal jurors;
 
@@ -34,6 +35,7 @@ contract VotingHandler is Test {
         uint256 caseId_,
         uint256 stake_,
         uint256 commitDeadline_,
+        uint256 randomCommitDeadline_,
         uint256 revealDeadline_,
         address[] memory jurors_
     ) {
@@ -41,6 +43,7 @@ contract VotingHandler is Test {
         caseId = caseId_;
         stake = stake_;
         commitDeadline = commitDeadline_;
+        randomCommitDeadline = randomCommitDeadline_;
         revealDeadline = revealDeadline_;
         jurors = jurors_;
     }
@@ -60,7 +63,7 @@ contract VotingHandler is Test {
     }
 
     function advanceToReveal() external {
-        if (block.timestamp < commitDeadline) vm.warp(commitDeadline);
+        if (block.timestamp < randomCommitDeadline) vm.warp(randomCommitDeadline);
     }
 
     function reveal(uint256 jurorSeed) external {
@@ -162,14 +165,15 @@ contract VotingInvariantTest is StdInvariant, Test {
         registry.setPoHVerifier(address(verifier));
         hub = new ReputationHub();
         escrow = new GuaranteeEscrow(address(registry), address(hub));
-        voting = new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 1 days, 1 days);
+        escrow.setMaxOpenStake(type(uint256).max);
+        voting = new SchellingVoting(address(escrow), address(registry), address(hub), STAKE, 1 days, 1 days, 1 days);
         hub.setOutcomeWriter(address(escrow), true);
         hub.setJurorMetricWriter(address(voting), true);
         escrow.transferOwnership(address(voting));
 
-        vm.deal(buyer, 3 ether);
+        vm.deal(buyer, 103.02 ether);
         vm.deal(seller, 1 ether);
-        vm.deal(guarantor, 2 ether);
+        vm.deal(guarantor, 101 ether);
         vm.prank(buyer);
         buyerId = registry.registerAgent("Buyer", "", "", _guardians());
         vm.prank(seller);
@@ -188,7 +192,7 @@ contract VotingInvariantTest is StdInvariant, Test {
         }
 
         vm.prank(buyer);
-        tradeId = escrow.createTrade(buyerId, sellerId, 1 ether, 0.2 ether);
+        tradeId = escrow.createTrade(buyerId, sellerId, 101 ether, 20 ether);
         vm.deal(postCreationJuror, 2 ether);
         vm.prank(postCreationJuror);
         registry.registerAgentVerified(
@@ -197,22 +201,24 @@ contract VotingInvariantTest is StdInvariant, Test {
         vm.prank(seller);
         escrow.acceptTrade(tradeId);
         vm.prank(buyer);
-        escrow.fund{value: 1 ether}(tradeId);
+        escrow.fund{value: 101 ether}(tradeId);
         vm.prank(guarantor);
-        escrow.guarantee{value: 1 ether}(tradeId, guarantorId, 1e18, 0.1 ether);
+        escrow.guarantee{value: 101 ether}(tradeId, guarantorId, 1e18, 15 ether);
         vm.prank(seller);
         escrow.acceptGuarantee(tradeId);
         vm.prank(seller);
         escrow.deliver(tradeId);
         vm.prank(buyer);
-        escrow.dispute{value: 0.02 ether}(tradeId);
+        escrow.dispute{value: 2.02 ether}(tradeId);
 
         vm.warp(block.timestamp + escrow.EVIDENCE_WINDOW() + 1);
         openedAt = block.timestamp;
         vm.prank(makeAddr("invariant opener"));
         caseId = voting.openCase(tradeId);
         address[] memory handlerJurors = jurors;
-        handler = new VotingHandler(voting, caseId, STAKE, openedAt + 1 days, openedAt + 2 days, handlerJurors);
+        handler = new VotingHandler(
+            voting, caseId, STAKE, openedAt + 1 days, openedAt + 2 days, openedAt + 3 days, handlerJurors
+        );
 
         bytes4[] memory selectors = new bytes4[](8);
         selectors[0] = handler.commit.selector;
@@ -283,11 +289,11 @@ contract VotingInvariantTest is StdInvariant, Test {
         _commit(jurors[2], SchellingVoting.Side.BUYER);
         _commit(jurors[3], SchellingVoting.Side.SELLER);
         _commit(jurors[4], SchellingVoting.Side.SELLER);
-        vm.warp(openedAt + 1 days);
+        vm.warp(openedAt + 2 days);
         _reveal(jurors[0], SchellingVoting.Side.BUYER);
         _reveal(jurors[1], SchellingVoting.Side.BUYER);
         _reveal(jurors[2], SchellingVoting.Side.BUYER);
-        vm.warp(openedAt + 2 days);
+        vm.warp(openedAt + 3 days);
         voting.settle(caseId);
 
         (bool effective, SchellingVoting.Side winner) = voting.caseResult(caseId);
@@ -298,7 +304,7 @@ contract VotingInvariantTest is StdInvariant, Test {
     function test_ineffectiveVoidDoesNotChangeReputation() public {
         _commit(jurors[0], SchellingVoting.Side.BUYER);
         _commit(jurors[1], SchellingVoting.Side.BUYER);
-        vm.warp(openedAt + 2 days);
+        vm.warp(openedAt + 3 days);
         voting.settle(caseId);
 
         (uint256 completed, uint256 defaulted, uint256 won, uint256 lost) = hub.reputation(sellerId);
@@ -314,12 +320,12 @@ contract VotingInvariantTest is StdInvariant, Test {
         _commit(jurors[1], SchellingVoting.Side.BUYER);
         _commit(jurors[2], SchellingVoting.Side.BUYER);
         _commit(jurors[3], SchellingVoting.Side.SELLER);
-        vm.warp(openedAt + 1 days);
+        vm.warp(openedAt + 2 days);
         _reveal(jurors[0], SchellingVoting.Side.BUYER);
         _reveal(jurors[1], SchellingVoting.Side.BUYER);
         _reveal(jurors[2], SchellingVoting.Side.BUYER);
         _reveal(jurors[3], SchellingVoting.Side.SELLER);
-        vm.warp(openedAt + 2 days);
+        vm.warp(openedAt + 3 days);
         voting.settle(caseId);
 
         uint256 dust = STAKE % 3;
@@ -333,7 +339,7 @@ contract VotingInvariantTest is StdInvariant, Test {
 
     function test_maliciousRecipientFailureDoesNotBlockOwnerWithdrawal() public {
         _commit(jurors[0], SchellingVoting.Side.BUYER);
-        vm.warp(openedAt + 2 days);
+        vm.warp(openedAt + 3 days);
         voting.settle(caseId);
         vm.prank(jurors[0]);
         voting.claim(caseId);
@@ -356,7 +362,7 @@ contract VotingInvariantTest is StdInvariant, Test {
 
     function test_noDoubleSettleClaimOrWithdraw() public {
         _commit(jurors[0], SchellingVoting.Side.BUYER);
-        vm.warp(openedAt + 2 days);
+        vm.warp(openedAt + 3 days);
         voting.settle(caseId);
         vm.expectRevert(unicode"SchellingVoting: 已结算");
         voting.settle(caseId);
