@@ -36,7 +36,8 @@ An Agent ID has both an ERC-721 holder and a responsible subject. A normal ERC-7
 | Layer | Technology |
 |---|---|
 | Contracts | Solidity 0.8.24, Foundry, OpenZeppelin v5 |
-| Frontend | Next.js 16, wagmi v3, viem v2, Tailwind v4 |
+| Frontend | Next.js 16 static export, wagmi v3, viem v2, Tailwind v4 |
+| Authentication | Fastify Auth BFF, PostgreSQL, server-verified SIWE, opaque HttpOnly sessions; optional Casdoor OIDC broker for future Google/Apple login |
 | Networks | Local Anvil (deployed demo); Base Sepolia 84532 (core contracts deployed and RPC-validated; see [`deployments/84532.json`](deployments/84532.json)) |
 | Tests | Foundry unit, fuzz, E2E, and invariant tests |
 
@@ -59,20 +60,22 @@ An Agent ID has both an ERC-721 holder and a responsible subject. A normal ERC-7
 ### Option 1: one-command Docker setup (recommended)
 
 ```bash
-docker compose up -d --build     # start Anvil, deploy contracts, and serve the frontend
+docker compose up -d --build     # start PostgreSQL/Auth BFF, Anvil, deploy contracts, and serve the frontend
 ```
 
 Open **http://localhost:3000** after the services become healthy.
 
 - See [`DOCKER.md`](DOCKER.md) for prerequisites, validation, and troubleshooting.
-- Services start in order: `anvil` → `setup` → `frontend`.
+- Services start in parallel-safe order: `postgres` → `auth-bff`, and `anvil` → `setup`; `frontend` waits for both Auth BFF and validated contracts.
+- Wallet login uses a server-generated, one-time SIWE challenge. Google and Apple are shown as configuring until real OAuth credentials are supplied.
 - Stop them with `docker compose down`.
 
 ### Option 2: manual setup
 
 #### Requirements
 
-- **Node.js >=20.9**
+- **Node.js >=22**
+- **PostgreSQL 14+** for the Auth BFF (or use Docker Compose)
 - **Foundry** ([installation guide](https://book.getfoundry.sh/getting-started/installation), including `forge`, `cast`, and `anvil`)
 - **MetaMask** or another browser wallet
 
@@ -102,7 +105,20 @@ sh contracts/scripts/deploy.sh
 
 Canonical Anvil addresses, runtime bytecode hashes, deployment metadata, and voting parameters live in `deployments/31337.json`. Generate the frontend module with `node scripts/deployment-manifest.mjs --write` (`generate` is an alias), and verify synchronization with `node scripts/deployment-manifest.mjs --check` (`check` is an alias). Contract addresses are not hard-coded in `frontend/lib/config.ts`.
 
-#### 3. Start the frontend
+#### 3. Start the Auth BFF
+
+Create a disposable PostgreSQL database, copy `auth-bff/.env.example` to an untracked `.env`, and set `SIWE_CHAIN_ID=31337`. Then load those variables in your shell:
+
+```bash
+cd auth-bff
+npm install
+npm run migrate
+npm run dev
+```
+
+See [`auth-bff/README.md`](auth-bff/README.md) and [`docs/authentication.md`](docs/authentication.md) for the API contract and security boundaries. Google and Apple remain unavailable until real Casdoor/OAuth credentials are configured.
+
+#### 4. Start the frontend
 
 ```bash
 cd frontend
@@ -110,7 +126,7 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:3000**.
+Open **http://localhost:3000**. A local development reverse proxy is still required for `/api/auth/*`; Docker Compose is the supported one-command path.
 
 > **Wallet setup:** add `http://127.0.0.1:8545` with Chain ID `31337`, then import an Anvil test key. Each default account has 10000 test ETH:
 >
@@ -142,7 +158,9 @@ A dispute demonstration requires at least six preregistered subjects: buyer, sel
 
 | Page | Route | Capabilities |
 |---|---|---|
-| Agents | `/agents` | Register agents, bind PoH, manage guardians, deregister, and assist recovery |
+| Public overview | `/` | Explain the protocol, role boundaries, recovery limitations, and unaudited testnet status without login |
+| Sign in | `/login` | Server-verified wallet SIWE; Google/Apple honestly remain configuring until OAuth credentials exist |
+| Agents | `/agents` | Register agents, bind experimental PoH, manage guardians, deregister, and assist eligible recovery |
 | Trade | `/trade` | Create, accept, fund, guarantee, deliver, confirm, time out, retry outcomes, and withdraw |
 | Disputes | `/disputes` | Submit evidence, pay the exact bond, open a case, commit/reveal, settle, claim, and finalize juror metrics |
 | Reputation | `/reputation` | Inspect business reputation, responsible-subject juror reputation, and eligibility |

@@ -236,6 +236,13 @@ export default function DisputesPage() {
     args: address ? [address] : undefined,
     query: { enabled: readEnabled && Boolean(address) },
   });
+  const jurorPoHRead = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "isPoHVerified",
+    args: address ? [address] : undefined,
+    query: { enabled: readEnabled && Boolean(address), retry: false },
+  });
   const withdrawalRead = useReadContract({
     address: CONTRACT_ADDRESSES.schellingVoting,
     abi: schellingVotingAbi,
@@ -387,7 +394,7 @@ export default function DisputesPage() {
   const voluntaryWindowOpen = Boolean(details && chainTimestamp !== undefined && chainTimestamp < details.commitDeadline);
   const randomWindowOpen = Boolean(details && chainTimestamp !== undefined && chainTimestamp >= details.commitDeadline && chainTimestamp < details.randomCommitDeadline);
   const isActor = Boolean(address && actors?.some((actor) => sameAddress(actor, address)));
-  const jurorEligible = snapshotEligibleRead.data === true && reputationEligibleRead.data === true && !isActor;
+  const jurorEligible = snapshotEligibleRead.data === true && reputationEligibleRead.data === true && jurorPoHRead.data === true && !isActor;
   const tradeParty = Boolean(address && trade && (sameAddress(address, trade.buyerSubject) || sameAddress(address, trade.sellerSubject)));
 
   const feedback = useTransactionFeedback({
@@ -426,7 +433,10 @@ export default function DisputesPage() {
   });
   const commitSeatOpen = details === undefined ? false : voluntaryWindowOpen ? details.committedCount < details.voluntarySeats : randomWindowOpen && randomInvited;
   const commitReady = readiness(jurorEligible, phaseKey === "commit" && commitSeatOpen && juror?.[0] === false && details !== undefined && secret === undefined, caseId !== undefined && Boolean(address), {
-    unauthorized: isActor ? m.actorJuror : m.ineligibleJuror,
+    unauthorized: isActor ? m.actorJuror
+      : jurorPoHRead.isLoading ? t.poh.checking
+        : jurorPoHRead.error ? t.poh.unavailable
+          : jurorPoHRead.data !== true ? t.poh.requiredJuror : m.ineligibleJuror,
     "invalid-state": secret ? m.existingSecretState : m.commitState,
   });
   const revealReady = readiness(true, phaseKey === "reveal" && juror?.[0] === true && juror[1] === false, Boolean(secretScope && secret && secret.status !== "revealed"), {

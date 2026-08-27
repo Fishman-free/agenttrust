@@ -336,25 +336,22 @@ export default function AgentsPage() {
                 {a.guardian3}
                 <input aria-label={a.guardian3} placeholder={a.optionalAddress} value={guardian3} onChange={(e) => setGuardian3(e.target.value)} className="field-input" />
               </label>
-              <label className="field-checkbox">
-                <input
-                  type="checkbox"
-                  aria-label={a.verifiedMode}
-                  checked={verifiedMode}
-                  onChange={(e) => setVerifiedMode(e.target.checked)}
-                />
-                {a.verifiedModeHelp}
-              </label>
-              {verifiedMode && address && (
-                isLocalMock ? (
+              <details className="labs-card agent-labs">
+                <summary>{t.auth.labs}</summary>
+                <p className="form-hint">{t.auth.worldIdLabs}</p>
+                <label className="field-checkbox">
+                  <input type="checkbox" aria-label={a.verifiedMode} checked={verifiedMode} onChange={(e) => setVerifiedMode(e.target.checked)} />
+                  {a.verifiedModeHelp}
+                </label>
+                {verifiedMode && address && (isLocalMock ? (
                   <>
                     <label className="field-label">{a.nullifier}<input aria-label={a.nullifierAria} placeholder="0x…" value={mockNullifier} onChange={(e) => setMockNullifier(e.target.value)} className="field-input" /></label>
                     <label className="field-label">{a.proof}<input aria-label={a.proofAria} placeholder="0x01" value={mockProof} onChange={(e) => setMockProof(e.target.value)} className="field-input" /></label>
                   </>
                 ) : verifierBound ? (
                   <WorldIdButton subject={address} disabled={busy} label={a.worldIdButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={setAttestation} />
-                ) : <p className="form-warning" role="status">{a.verifierMissing}</p>
-              )}
+                ) : <p className="form-warning" role="status">{a.verifierMissing}</p>)}
+              </details>
               <p className="form-hint">
                 {a.depositHelp}
               </p>

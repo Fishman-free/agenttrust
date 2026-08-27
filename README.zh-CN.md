@@ -37,7 +37,8 @@ Agent ID 同时记录 ERC-721 持有人和责任主体。普通 ERC-721 转让�
 | 层 | 技术 |
 |---|---|
 | 合约 | Solidity 0.8.24 + Foundry + OpenZeppelin v5 |
-| 前端 | Next.js 16 + wagmi v3 + viem v2 + Tailwind v4 |
+| 前端 | Next.js 16 静态导出 + wagmi v3 + viem v2 + Tailwind v4 |
+| 认证 | Fastify Auth BFF + PostgreSQL + 服务端校验 SIWE + HttpOnly 不透明会话；未来可选 Casdoor OIDC 代理 Google/Apple 登录 |
 | 链 | 本地 Anvil（已部署演示）/ Base Sepolia 84532（核心合约已部署并通过 RPC 校验；见 [`deployments/84532.json`](deployments/84532.json)） |
 | 测试 | Foundry：165 个测试（unit、fuzz、E2E、invariant） |
 
@@ -58,20 +59,22 @@ Agent ID 同时记录 ERC-721 持有人和责任主体。普通 ERC-721 转让�
 ### 方式一：Docker 一键启动（推荐）
 
 ```bash
-docker compose up -d --build     # 一条命令启动 anvil 链 + 部署合约 + 前端
+docker compose up -d --build     # 启动 PostgreSQL/Auth BFF、Anvil、部署合约并提供前端
 ```
 
 启动完成后浏览器打开 **http://localhost:3000** 即可使用。
 
 - 详见 [`DOCKER.zh-CN.md`](DOCKER.zh-CN.md)（含前置要求、验证、常见问题）
-- 三个服务：`anvil`（本地链）→ `setup`（自动部署四合约）→ `frontend`（Web 门户）
+- 服务按依赖启动：`postgres` → `auth-bff`，以及 `anvil` → `setup`；`frontend` 等待认证服务和合约校验均就绪
+- 钱包登录使用服务器生成的一次性 SIWE 挑战；Google/Apple 在没有真实 OAuth 凭据时诚实显示“配置中”
 - 停止：`docker compose down`
 
 ### 方式二：手动启动（无 Docker 时）
 
 #### 环境要求
 
-- **Node.js >=20.9**（前端）
+- **Node.js >=22**
+- **PostgreSQL 14+**（Auth BFF；或直接使用 Docker Compose）
 - **Foundry**（合约；[安装教程](https://book.getfoundry.sh/getting-started/installation)，含 `forge`/`cast`/`anvil`）
 - **MetaMask** 或其他钱包（演示需要，可导入 anvil 测试账户）
 
@@ -101,7 +104,20 @@ sh contracts/scripts/deploy.sh
 
 规范 Anvil 地址、runtime bytecode hash、部署元数据与 Voting 参数记录在 `deployments/31337.json`，并通过 `node scripts/deployment-manifest.mjs --write`（`generate` 的别名）生成前端模块；`frontend/lib/config.ts` 不再硬编码地址。可用 `node scripts/deployment-manifest.mjs --check`（`check` 的别名）检查 manifest 与生成文件是否同步。
 
-#### 第三步：启动前端门户
+#### 第三步：启动 Auth BFF
+
+创建一次性 PostgreSQL 数据库，把 `auth-bff/.env.example` 复制为不纳入 Git 的 `.env`，并设置 `SIWE_CHAIN_ID=31337`。将变量载入当前 shell 后：
+
+```bash
+cd auth-bff
+npm install
+npm run migrate
+npm run dev
+```
+
+认证接口和安全边界见 [`auth-bff/README.md`](auth-bff/README.md) 与 [`docs/authentication.md`](docs/authentication.md)。在没有真实 Casdoor/OAuth 凭据时，Google 和 Apple 保持不可用。
+
+#### 第四步：启动前端门户
 
 ```bash
 cd frontend
@@ -109,7 +125,7 @@ npm install
 npm run dev
 ```
 
-打开 **http://localhost:3000**。
+打开 **http://localhost:3000**。`/api/auth/*` 仍需要本地反向代理，因此 Docker Compose 是受支持的一键路径。
 
 > **钱包准备**：MetaMask 添加本地网络 `http://127.0.0.1:8545`（chainId 31337），导入 anvil 测试账户私钥即可获得 10000 ETH 测试资金：
 > - 账户 #0：`0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
@@ -138,7 +154,9 @@ npm run dev
 
 | 页面 | 路径 | 功能 |
 |---|---|---|
-| **智能体** | `/agents` | 连接钱包 → 填名称/描述/端点 → 注册（付注册费）；查看已注册列表 |
+| **公开介绍** | `/` | 无需登录即可了解协议、角色边界、找回限制和未经审计的测试网状态 |
+| **登录** | `/login` | 服务端校验的钱包 SIWE；Google/Apple 在没有 OAuth 凭据时显示配置中 |
+| **智能体** | `/agents` | 登录并绑定钱包 → 填名称/描述/端点 → 注册；查看已注册列表与实验 PoH |
 | **交易** | `/trade` | 创建/接受/托管/担保报价/接受担保/交付/确认、timeout、retry outcome、withdraw |
 | **争议** | `/disputes` | 精确 bond → permissionless 开案 → commit/reveal/settle → claim/withdraw → 固化 juror metrics |
 | **信誉** | `/reputation` | 输入 Agent ID → 查看业务信誉、责任主体 juror 信誉与资格 |

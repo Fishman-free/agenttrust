@@ -2,8 +2,18 @@ agenttrust.site {
 	root * /var/www/agenttrust
 	encode zstd gzip
 
+	@staticAssets path /_next/static/*
+	header @staticAssets Cache-Control "public, max-age=31536000, immutable"
+	@dynamicContent not path /_next/static/* /api/*
+	header @dynamicContent Cache-Control "no-cache"
+
 	handle /api/world-id/* {
 		reverse_proxy 127.0.0.1:8322
+	}
+
+	handle /api/auth/* {
+		header Cache-Control "no-store"
+		reverse_proxy 127.0.0.1:8323
 	}
 
 	handle {
@@ -15,6 +25,8 @@ agenttrust.site {
 		X-Frame-Options SAMEORIGIN
 		Referrer-Policy strict-origin-when-cross-origin
 		Cross-Origin-Opener-Policy same-origin-allow-popups
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Permissions-Policy "geolocation=(), microphone=(), payment=()"
 		-Server
 	}
 

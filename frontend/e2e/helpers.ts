@@ -3,6 +3,13 @@ import { switchAccount } from "./provider";
 
 const lastTransactionHash = new WeakMap<Page, string>();
 
+export async function authenticateLocally(page: Page) {
+  await page.goto("/login/");
+  await page.getByRole("button", { name: "Connect wallet and sign in" }).click();
+  await expect(page).toHaveURL(/\/agents\/?$/);
+  await expect(page.getByRole("region", { name: "Authentication status" })).toBeVisible();
+}
+
 export async function connectWallet(page: Page) {
   await page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Connect wallet" }).click();
   await expect(page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Disconnect" })).toBeVisible();
@@ -14,6 +21,18 @@ export async function selectAccount(page: Page, index: number) {
   const connect = page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Connect wallet" });
   if (await connect.isVisible()) await connect.click();
   await expect.poll(async () => (await page.locator(".wallet-value[title]").getAttribute("title"))?.toLowerCase()).toBe(address.toLowerCase());
+  if (await page.locator(".binding-card").isVisible()) {
+    await page.getByRole("region", { name: "Authentication status" }).getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/login\//);
+    await page.getByRole("button", { name: /^(Connect wallet and sign in|Sign in with connected wallet)$/ }).click();
+    await expect(page).not.toHaveURL(/\/login\//);
+    const walletRegion = page.getByRole("region", { name: "Wallet status" });
+    await expect(walletRegion).toBeVisible();
+    const reconnect = walletRegion.getByRole("button", { name: "Connect wallet" });
+    if (await reconnect.isVisible()) await reconnect.click();
+    await expect.poll(async () => (await page.locator(".wallet-value[title]").getAttribute("title"))?.toLowerCase()).toBe(address.toLowerCase());
+    await expect(page.locator(".binding-card")).toBeHidden();
+  }
   return address;
 }
 
@@ -36,17 +55,18 @@ export async function waitForTransaction(page: Page, successText: string | RegEx
 
 export async function registerAgent(page: Page, accountIndex: number, name: string) {
   await fillRegistrationForm(page, accountIndex, name);
-  await page.getByRole("button", { name: /^Register \(deposit .* ETH, refundable\)/ }).click();
+  await page.getByRole("button", { name: /^Register \(lock .* ETH; conditional return\)/ }).click();
   return await readRegisteredAgentId(page);
 }
 
 export async function registerAgentVerified(page: Page, accountIndex: number, name: string) {
   await fillRegistrationForm(page, accountIndex, name);
+  await page.getByText("Labs", { exact: false }).first().click();
   await page.getByRole("checkbox", { name: /Register with World ID Proof of Humanity/ }).check();
   await page
     .getByLabel("World ID nullifier (0x… 64 digits)")
     .fill(`0x${(accountIndex + 100).toString(16).padStart(64, "0")}`);
-  await page.getByRole("button", { name: /^Register \(deposit .* ETH, refundable\)/ }).click();
+  await page.getByRole("button", { name: /^Register \(lock .* ETH; conditional return\)/ }).click();
   return await readRegisteredAgentId(page);
 }
 

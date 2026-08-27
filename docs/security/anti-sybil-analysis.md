@@ -46,7 +46,7 @@ A single private key repeatedly calls `registerAgent`, minting another ID each t
 An operator creates N EOAs, contract wallets, or ERC-4337 wallets and registers once from each. The EVM cannot determine that unrelated addresses share an operator.
 
 **Mitigations:**
-- The standard PoH registration deposit defaults to **0.01 ETH** through `REGISTRATION_DEPOSIT`; the ordinary path requires `registrationDeposit × 3` (0.03 ETH at the default), raising the cost of disposable identities.
+- Both ordinary and PoH registration use the configured `registrationDeposit`, which defaults to **0.01 ETH** through `REGISTRATION_DEPOSIT`. The current deployment does not charge a higher ordinary-registration deposit.
 - PoH-verified registration or `bindPoH` consumes a unique human-proof nullifier.
 - The two roles with the greatest direct governance/insurance leverage—guarantor and juror—require `isPoHVerified`.
 
@@ -57,8 +57,8 @@ A purely on-chain system cannot distinguish one human from many wallets. It can 
 
 The implemented PoH layer is described in [World ID integration](../world-id-integration.md):
 - `WorldIDPoHVerifier` is the legacy adapter design for deprecated World ID V1/Contracts 3.0. Its consuming registration/upgrade and non-consuming same-identity recovery model is design input only; a v4-compatible replacement is required.
-- **Dual-path registration:** the ordinary path uses a 3× deposit, has no recovery anchor, and cannot guarantee or serve as a juror; the PoH path uses the standard deposit and unlocks all roles. This preserves permissionless buyer/seller onboarding.
-- `bindPoH` consumes an unused nullifier, creates the anchor, unlocks privileged roles and recovery, and refunds the deposit difference.
+- **Dual-path registration:** both paths use the standard configured deposit. The ordinary path has no recovery anchor and cannot guarantee or serve as a juror; the PoH path anchors a nullifier and unlocks the contract's privileged-role and recovery paths. This preserves permissionless buyer/seller onboarding.
+- `bindPoH` consumes an unused nullifier, creates the anchor, and unlocks the current privileged-role and recovery paths. It refunds only any historical excess above the configured deposit.
 - `registerAgentVerified` requires a valid unused nullifier; `usedPoHNullifiers` provides a registry-level replay defense in addition to router consumption.
 - `GuaranteeEscrow.guarantee` and `SchellingVoting.commitVote` enforce the PoH role gates.
 
@@ -74,7 +74,7 @@ Because the Agent ID is ERC-721, an attacker can buy or rent an NFT with a stron
 ### Path 5: Zero-deposit configuration (configuration risk; safer default)
 A deployment with a zero deposit makes ordinary identity creation free.
 
-**Mitigation:** `Deploy.s.sol` defaults `REGISTRATION_DEPOSIT` to `0.01 ether`; operators may explicitly override it. Ordinary registration then charges three times the configured deposit.
+**Mitigation:** `Deploy.s.sol` defaults `REGISTRATION_DEPOSIT` to `0.01 ether`; operators may explicitly override it. Both registration paths charge the configured value.
 
 **Residual exposure:** The owner can configure an ineffective value, and a fixed ETH amount changes in deterrent value with market price.
 
@@ -100,8 +100,8 @@ Current verification baseline: `forge test` **159 contract tests passed**; `npm 
 
 ### Tiered recovery properties
 
-- Ordinary registration: 3× deposit, no recovery, no guarantee/jury access.
-- PoH registration: standard deposit, recovery, and privileged-role access. `bindPoH` upgrades an ordinary identity and refunds the difference.
+- Ordinary registration: standard configured deposit, no nullifier-backed recovery, and no guarantee/jury access.
+- PoH registration: the same configured deposit plus recovery and privileged-role access. `bindPoH` upgrades an ordinary identity and only refunds any historical excess deposit.
 - **S path:** same-device, non-consuming World ID proof → at least one guardian + 24-hour veto window.
 - **G path:** missing or failed same-identity proof → all guardians + 48-hour veto window.
 - Recovery has a seven-day execution period and migrates NFT control, responsible subject, deposit, eligibility snapshot, guardians, and nullifier anchor without resetting reputation.

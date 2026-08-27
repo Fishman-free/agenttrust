@@ -29,6 +29,49 @@ jobs:
       - run: forge test
       - run: forge coverage --ir-minimum
 
+  auth-bff:
+    name: Auth BFF
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-bookworm
+        env:
+          POSTGRES_DB: auth_bff_ci
+          POSTGRES_USER: auth_bff
+          POSTGRES_PASSWORD: auth-bff-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U auth_bff -d auth_bff_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: auth-bff
+    env:
+      DATABASE_URL: postgresql://auth_bff:auth-bff-ci@127.0.0.1:5432/auth_bff_ci
+      TEST_DATABASE_URL: postgresql://auth_bff:auth-bff-ci@127.0.0.1:5432/auth_bff_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: auth-bff/package-lock.json
+      - name: Create disposable integration-test database
+        run: |
+          container=$(docker ps --filter ancestor=postgres:17.6-bookworm --format '{{.ID}}')
+          test -n "$container"
+          docker exec "$container" createdb -U auth_bff -O auth_bff auth_bff_test
+      - run: npm ci
+      - run: npm run migrate
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
   frontend:
     name: Frontend, ABI, and manifests
     runs-on: ubuntu-latest
@@ -47,6 +90,7 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             world-id-service/package-lock.json
+            auth-bff/package-lock.json
       - run: forge build --root contracts
       - run: node scripts/gen-abi.mjs --check
       - run: node scripts/deployment-manifest.mjs --check
@@ -107,7 +151,7 @@ jobs:
 
   docker:
     name: Docker Compose smoke test
-    needs: [contracts, frontend]
+    needs: [contracts, frontend, auth-bff]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -134,6 +178,15 @@ jobs:
           done
           [ "$ok" -eq 1 ] || { echo "frontend /healthz never became ready" >&2; exit 1; }
           docker compose exec -T frontend test -s /readiness/contracts-ready
+          curl --fail --silent --show-error http://127.0.0.1:3000/api/auth/health \
+            | jq -e '.ok == true and .service == "auth-bff" and .database == "ok"'
+          postgres_container=$(docker compose ps -q postgres)
+          test -n "$postgres_container"
+          # Runtime isolation: neither the auth database nor the BFF may publish a host port.
+          test -z "$(docker port "$postgres_container" 5432/tcp || true)"
+          auth_container=$(docker compose ps -q auth-bff)
+          test -n "$auth_container"
+          test -z "$(docker port "$auth_container" 8323/tcp || true)"
       - name: Verify Anvil chain id and four runtime contracts
         run: |
           rpc() {
@@ -180,7 +233,7 @@ jobs:
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3000/healthz)" = 503
       - name: Show service status and logs
         if: always()
-        run: docker compose ps && docker compose logs anvil setup frontend
+        run: docker compose ps && docker compose logs postgres auth-bff anvil setup frontend
       - name: Stop stack
         if: always()
         run: docker compose down --volumes --remove-orphans
