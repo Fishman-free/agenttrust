@@ -8,6 +8,10 @@ test.describe.configure({ mode: "serial" });
 
 test.beforeEach(async ({ page }) => {
   await installAnvilProvider(page);
+  // The previous test may end on /login/ or a route that client-redirects;
+  // settle on the public homepage before authenticating to avoid races.
+  await page.goto("/");
+  await page.waitForLoadState("load");
   await authenticateLocally(page);
 });
 
@@ -28,8 +32,11 @@ test("static export serves routes, a direct deep link, and a real 404", async ({
 test("anonymous deep links require authentication and restore their target after SIWE", async ({ page }) => {
   await page.goto("/trade/?tradeId=42");
   await page.getByRole("region", { name: "Authentication status" }).getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL(/\/login\//);
+  const gateRedirect = page.waitForURL(/\/login\/\?returnTo=%2Fdisputes%2F%3FtradeId%3D42/);
   await page.goto("/disputes/?tradeId=42");
-  await expect(page).toHaveURL(/\/login\/\?returnTo=%2Fdisputes%2F%3FtradeId%3D42/);
+  await gateRedirect;
+  await expect(page.getByRole("button", { name: /^(Connect wallet and sign in|Sign in with connected wallet)$/ })).toBeVisible();
   await page.getByRole("button", { name: /^(Connect wallet and sign in|Sign in with connected wallet)$/ }).click();
   await expect(page).toHaveURL(/\/disputes\/\?tradeId=42$/);
   await expect(page.getByRole("heading", { name: "Disputes and arbitration" })).toBeVisible();
