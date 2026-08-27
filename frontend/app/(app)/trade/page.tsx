@@ -189,6 +189,21 @@ export default function TradePage() {
   const [submissionGate] = useState(() => new TradeSubmissionGate());
   const processedReceipt = useRef<Hash | undefined>(undefined);
 
+  useEffect(() => {
+    const value = new URLSearchParams(window.location.search).get("tradeId");
+    if (!value || !/^\d+$/.test(value)) return;
+    const timer = window.setTimeout(() => setTradeId(value), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const updateTradeId = (value: string) => {
+    setTradeId(value);
+    const url = new URL(window.location.href);
+    if (/^\d+$/.test(value.trim())) url.searchParams.set("tradeId", value.trim());
+    else url.searchParams.delete("tradeId");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  };
+
   const parsedBuyerId = parseId(buyerId);
   const parsedSellerId = parseId(sellerId);
   const parsedAmount = parseEtherValue(amount);
@@ -245,6 +260,14 @@ export default function TradePage() {
     functionName: "responsibleParty",
     args: parsedGuarantorId === undefined ? undefined : [parsedGuarantorId],
     query: { enabled: configured && parsedGuarantorId !== undefined, retry: false },
+  });
+
+  const guarantorPoHRead = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "isPoHVerified",
+    args: guarantorOwnerRead.data ? [guarantorOwnerRead.data] : undefined,
+    query: { enabled: configured && Boolean(guarantorOwnerRead.data), retry: false },
   });
 
   const stakeRead = useReadContract({
@@ -319,7 +342,7 @@ export default function TradePage() {
     // Only the receipt belonging to the create operation may select a new trade.
     if (operation.kind === "create") {
       const created = parseTradeCreated(feedback.receipt, CONTRACT_ADDRESSES.guaranteeEscrow, guaranteeEscrowAbi);
-      if (created) window.setTimeout(() => setTradeId(created.args.tradeId.toString()), 0);
+      if (created) window.setTimeout(() => updateTradeId(created.args.tradeId.toString()), 0);
     }
 
     submissionGate.finish(operation.id);
@@ -362,15 +385,19 @@ export default function TradePage() {
       && !sameAddress(guarantorOwnerRead.data, trade?.buyerSubject)
       && !sameAddress(guarantorOwnerRead.data, trade?.sellerSubject),
   );
+  const guarantorPoHConfirmed = guarantorPoHRead.data === true;
   const guaranteeReady = actionReady(
     "guarantee",
-    guarantorOwner && independentGuarantor,
+    guarantorOwner && independentGuarantor && guarantorPoHConfirmed,
     parsedGuarantorId !== undefined && parsedCoverage !== undefined && parsedPremium !== undefined
       && stakeRead.data !== undefined && Boolean(trade)
       && parsedCoverage >= (trade?.minCoverage ?? ZERO)
       && parsedPremium >= (trade?.referencePremium ?? ZERO)
       && parsedPremium <= (trade?.maxPremium ?? ZERO),
-    guarantorOwnerRead.data ? m.guarantorUnauthorized : m.guarantorCheck,
+    !guarantorOwnerRead.data ? m.guarantorCheck
+      : !guarantorOwner || !independentGuarantor ? m.guarantorUnauthorized
+        : guarantorPoHRead.isLoading ? t.poh.checking
+          : guarantorPoHRead.error ? t.poh.unavailable : t.poh.requiredGuarantor,
   );
 
   const startWrite = async (kind: TradeOperationKind, label: Record<Locale, string>, send: () => Promise<Hash>) => {
@@ -510,7 +537,7 @@ export default function TradePage() {
       <section className="card space-y-4">
         <div>
           <h2 className="card-title">{m.querySection}</h2>
-          <label className="field-label mt-2">{m.tradeId}<input aria-label={m.tradeId} placeholder={m.tradeIdPlaceholder} value={tradeId} onChange={(event) => setTradeId(event.target.value)} className="field-input" /></label>
+          <label className="field-label mt-2">{m.tradeId}<input aria-label={m.tradeId} placeholder={m.tradeIdPlaceholder} value={tradeId} onChange={(event) => updateTradeId(event.target.value)} className="field-input" /></label>
           {tradeRead.isLoading && <p className="form-hint mt-2">{m.loadingTrade}</p>}
           {tradeRead.error && parsedTradeId !== undefined && <p className="form-error mt-2" role="alert">{m.tradeReadError}{tradeRead.error.message}</p>}
         </div>

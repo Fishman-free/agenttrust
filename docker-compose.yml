@@ -2,9 +2,11 @@
 #   浏览器打开 http://localhost:3000 即可使用，无需手动装 Node/Foundry/anvil。
 #
 # 服务：
+#   postgres  —— Auth BFF 的本地持久化数据库（仅 Compose 内网）
+#   auth-bff  —— 同源会话与 SIWE 钱包认证服务（仅 Compose 内网）
 #   anvil     —— 本地演示链（foundry 镜像），端口映射 8545（宿主）
 #   setup     —— 一次性容器：forge script 部署四合约到 anvil 并校验（成功后退出）
-#   frontend  —— 静态导出前端（nginx），端口映射 3000
+#   frontend  —— 静态导出前端（nginx），端口映射 3000，并反代 /api/auth/*
 #
 # 网络模型（关键）：
 #   - 容器内：setup 经服务名访问 anvil → http://anvil:8545（compose 内网）
@@ -15,6 +17,57 @@
 #   deployments/31337.json 是确定性地址的唯一来源，生成 frontend/lib/deployments.ts。
 #   setup 对四个具名地址、字节码、依赖、角色授权和所有权逐项校验。
 services:
+  postgres:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: auth_bff
+      POSTGRES_USER: auth_bff
+      POSTGRES_PASSWORD: local-auth-only
+    volumes:
+      - auth-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_bff -d auth_bff"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    networks:
+      - agenttrust
+
+  auth-bff:
+    build:
+      context: ./auth-bff
+    image: agenttrust-auth-bff
+    command: ["/bin/sh", "-c", "node dist/src/migrate.js && node dist/src/server.js"]
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: "8323"
+      DATABASE_URL: postgresql://auth_bff:local-auth-only@postgres:5432/auth_bff
+      AUTH_ORIGIN: http://localhost:3000
+      SIWE_DOMAIN: localhost:3000
+      SIWE_URI: http://localhost:3000
+      SIWE_CHAIN_ID: "31337"
+      RETURN_TO_ORIGINS: http://localhost:3000
+      TRUST_PROXY: "false"
+      COOKIE_SECURE: "false"
+      COOKIE_NAME: auth_session
+      SESSION_TTL_SECONDS: "604800"
+      CHALLENGE_TTL_SECONDS: "300"
+      OIDC_FLOW_TTL_SECONDS: "600"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8323/api/auth/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - agenttrust
+
   anvil:
     image: ghcr.io/foundry-rs/foundry:v1.7.1
     entrypoint: ["anvil"]
@@ -70,6 +123,8 @@ services:
     depends_on:
       setup:
         condition: service_completed_successfully
+      auth-bff:
+        condition: service_healthy
     healthcheck:
       # 容器内 localhost 解析到 ::1 (IPv6)，nginx 仅监听 IPv4 0.0.0.0，故用 127.0.0.1
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/healthz || exit 1"]
@@ -86,4 +141,5 @@ networks:
 
 volumes:
   anvil-data:
+  auth-postgres-data:
   deployment-readiness:

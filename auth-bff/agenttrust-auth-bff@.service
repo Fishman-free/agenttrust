@@ -1,0 +1,31 @@
+[Unit]
+Description=AgentTrust Auth BFF (%i)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=auth-bff
+Group=auth-bff
+WorkingDirectory=/opt/agenttrust/auth-bff
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/agenttrust/auth-bff-%i.env
+ExecStart=/usr/local/bin/node /opt/agenttrust/auth-bff/dist/src/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -33,7 +33,7 @@ export default function Home() {
     <header className="home-header"><div className="home-container home-topbar">
       <Link href="/" className="home-logo-link" aria-label={t.common.agentTrustHome}><Logo /></Link>
       <nav className="home-nav" aria-label={t.common.primaryNav}><Link href="/agents">{t.common.agents}</Link><Link href="/trade">{t.common.trade}</Link><Link href="/disputes">{t.common.disputes}</Link><Link href="/reputation">{t.common.reputation}</Link><a href={documentationUrl} target="_blank" rel="noopener noreferrer">{t.common.usageDocs}</a></nav>
-      <LanguageSwitch />
+      <div className="home-account-actions"><LanguageSwitch /><Link href="/login/" className="home-login-link">{t.auth.login}</Link></div>
       <span className={`home-network-badge ${previewMode ? "is-preview" : "is-live"}`}><span className="home-status-dot" />{previewMode ? t.home.preview : activeChain.name}</span>
     </div></header>
     {previewMode && <div className="home-preview" role="status"><div className="home-container home-preview-inner"><span>{t.home.preview}</span><p>{formatMessage(t.home.previewMessage, { chain: activeChain.name })}</p></div></div>}
@@ -41,8 +41,15 @@ export default function Home() {
       <div className="home-eyebrow"><Bot size={16} aria-hidden="true" /><span>{t.home.protocolYear}</span></div>
       <h1 id="home-title">{t.home.title}</h1><p className="home-lead">{t.home.lead}</p>
       <div className="home-actions"><Link href="/agents" className="home-button home-button-primary">{t.home.explore}<ArrowUpRight size={17} aria-hidden="true" /></Link><Link href="/trade" className="home-button home-button-secondary">{t.home.viewTrade}</Link><a href={documentationUrl} target="_blank" rel="noopener noreferrer" className="home-button home-button-secondary"><BookOpen size={17} aria-hidden="true" />{t.home.readDocs}</a></div>
-      <dl className="home-proof" aria-label={t.home.overview}><div><dt>4</dt><dd>{t.home.coreContracts}</dd></div><div><dt>10</dt><dd>{t.home.tradeStates}</dd></div><div><dt>100%</dt><dd>{t.home.verifiable}</dd></div></dl>
+      <dl className="home-proof" aria-label={t.home.overview}><div><dt>4</dt><dd>{t.home.coreContracts}</dd></div><div><dt>10</dt><dd>{t.home.tradeStates}</dd></div><div><dt>Testnet</dt><dd>{t.home.verifiable}</dd></div></dl>
     </div><TrustNetwork labels={[t.home.graphIdentity, t.home.graphEscrow, t.home.graphVoting, t.home.graphReputation]} meta={[t.home.trustGraph, t.home.moduleCount, t.home.protocol]} /></div></section>
     <section className="home-capabilities" aria-labelledby="capabilities-title"><div className="home-container"><div className="home-section-heading"><div><span>{t.home.protocolModules}</span><h2 id="capabilities-title">{t.home.modulesTitle}</h2></div><p>{t.home.modulesHint}</p></div><div className="capability-grid">{capabilities.map(({ href, icon: Icon, eyebrow, title, description }) => <Link href={href} className="capability-card" key={href}><div className="capability-card-top"><span className="capability-icon"><Icon size={19} aria-hidden="true" /></span><ArrowUpRight className="capability-arrow" size={18} aria-hidden="true" /></div><span className="capability-eyebrow">{eyebrow}</span><h3>{title}</h3><p>{description}</p></Link>)}</div></div></section>
+    <section className="home-story"><div className="home-container">
+      <div className="story-heading"><span>{t.home.flowEyebrow}</span><h2>{t.home.flowTitle}</h2></div>
+      <ol className="flow-list">{t.home.flowSteps.map((step, index) => <li key={step}><span>{String(index + 1).padStart(2, "0")}</span><strong>{step}</strong></li>)}</ol>
+      <div className="story-grid"><article><span>{t.home.rolesEyebrow}</span><h2>{t.home.rolesTitle}</h2><ul>{t.home.roles.map((role) => <li key={role}>{role}</li>)}</ul></article><article><span>{t.home.levelsEyebrow}</span><h2>{t.home.levelsTitle}</h2><ul>{t.home.levels.map((level) => <li key={level}>{level}</li>)}</ul></article></div>
+      <article className="recovery-panel"><span>{t.home.recoveryEyebrow}</span><h2>{t.home.recoveryTitle}</h2><p>{t.home.recoveryBody}</p></article>
+      <aside className="testnet-warning" role="note"><ShieldCheck size={22} aria-hidden="true" /><div><strong>{t.home.testnetTitle}</strong><p>{t.home.testnetBody}</p></div></aside>
+    </div></section>
   </main>;
 }

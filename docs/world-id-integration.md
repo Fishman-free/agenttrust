@@ -46,7 +46,9 @@ A compromise of the backend or attester key can create false PoH attestations. R
 
 ## 3. Registration and privileged-role behavior
 
-A successful backend verification produces the attestation consumed by the Registry path. This enables verified registration or `bindPoH`, and the contracts enforce `isPoHVerified` for guarantors and jurors. Ordinary registration remains available with its higher deposit and without privileged-role eligibility.
+World ID is exposed as a **Labs Proof-of-Humanity experiment**, not as real-name verification, government-ID verification, or legal identity. It is separate from account authentication: the frontend Auth BFF session and SIWE login protect workspace access, while wallet connection authorizes transaction prompts.
+
+A successful backend verification produces the attestation consumed by the Registry path. This enables PoH registration or `bindPoH`, and the contracts enforce `isPoHVerified` for guarantors and new jurors. Ordinary registration remains the primary path and has no privileged-role eligibility. Ordinary and PoH registration both submit the current onchain `registrationDeposit`; the frontend must not multiply it. Frontend reads of `isPoHVerified` fail closed for new guarantee and jury actions; an experimental user who already committed as a juror remains able to reveal, claim, and finalize existing obligations.
 
 Local Anvil and CI continue to use development/mock verifiers for deterministic testing. Those mocks are not evidence of real World verification and must never be deployed publicly.
 

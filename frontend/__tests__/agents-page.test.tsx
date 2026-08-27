@@ -86,13 +86,25 @@ describe("AgentsPage", () => {
     expect(mocks.connect).toHaveBeenCalledWith({ connector: mocks.connector });
   });
 
+  it("submits the on-chain registrationDeposit without multiplying it", async () => {
+    mocks.feedback.current = { phase: "idle" };
+    render(<AgentsPage />);
+    await userEvent.type(screen.getByLabelText("Agent name (e.g. DataAgent)"), "DepositCheck");
+    await userEvent.type(screen.getByLabelText("Capability description (e.g. on-chain data analysis)"), "Checks deposit");
+    await userEvent.type(screen.getByLabelText("MCP/A2A endpoint (https://…)"), "https://agent.example");
+    await userEvent.type(screen.getByLabelText("Guardian 1 (required)"), "0x2222222222222222222222222222222222222222");
+    await userEvent.type(screen.getByLabelText("Guardian 2 (required)"), "0x3333333333333333333333333333333333333333");
+    await userEvent.click(screen.getByRole("button", { name: /Register \(lock/ }));
+    expect(mocks.writeContract).toHaveBeenCalledWith(expect.objectContaining({ functionName: "registerAgent", value: 1n }));
+  });
+
   it("blocks registration on the wrong chain", () => {
     mocks.account.chainId = 1;
     mocks.feedback.current = { phase: "idle" };
     render(<AgentsPage />);
 
     expect(screen.getByRole("alert")).toHaveTextContent("Network error");
-    expect(screen.getByRole("button", { name: /Register \(deposit/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Register \(lock/ })).toBeDisabled();
   });
 
   it("reveals World ID inputs when verified registration mode is selected", async () => {

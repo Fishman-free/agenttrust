@@ -1,0 +1,37 @@
+# Optional social-login stack. Do not start until Google or Apple credentials exist.
+# Casdoor is an OIDC broker only; never enable its MetaMask/Web3 providers.
+services:
+  casdoor-postgres:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: casdoor
+      POSTGRES_USER: casdoor
+      POSTGRES_PASSWORD: ${CASDOOR_DATABASE_PASSWORD:?set CASDOOR_DATABASE_PASSWORD}
+    volumes:
+      - casdoor-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U casdoor -d casdoor"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks: [casdoor]
+
+  casdoor:
+    image: casbin/casdoor:v3.161.1
+    environment:
+      RUNNING_IN_DOCKER: "true"
+      driverName: postgres
+      dataSourceName: "user=casdoor password=${CASDOOR_DATABASE_PASSWORD} host=casdoor-postgres port=5432 sslmode=disable dbname=casdoor"
+    depends_on:
+      casdoor-postgres:
+        condition: service_healthy
+    expose: ["8000"]
+    restart: unless-stopped
+    networks: [casdoor]
+
+networks:
+  casdoor:
+
+volumes:
+  casdoor-postgres-data:
