@@ -193,6 +193,7 @@ The MVP uses local-chain or testnet assets with **no real value** to simulate st
 | Docker guide | [`DOCKER.md`](DOCKER.md) |
 | Feature walkthrough | [`docs/feature-walkthrough.md`](docs/feature-walkthrough.md) |
 | Interactive architecture experience | [https://agenttrust.site/architecture/](https://agenttrust.site/architecture/) — trust loop, transaction and dispute flows, World ID trust boundary, and verified testnet facts |
+| Legacy Archify interactive map | [https://agenttrust.site/architecture-legacy/](https://agenttrust.site/architecture-legacy/) — original viewer with guided views, search, tracing, and exports |
 | World ID integration | [`docs/world-id-integration.md`](docs/world-id-integration.md) |
 | Anti-Sybil and community-ID analysis | [`docs/security/anti-sybil-analysis.md`](docs/security/anti-sybil-analysis.md) |
 | Demo manual | [`contracts/demo/DEMO.md`](contracts/demo/DEMO.md) |
