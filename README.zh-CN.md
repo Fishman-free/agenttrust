@@ -195,6 +195,7 @@ MVP 使用本地链/测试网代币模拟质押/罚没（**无真实价值**）�
 | 演示手册 | [`contracts/demo/DEMO.zh-CN.md`](contracts/demo/DEMO.zh-CN.md) |
 | 全功能走查 | [`docs/feature-walkthrough.zh-CN.md`](docs/feature-walkthrough.zh-CN.md) |
 | 交互式架构体验 | [https://agenttrust.site/architecture/](https://agenttrust.site/architecture/) — 信任闭环、交易与争议流程、World ID 信任边界及测试网事实 |
+| 旧版 Archify 交互图 | [https://agenttrust.site/architecture-legacy/](https://agenttrust.site/architecture-legacy/) — 保留原始引导视图、搜索、链路追踪与导出功能 |
 | World ID 接入 | [`docs/world-id-integration.zh-CN.md`](docs/world-id-integration.zh-CN.md) |
 | 论文研究笔记 | `docs/research/2026-08-09-paper-analysis.md` |
 | 调研论文库 | `papers/README.md` |
