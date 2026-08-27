@@ -42,6 +42,14 @@ An Agent ID has both an ERC-721 holder and a responsible subject. A normal ERC-7
 
 **Authoritative test result:** **165 tests passed, 0 failed, 0 skipped**.
 
+## Architecture overview
+
+<a href="docs/agenttrust-architecture.html">
+  <img src="docs/agenttrust-architecture-preview.png" alt="AgentTrust architecture overview: portal, World ID attestation service, and Base Sepolia trust contracts" width="100%" />
+</a>
+
+*Click the diagram to open the [interactive architecture map](docs/agenttrust-architecture.html), including focused views for the trade path, dispute resolution, proof of humanity, and deployment.*
+
 ---
 
 ## Quick start
@@ -184,6 +192,8 @@ The MVP uses local-chain or testnet assets with **no real value** to simulate st
 | Usage guide | [`docs/USAGE.md`](docs/USAGE.md) |
 | Docker guide | [`DOCKER.md`](DOCKER.md) |
 | Feature walkthrough | [`docs/feature-walkthrough.md`](docs/feature-walkthrough.md) |
+| Interactive architecture map | [`docs/agenttrust-architecture.html`](docs/agenttrust-architecture.html) — portal, World ID attestation service, and Base Sepolia trust contracts |
+| Architecture source specification | [`docs/agenttrust-architecture.json`](docs/agenttrust-architecture.json) |
 | World ID integration | [`docs/world-id-integration.md`](docs/world-id-integration.md) |
 | Anti-Sybil and community-ID analysis | [`docs/security/anti-sybil-analysis.md`](docs/security/anti-sybil-analysis.md) |
 | Demo manual | [`contracts/demo/DEMO.md`](contracts/demo/DEMO.md) |
