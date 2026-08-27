@@ -1,0 +1,409 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AgentTrust · 智能体商务信任基础设施",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "agenttrust-architecture.html",
+    "viewBox": [
+      1220,
+      860
+    ],
+    "views": [
+      {
+        "id": "trade-path",
+        "label": "交易主路径",
+        "focus": [
+          "users",
+          "caddy",
+          "portal",
+          "escrow",
+          "voting",
+          "reputation"
+        ],
+        "note": "一笔正常交易:从人类所有者下单到履约信誉沉淀。"
+      },
+      {
+        "id": "dispute-path",
+        "label": "争议仲裁流",
+        "focus": [
+          "escrow",
+          "voting",
+          "reputation"
+        ],
+        "note": "争议缴 2% 保证金开案,三名陪审员 commit-reveal 投票,裁决写入信誉。"
+      },
+      {
+        "id": "identity-poh",
+        "label": "身份与 PoH",
+        "focus": [
+          "wid-service",
+          "wid-portal",
+          "portal",
+          "registry"
+        ],
+        "note": "World ID v4 后端证明签发 attestation,Registry 据此门控准入。"
+      },
+      {
+        "id": "delivery",
+        "label": "线上部署",
+        "focus": [
+          "caddy",
+          "portal",
+          "wid-service"
+        ],
+        "note": "Tokyo Caddy 托管静态导出门户并反代证明服务。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "wid-portal",
+      "type": "external",
+      "label": "World ID Developer Portal",
+      "sublabel": "v4 attestation API",
+      "pos": [
+        391.0,
+        160
+      ],
+      "size": [
+        161.5,
+        64
+      ]
+    },
+    {
+      "id": "wid-service",
+      "type": "backend",
+      "label": "World ID 证明服务",
+      "sublabel": "/api/world-id · :8322",
+      "tag": "Node + TypeScript",
+      "pos": [
+        391.0,
+        330
+      ],
+      "size": [
+        161.5,
+        64
+      ]
+    },
+    {
+      "id": "registry",
+      "type": "security",
+      "label": "AgentRegistry",
+      "sublabel": "ERC-721 Agent ID · 押金准入",
+      "tag": "PoH 门控 · 社会恢复",
+      "pos": [
+        646.0,
+        330
+      ],
+      "size": [
+        170.0,
+        84
+      ]
+    },
+    {
+      "id": "escrow",
+      "type": "backend",
+      "label": "GuaranteeEscrow",
+      "sublabel": "资金托管 · 担保质押 · 罚没",
+      "tag": "交易主流程",
+      "pos": [
+        884.0,
+        330
+      ],
+      "size": [
+        165.75,
+        84
+      ]
+    },
+    {
+      "id": "users",
+      "type": "external",
+      "label": "人类所有者",
+      "sublabel": "Browser + MetaMask",
+      "pos": [
+        25.5,
+        620
+      ],
+      "size": [
+        110.5,
+        64
+      ]
+    },
+    {
+      "id": "caddy",
+      "type": "cloud",
+      "label": "Tokyo Caddy",
+      "sublabel": "agenttrust.site · HTTPS",
+      "pos": [
+        187.0,
+        620
+      ],
+      "size": [
+        127.5,
+        64
+      ]
+    },
+    {
+      "id": "portal",
+      "type": "frontend",
+      "label": "Next.js 研究门户",
+      "sublabel": "agents / trade / disputes / reputation",
+      "tag": "wagmi v3 · viem v2",
+      "pos": [
+        391.0,
+        600
+      ],
+      "size": [
+        190,
+        84
+      ]
+    },
+    {
+      "id": "reputation",
+      "type": "database",
+      "label": "ReputationHub",
+      "sublabel": "多维信誉账本",
+      "tag": "禁自评",
+      "pos": [
+        646.0,
+        620
+      ],
+      "size": [
+        165.75,
+        84
+      ]
+    },
+    {
+      "id": "voting",
+      "type": "backend",
+      "label": "SchellingVoting",
+      "sublabel": "commit-reveal · 2/3 多数",
+      "tag": "3 名无关陪审员",
+      "pos": [
+        884.0,
+        620
+      ],
+      "size": [
+        165.75,
+        84
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Base Sepolia 84532 · 测试网",
+      "wraps": [
+        "registry",
+        "escrow",
+        "reputation",
+        "voting"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "users-to-caddy",
+      "from": "users",
+      "to": "caddy",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "caddy-to-portal",
+      "from": "caddy",
+      "to": "portal",
+      "label": "静态导出"
+    },
+    {
+      "id": "caddy-to-wid",
+      "from": "caddy",
+      "to": "wid-service",
+      "label": "反代 /api/world-id",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [
+        [
+          250.75,
+          490
+        ],
+        [
+          471.75,
+          490
+        ]
+      ],
+      "labelSegment": 1,
+      "labelDy": 14
+    },
+    {
+      "id": "wid-to-devportal",
+      "from": "wid-service",
+      "to": "wid-portal",
+      "label": "v4 校验"
+    },
+    {
+      "id": "portal-to-registry",
+      "from": "portal",
+      "to": "registry",
+      "label": "注册 · PoH 绑定",
+      "fromSide": "right",
+      "toSide": "left",
+      "via": [
+        [
+          600,
+          642
+        ],
+        [
+          600,
+          372
+        ]
+      ],
+      "labelSegment": 1,
+      "labelDx": -60
+    },
+    {
+      "id": "portal-to-escrow",
+      "from": "portal",
+      "to": "escrow",
+      "label": "交易 RPC",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [
+        [
+          486,
+          545
+        ],
+        [
+          612.0,
+          545
+        ],
+        [
+          612.0,
+          250
+        ],
+        [
+          966.875,
+          250
+        ]
+      ],
+      "labelSegment": 3
+    },
+    {
+      "id": "portal-to-voting",
+      "from": "portal",
+      "to": "voting",
+      "label": "陪审投票 RPC",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          486,
+          745
+        ],
+        [
+          966.875,
+          745
+        ]
+      ],
+      "labelSegment": 1
+    },
+    {
+      "id": "registry-to-escrow",
+      "from": "registry",
+      "to": "escrow",
+      "label": "资格校验",
+      "variant": "dashed",
+      "labelAt": [
+        730,
+        430
+      ]
+    },
+    {
+      "id": "escrow-to-voting",
+      "from": "escrow",
+      "to": "voting",
+      "label": "2% 保证金开案",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        1003.0,
+        530
+      ]
+    },
+    {
+      "id": "escrow-to-reputation",
+      "from": "escrow",
+      "to": "reputation",
+      "label": "履约结果写入",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "right",
+      "via": [
+        [
+          966.875,
+          280
+        ],
+        [
+          824.5,
+          280
+        ],
+        [
+          824.5,
+          662
+        ]
+      ],
+      "labelSegment": 1
+    },
+    {
+      "id": "voting-to-reputation",
+      "from": "voting",
+      "to": "reputation",
+      "label": "裁决写入",
+      "labelAt": [
+        847.45,
+        720
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "合约层 · 测试网部署",
+      "items": [
+        "Solidity 0.8.24 + Foundry + OpenZeppelin v5",
+        "四大合约部署 Base Sepolia 并 RPC 验证,地址存证 deployments/84532.json",
+        "单元 / 模糊 / E2E / 不变量测试 165 项全部通过"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "交易与仲裁机制",
+      "items": [
+        "创建 → 接单 → 注资 (FUNDED) → 担保背书 (GUARANTEED) → 释放 (RELEASED)",
+        "担保人按覆盖率质押,违约或败诉即罚没赔付",
+        "争议缴 2% 保证金,3 名陪审员 commit-reveal,2/3 多数裁决"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "身份与责任",
+      "items": [
+        "注册押金抬高女巫攻击成本,NFT 可转让而责任主体不随转移",
+        "World ID v4 后端证明:同源服务签发 attestation,验证合约绑定 Registry",
+        "恢复需全体监护人 + 48 小时否决窗"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "部署与研究",
+      "items": [
+        "https://agenttrust.site 由 Tokyo Caddy 托管,反代 /api/world-id",
+        "Docker 一键链路:anvil → setup → frontend",
+        "配套 Monte Carlo 仿真 stake-vote-econ-v2.0.0 与论文撰写"
+      ]
+    }
+  ]
+}
