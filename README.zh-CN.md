@@ -42,6 +42,14 @@ Agent ID 同时记录 ERC-721 持有人和责任主体。普通 ERC-721 转让�
 | 链 | 本地 Anvil（已部署演示）/ Base Sepolia 84532（核心合约已部署并通过 RPC 校验；见 [`deployments/84532.json`](deployments/84532.json)） |
 | 测试 | Foundry：165 个测试（unit、fuzz、E2E、invariant） |
 
+## 架构概览
+
+<a href="https://agenttrust.site/architecture/">
+  <img src="docs/agenttrust-architecture-preview.png" alt="AgentTrust 架构概览：身份、担保、裁决、信誉与 World ID 可信后端边界" width="100%" />
+</a>
+
+*点击图片打开[交互式架构体验](https://agenttrust.site/architecture/)，可分别聚焦交易、争议、身份与 PoH、线上部署，并查看测试网状态与可信后端边界披露。*
+
 ---
 
 ## 🚀 快速开始
@@ -204,6 +212,8 @@ MVP 使用本地链/测试网代币模拟质押/罚没（**无真实价值**）�
 | 历史实现计划（已被当前实现取代） | `docs/superpowers/plans/2026-08-08-agenttrust-mvp.md` |
 | 演示手册 | [`contracts/demo/DEMO.zh-CN.md`](contracts/demo/DEMO.zh-CN.md) |
 | 全功能走查 | [`docs/feature-walkthrough.zh-CN.md`](docs/feature-walkthrough.zh-CN.md) |
+| 交互式架构体验 | [https://agenttrust.site/architecture/](https://agenttrust.site/architecture/) — 信任闭环、交易与争议流程、World ID 信任边界及测试网事实 |
+| 旧版 Archify 交互图 | [https://agenttrust.site/architecture-legacy/](https://agenttrust.site/architecture-legacy/) — 保留原始引导视图、搜索、链路追踪与导出功能 |
 | World ID 接入 | [`docs/world-id-integration.zh-CN.md`](docs/world-id-integration.zh-CN.md) |
 | 论文研究笔记 | `docs/research/2026-08-09-paper-analysis.md` |
 | 调研论文库 | `papers/README.md` |
