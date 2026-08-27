@@ -180,7 +180,13 @@ jobs:
           docker compose exec -T frontend test -s /readiness/contracts-ready
           curl --fail --silent --show-error http://127.0.0.1:3000/api/auth/health \
             | jq -e '.ok == true and .service == "auth-bff" and .database == "ok"'
-          test "$(docker compose port postgres 5432 2>/dev/null || true)" = ""
+          postgres_container=$(docker compose ps -q postgres)
+          test -n "$postgres_container"
+          # Runtime isolation: neither the auth database nor the BFF may publish a host port.
+          test -z "$(docker port "$postgres_container" 5432/tcp || true)"
+          auth_container=$(docker compose ps -q auth-bff)
+          test -n "$auth_container"
+          test -z "$(docker port "$auth_container" 8323/tcp || true)"
       - name: Verify Anvil chain id and four runtime contracts
         run: |
           rpc() {
