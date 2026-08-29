@@ -96,7 +96,8 @@ test("normal trade completes through the UI with three accounts, withdrawals, an
   await page.getByLabel("Bind nullifier (0x… 64 hex digits; any unused value on testnet)").fill(`0x${(200).toString(16).padStart(64, "0")}`);
   await page.getByRole("button", { name: "Bind PoH (upgrade to verified identity)" }).click();
   await waitForTransaction(page, "Humanity proof bound.");
-  await expect(page.getByText(/Human verification:/)).toContainText("Verified (World ID)");
+  // 身份卡把标签与值拆成 dt/dd，因此直接断言值徽章可见，而不是在标签节点上找文本。
+  await expect(page.getByText("Verified (World ID)")).toBeVisible();
   const tradeId = await createDeliveredTrade(page, ids);
   await selectAccount(page, 0);
   await page.getByRole("button", { name: "Buyer confirms completion" }).click();
