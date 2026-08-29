@@ -3,6 +3,13 @@ import { switchAccount } from "./provider";
 
 const lastTransactionHash = new WeakMap<Page, string>();
 
+// 头像触发按钮的 title 上挂着完整地址，是当前账户的稳定读取点。
+const ACCOUNT_TRIGGER = ".account-trigger[title]";
+
+function readCurrentAddress(page: Page) {
+  return page.locator(ACCOUNT_TRIGGER).getAttribute("title").then((value) => (value ?? "").toLowerCase());
+}
+
 export async function authenticateLocally(page: Page) {
   await page.goto("/login/");
   await page.getByRole("button", { name: "Connect wallet and sign in" }).click();
@@ -10,27 +17,39 @@ export async function authenticateLocally(page: Page) {
   await expect(page.getByRole("region", { name: "Authentication status" })).toBeVisible();
 }
 
+/** 打开钱包选择面板：未连接走页头按钮，已连接走账户菜单里的「Switch account」。 */
+async function openWalletPicker(page: Page) {
+  const connect = page.getByRole("button", { name: "Connect wallet" }).first();
+  if (await connect.isVisible()) {
+    await connect.click();
+  } else {
+    await page.getByRole("button", { name: /Account settings/ }).click();
+    await page.getByRole("button", { name: /^Switch account/ }).click();
+  }
+  await expect(page.getByRole("dialog", { name: /^(Connect a wallet|Switch wallet)$/ })).toBeVisible();
+}
+
 export async function connectWallet(page: Page) {
-  await page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Connect wallet" }).click();
-  await expect(page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Disconnect" })).toBeVisible();
+  await openWalletPicker(page);
+  const dialog = page.getByRole("dialog", { name: /^(Connect a wallet|Switch wallet)$/ });
+  // Anvil E2E provider 以 isMetaMask 标记注入，选择器里会显示为 Detected。
+  await dialog.getByRole("button", { name: /^MetaMask/ }).click();
+  await expect(page.locator(ACCOUNT_TRIGGER)).toBeVisible({ timeout: 30_000 });
+  await expect(dialog).toBeHidden();
 }
 
 export async function selectAccount(page: Page, index: number) {
   await page.waitForLoadState("domcontentloaded");
   const address = await switchAccount(page, index);
-  const connect = page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Connect wallet" });
-  if (await connect.isVisible()) await connect.click();
-  await expect.poll(async () => (await page.locator(".wallet-value[title]").getAttribute("title"))?.toLowerCase()).toBe(address.toLowerCase());
+  if (!(await page.locator(ACCOUNT_TRIGGER).isVisible())) await connectWallet(page);
+  await expect.poll(() => readCurrentAddress(page), { timeout: 30_000 }).toBe(address.toLowerCase());
   if (await page.locator(".binding-card").isVisible()) {
     await page.getByRole("region", { name: "Authentication status" }).getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/\/login\//);
     await page.getByRole("button", { name: /^(Connect wallet and sign in|Sign in with connected wallet)$/ }).click();
     await expect(page).not.toHaveURL(/\/login\//);
-    const walletRegion = page.getByRole("region", { name: "Wallet status" });
-    await expect(walletRegion).toBeVisible();
-    const reconnect = walletRegion.getByRole("button", { name: "Connect wallet" });
-    if (await reconnect.isVisible()) await reconnect.click();
-    await expect.poll(async () => (await page.locator(".wallet-value[title]").getAttribute("title"))?.toLowerCase()).toBe(address.toLowerCase());
+    if (!(await page.locator(ACCOUNT_TRIGGER).isVisible())) await connectWallet(page);
+    await expect.poll(() => readCurrentAddress(page), { timeout: 30_000 }).toBe(address.toLowerCase());
     await expect(page.locator(".binding-card")).toBeHidden();
   }
   return address;
@@ -62,7 +81,8 @@ export async function registerAgent(page: Page, accountIndex: number, name: stri
 export async function registerAgentVerified(page: Page, accountIndex: number, name: string) {
   await fillRegistrationForm(page, accountIndex, name);
   await page.getByText("Labs", { exact: false }).first().click();
-  await page.getByRole("checkbox", { name: /Register with World ID Proof of Humanity/ }).check();
+  // 验证模式是 role="switch"（按钮），不是 checkbox，因此用 click 而非 check。
+  await page.getByRole("switch", { name: /Register with World ID Proof of Humanity/ }).click();
   await page
     .getByLabel("World ID nullifier (0x… 64 digits)")
     .fill(`0x${(accountIndex + 100).toString(16).padStart(64, "0")}`);
@@ -72,9 +92,9 @@ export async function registerAgentVerified(page: Page, accountIndex: number, na
 
 async function fillRegistrationForm(page: Page, accountIndex: number, name: string) {
   await selectAccount(page, 8);
-  const guardianA = (await page.locator(".wallet-value[title]").getAttribute("title"))!;
+  const guardianA = await readCurrentAddress(page);
   await selectAccount(page, 9);
-  const guardianB = (await page.locator(".wallet-value[title]").getAttribute("title"))!;
+  const guardianB = await readCurrentAddress(page);
   await selectAccount(page, accountIndex);
   await page.getByLabel("Agent name (e.g. DataAgent)").fill(name);
   await page.getByLabel("Capability description (e.g. on-chain data analysis)").fill(`${name} E2E capability`);

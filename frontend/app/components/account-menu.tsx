@@ -97,6 +97,8 @@ function ConnectedAccountMenu() {
         aria-expanded={isOpen}
         aria-haspopup="dialog"
         aria-label={`${a.openMenu} · ${address ? shortAddress(address) : ""}`}
+        // title 带完整地址：既是悬停提示，也让 E2E 能稳定读取当前账户。
+        title={address}
         onClick={() => setIsOpen((open) => !open)}
       >
         <AccountAvatar address={address} avatar={profile.avatar} nickname={profile.nickname} size={30} />

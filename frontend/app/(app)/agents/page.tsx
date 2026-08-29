@@ -301,18 +301,9 @@ export default function AgentsPage() {
                   <h2 className="form-section-title">{ui.sectionBasics}</h2>
                   <p className="form-hint">{ui.sectionBasicsHint}</p>
                 </div>
-                <label className="field-label">
-                  {a.name}
-                  <input aria-label={a.name} placeholder={a.name} value={name} onChange={(e) => setName(e.target.value)} className="field-input" />
-                </label>
-                <label className="field-label">
-                  {a.description}
-                  <input aria-label={a.description} placeholder={a.description} value={desc} onChange={(e) => setDesc(e.target.value)} className="field-input" />
-                </label>
-                <label className="field-label">
-                  {a.endpoint}
-                  <input aria-label={a.endpoint} placeholder={a.endpoint} value={endpoint} onChange={(e) => setEndpoint(e.target.value)} className="field-input" inputMode="url" />
-                </label>
+                <input aria-label={a.name} placeholder={a.name} value={name} onChange={(e) => setName(e.target.value)} className="field-input" />
+                <input aria-label={a.description} placeholder={a.description} value={desc} onChange={(e) => setDesc(e.target.value)} className="field-input" />
+                <input aria-label={a.endpoint} placeholder={a.endpoint} value={endpoint} onChange={(e) => setEndpoint(e.target.value)} className="field-input" inputMode="url" />
               </section>
 
               <section className="form-section">
