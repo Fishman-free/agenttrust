@@ -3,30 +3,23 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  account: { address: "0x1111111111111111111111111111111111111111", chainId: 31337, isConnected: true, connector: { id: "injected", name: "MetaMask", rdns: "io.metamask" } },
-  connectors: [{ id: "injected", name: "MetaMask" }],
-  connectAsync: vi.fn(),
+  account: { address: "0x1111111111111111111111111111111111111111", chainId: 31337, isConnected: true },
+  connector: { id: "configured-injected" },
   connect: vi.fn(),
-  writeContractAsync: vi.fn(),
+  writeContract: vi.fn(),
   refetchCount: vi.fn(),
   refetchList: vi.fn(),
   activeSubject: false,
   pohVerified: false,
   feedback: { current: { phase: "confirming", hash: `0x${"12".repeat(32)}` } as Record<string, unknown> },
-  operationsFeedback: { current: { phase: "idle" } as Record<string, unknown> },
-  openPicker: vi.fn(),
-  record: vi.fn(),
 }));
 
 vi.mock("wagmi", () => ({
   useAccount: () => mocks.account,
-  useConnect: () => ({ connect: mocks.connect, connectAsync: mocks.connectAsync, connectors: mocks.connectors, isPending: false, error: null, reset: vi.fn() }),
-  useConnectors: () => mocks.connectors,
-  useDisconnect: () => ({ disconnect: vi.fn() }),
-  useSwitchChain: () => ({ switchChain: vi.fn(), isPending: false, error: null }),
-  useWriteContract: () => ({ data: mocks.feedback.current.hash, writeContract: vi.fn(), writeContractAsync: mocks.writeContractAsync, isPending: false, error: null }),
+  useConnect: () => ({ connect: mocks.connect, connectors: [mocks.connector], isPending: false }),
+  useWriteContract: () => ({ data: mocks.feedback.current.hash, writeContract: mocks.writeContract, isPending: false, error: null }),
   useReadContract: ({ functionName }: { functionName: string }) => {
-    if (functionName === "registrationDeposit") return { data: BigInt(1), refetch: mocks.refetchCount };
+    if (functionName === "registrationDeposit") return { data: BigInt(1) };
     if (functionName === "activeSubjects") return { data: mocks.activeSubject, refetch: mocks.refetchCount };
     if (functionName === "isPoHVerified") return { data: mocks.pohVerified, refetch: mocks.refetchCount };
     return { data: BigInt(0), refetch: mocks.refetchCount };
@@ -49,19 +42,8 @@ vi.mock("@/lib/receipt-events", () => ({
 }));
 
 vi.mock("@/app/components/transaction-status", () => ({
-  useTransactionFeedback: ({ hash }: { hash?: string }) =>
-    (hash === mocks.operationsFeedback.current.hash ? mocks.operationsFeedback : mocks.feedback).current,
+  useTransactionFeedback: () => mocks.feedback.current,
   TransactionStatus: ({ successLabel }: { successLabel?: string }) => <div>{successLabel}</div>,
-}));
-
-vi.mock("@/app/components/wallet-picker", () => ({
-  useWalletPicker: () => ({ open: mocks.openPicker, close: vi.fn(), isOpen: false }),
-  WalletPickerProvider: ({ children }: { children: React.ReactNode }) => children,
-}));
-
-vi.mock("@/lib/tx-history", () => ({
-  useTxHistory: () => ({ ready: true, entries: [], record: mocks.record, markStatus: vi.fn(), clear: vi.fn() }),
-  TxHistoryProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 import AgentsPage from "@/app/(app)/agents/page";
@@ -73,7 +55,6 @@ beforeEach(() => {
   mocks.activeSubject = false;
   mocks.pohVerified = false;
   mocks.feedback.current = { phase: "confirming", hash: `0x${"12".repeat(32)}` };
-  mocks.operationsFeedback.current = { phase: "idle" };
   vi.clearAllMocks();
 });
 
@@ -97,17 +78,16 @@ describe("AgentsPage", () => {
     });
   });
 
-  it("opens the wallet picker instead of silently reusing one connector", async () => {
+  it("uses the configured connector instead of constructing a duplicate", async () => {
     mocks.account.isConnected = false;
     render(<AgentsPage />);
 
     await userEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
-    expect(mocks.openPicker).toHaveBeenCalledWith("connect");
+    expect(mocks.connect).toHaveBeenCalledWith({ connector: mocks.connector });
   });
 
   it("submits the on-chain registrationDeposit without multiplying it", async () => {
     mocks.feedback.current = { phase: "idle" };
-    mocks.writeContractAsync.mockResolvedValueOnce(`0x${"78".repeat(32)}`);
     render(<AgentsPage />);
     await userEvent.type(screen.getByLabelText("Agent name (e.g. DataAgent)"), "DepositCheck");
     await userEvent.type(screen.getByLabelText("Capability description (e.g. on-chain data analysis)"), "Checks deposit");
@@ -115,10 +95,7 @@ describe("AgentsPage", () => {
     await userEvent.type(screen.getByLabelText("Guardian 1 (required)"), "0x2222222222222222222222222222222222222222");
     await userEvent.type(screen.getByLabelText("Guardian 2 (required)"), "0x3333333333333333333333333333333333333333");
     await userEvent.click(screen.getByRole("button", { name: /Register \(lock/ }));
-    expect(mocks.writeContractAsync).toHaveBeenCalledWith(expect.objectContaining({ functionName: "registerAgent", value: 1n }));
-    await waitFor(() => {
-      expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({ kind: "register", status: "pending" }));
-    });
+    expect(mocks.writeContract).toHaveBeenCalledWith(expect.objectContaining({ functionName: "registerAgent", value: 1n }));
   });
 
   it("blocks registration on the wrong chain", () => {
@@ -130,10 +107,10 @@ describe("AgentsPage", () => {
     expect(screen.getByRole("button", { name: /Register \(lock/ })).toBeDisabled();
   });
 
-  it("reveals World ID inputs when verified registration mode is switched on", async () => {
+  it("reveals World ID inputs when verified registration mode is selected", async () => {
     render(<AgentsPage />);
 
-    await userEvent.click(screen.getByRole("switch", { name: /Register with World ID Proof of Humanity/ }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /Register with World ID Proof of Humanity/ }));
     expect(screen.getByLabelText("World ID nullifier (0x… 64 digits)")).toBeInTheDocument();
     expect(screen.getByLabelText("Humanity proof (hex)")).toBeInTheDocument();
   });
@@ -152,7 +129,7 @@ describe("AgentsPage", () => {
     expect(bind).toBeEnabled();
 
     await userEvent.click(bind);
-    expect(mocks.writeContractAsync).toHaveBeenCalledWith(
+    expect(mocks.writeContract).toHaveBeenCalledWith(
       expect.objectContaining({ functionName: "bindPoH" }),
     );
   });

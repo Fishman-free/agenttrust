@@ -1,20 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useAccount, useReadContract, useReadContracts, useWriteContract } from "wagmi";
+import { useAccount, useConnect, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { formatEther, isAddress } from "viem";
-import { RefreshCw, ShieldCheck, TriangleAlert } from "lucide-react";
-import { agentRegistryAbi } from "@/lib/abi";
+import { agentRegistryAbi, guaranteeEscrowAbi, schellingVotingAbi } from "@/lib/abi";
 import { CHAIN_ID, CHAIN_MODE, CONTRACT_ADDRESSES, WRITE_BLOCK_REASON, WRITES_ENABLED, activeChain, isZeroAddress } from "@/lib/config";
 import { parseAgentRegistered } from "@/lib/receipt-events";
 import { WorldIdButton } from "@/app/components/world-id-button";
 import type { RegistryAttestation } from "@/lib/world-id";
 import { getWriteReadiness } from "@/lib/write-readiness";
 import { TransactionStatus, useTransactionFeedback } from "@/app/components/transaction-status";
-import { useWalletPicker } from "@/app/components/wallet-picker";
 import { formatMessage, useLocale } from "@/lib/locale";
-import { useAgentIdentity } from "@/lib/agent-identity";
-import { useTxHistory, type TxKind } from "@/lib/tx-history";
 
 type AgentMetadata = readonly [
   name: string,
@@ -24,40 +20,30 @@ type AgentMetadata = readonly [
   createdAt: bigint,
 ];
 
+type RecoveryView = readonly [
+  newWallet: `0x${string}`,
+  nullifier: `0x${string}`,
+  executeAfter: bigint,
+  expiresAt: bigint,
+  nonce: bigint,
+  approvals: number,
+  proofLevel: number,
+  exists: boolean,
+];
+
 const NULLIFIER_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 function shortAddress(value: string) {
   return value ? `${value.slice(0, 6)}…${value.slice(-4)}` : "—";
 }
 
-function describeError(cause: unknown) {
-  return cause instanceof Error ? cause.message.split("\n")[0] : String(cause);
-}
-
 export default function AgentsPage() {
   const { locale, dictionary: t } = useLocale();
   const a = t.agents;
-  const ui = t.agentUi;
   const { address, chainId, isConnected } = useAccount();
-  const picker = useWalletPicker();
-  const history = useTxHistory();
-
-  const identity = useAgentIdentity();
-  const {
-    registryConfigured,
-    depositAmount,
-    lockedDeposit,
-    deregistered,
-    activeSubject,
-    pohVerified,
-    pendingWithdrawal,
-    recovery: ownRecoveryData,
-    hasActiveTrades,
-    hasOpenCommitments,
-  } = identity;
-  const ownRecovery = ownRecoveryData;
-  const pendingAmount = pendingWithdrawal ?? 0n;
-
+  const { connect, connectors, isPending: isConnecting } = useConnect();
+  const registration = useWriteContract();
+  const operations = useWriteContract();
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [endpoint, setEndpoint] = useState("");
@@ -72,14 +58,20 @@ export default function AgentsPage() {
   const [bindMockProof, setBindMockProof] = useState("0x01");
   const [recoverySubject, setRecoverySubject] = useState("");
   const [opLabel, setOpLabel] = useState<string>();
-  const [actionError, setActionError] = useState<string>();
-  const [directoryToken, setDirectoryToken] = useState(0);
   const refreshedReceipt = useRef<string | undefined>(undefined);
+  const registryConfigured = !isZeroAddress(CONTRACT_ADDRESSES.agentRegistry);
+  const escrowConfigured = !isZeroAddress(CONTRACT_ADDRESSES.guaranteeEscrow);
+  const votingConfigured = !isZeroAddress(CONTRACT_ADDRESSES.schellingVoting);
 
-  const registration = useWriteContract();
-  const operations = useWriteContract();
-
-  // Registry 尚未绑定 World ID 验证器时，验证注册与 Labs 门禁不可用（上游行为，保持不变）。
+  const { data: depositData } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "registrationDeposit",
+    query: { enabled: registryConfigured },
+  });
+  const depositEth = depositData === undefined ? "0" : formatEther(depositData);
+  const plainDeposit = depositData;
+  const plainDepositEth = plainDeposit === undefined ? "0" : formatEther(plainDeposit);
   const { data: poHVerifier } = useReadContract({
     address: CONTRACT_ADDRESSES.agentRegistry,
     abi: agentRegistryAbi,
@@ -88,6 +80,80 @@ export default function AgentsPage() {
   });
   const verifierBound = poHVerifier !== undefined && !isZeroAddress(poHVerifier);
   const isLocalMock = CHAIN_MODE === "anvil";
+
+  const { data: lockedDeposit, refetch: refetchDeposit } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "deposits",
+    args: address ? [address] : undefined,
+    query: { enabled: registryConfigured && Boolean(address) },
+  });
+  const { data: deregistered, refetch: refetchDeregistered } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "deregistered",
+    args: address ? [address] : undefined,
+    query: { enabled: registryConfigured && Boolean(address) },
+  });
+  const { data: activeSubject, refetch: refetchActive } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "activeSubjects",
+    args: address ? [address] : undefined,
+    query: { enabled: registryConfigured && Boolean(address) },
+  });
+  const { data: poHVerified, refetch: refetchPoH } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "isPoHVerified",
+    args: address ? [address] : undefined,
+    query: { enabled: registryConfigured && Boolean(address) },
+  });
+  const { data: pendingBalance, refetch: refetchPending } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "pendingWithdrawals",
+    args: address ? [address] : undefined,
+    query: { enabled: registryConfigured && Boolean(address) },
+  });
+  const { data: hasActiveTrades } = useReadContract({
+    address: CONTRACT_ADDRESSES.guaranteeEscrow,
+    abi: guaranteeEscrowAbi,
+    functionName: "subjectHasActiveTrades",
+    args: address ? [address] : undefined,
+    query: { enabled: escrowConfigured && Boolean(address) },
+  });
+  const { data: hasOpenCommitments } = useReadContract({
+    address: CONTRACT_ADDRESSES.schellingVoting,
+    abi: schellingVotingAbi,
+    functionName: "subjectHasOpenCommitments",
+    args: address ? [address] : undefined,
+    query: { enabled: votingConfigured && Boolean(address) },
+  });
+  const { data: ownRecovery, refetch: refetchRecovery } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "recoveryRequests",
+    args: address ? [address] : undefined,
+    query: { enabled: registryConfigured && Boolean(address) },
+  });
+
+  const { data: agentCount, refetch: refetchCount } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "agentCount",
+    query: { enabled: registryConfigured },
+  });
+  const count = Number(agentCount ?? 0);
+  const { data: agentList, refetch: refetchList } = useReadContracts({
+    contracts: Array.from({ length: count }, (_, i) => ({
+      address: CONTRACT_ADDRESSES.agentRegistry,
+      abi: agentRegistryAbi,
+      functionName: "agents" as const,
+      args: [BigInt(i)] as const,
+    })),
+    query: { enabled: registryConfigured && count > 0 },
+  });
 
   const registrationFeedback = useTransactionFeedback({
     hash: registration.data,
@@ -109,14 +175,13 @@ export default function AgentsPage() {
     const receiptKey = registrationFeedback.receipt.transactionHash;
     if (refreshedReceipt.current === receiptKey) return;
     refreshedReceipt.current = receiptKey;
-    void identity.refetchAll();
-    setDirectoryToken((token) => token + 1);
-  }, [registrationFeedback.phase, registrationFeedback.receipt, identity]);
+    void Promise.all([refetchCount(), refetchList(), refetchDeposit(), refetchActive(), refetchPoH()]);
+  }, [registrationFeedback.phase, registrationFeedback.receipt, refetchCount, refetchList, refetchDeposit, refetchActive, refetchPoH]);
 
   useEffect(() => {
     if (operationsFeedback.phase !== "success") return;
-    void identity.refetchAll();
-  }, [operationsFeedback.phase, identity]);
+    void Promise.all([refetchDeposit(), refetchDeregistered(), refetchActive(), refetchPending(), refetchRecovery(), refetchPoH()]);
+  }, [operationsFeedback.phase, refetchDeposit, refetchDeregistered, refetchActive, refetchPending, refetchRecovery, refetchPoH]);
 
   const filledGuardians = [guardian1.trim(), guardian2.trim(), guardian3.trim()]
     .filter(Boolean)
@@ -144,7 +209,7 @@ export default function AgentsPage() {
     rightChain: chainId === CHAIN_ID,
     busy,
     authorized: true,
-    stateValid: depositAmount !== undefined,
+    stateValid: depositData !== undefined,
     inputValid,
     reasons: {
       "not-configured": WRITE_BLOCK_REASON,
@@ -155,7 +220,8 @@ export default function AgentsPage() {
     locale,
   });
 
-  const hasLiveRecovery = Boolean(ownRecovery?.[7]);
+  const ownRecoveryView = ownRecovery as RecoveryView | undefined;
+  const hasLiveRecovery = Boolean(ownRecoveryView?.[7]);
   const obligationReason = hasActiveTrades
     ? a.activeTrades
     : hasOpenCommitments
@@ -168,458 +234,269 @@ export default function AgentsPage() {
   const bindMockValid = NULLIFIER_PATTERN.test(bindMockNullifier.trim()) && bindMockProof.trim() !== "";
   const bindReady =
     isLocalMock && WRITES_ENABLED && isConnected && chainId === CHAIN_ID && !opsBusy && Boolean(activeSubject)
-    && !deregistered && pohVerified === false && bindMockValid;
-
-  function record(hash: `0x${string}`, label: string, kind: TxKind) {
-    history.record({ hash, label, kind, status: "pending", chainId: chainId ?? CHAIN_ID });
-  }
-
-  async function submitRegistration() {
-    setActionError(undefined);
-    const label = formatMessage(a.registerDeposit, { amount: depositEth });
-    try {
-      const hash = verifiedMode
-        ? await registration.writeContractAsync({
-          address: CONTRACT_ADDRESSES.agentRegistry,
-          abi: agentRegistryAbi,
-          functionName: "registerAgentVerified",
-          args: [
-            name.trim(),
-            desc.trim(),
-            endpoint.trim(),
-            verifiedNullifier as `0x${string}`,
-            verifiedProof as `0x${string}`,
-            filledGuardians,
-          ],
-          value: depositAmount,
-        })
-        : await registration.writeContractAsync({
-          address: CONTRACT_ADDRESSES.agentRegistry,
-          abi: agentRegistryAbi,
-          functionName: "registerAgent",
-          args: [name.trim(), desc.trim(), endpoint.trim(), filledGuardians],
-          value: depositAmount,
-        });
-      record(hash, label, "register");
-    } catch (cause) {
-      setActionError(describeError(cause));
-    }
-  }
-
-  async function submitOperation(
-    functionName: "bindPoH" | "deregister" | "withdraw" | "vetoRecovery" | "approveRecovery",
-    args: unknown[],
-    label: string,
-    kind: TxKind,
-  ) {
-    setActionError(undefined);
-    setOpLabel(label);
-    try {
-      const hash = await operations.writeContractAsync({
-        address: CONTRACT_ADDRESSES.agentRegistry,
-        abi: agentRegistryAbi,
-        functionName,
-        args: args as never,
-      });
-      record(hash, label, kind);
-    } catch (cause) {
-      setActionError(describeError(cause));
-    }
-  }
+    && !deregistered && poHVerified === false && bindMockValid;
 
   function register() {
     if (!readiness.ready) {
-      // 不再用 alert()：错误就近显示在提交按钮旁（Apple 原则 17 · 内联验证）。
-      setActionError(readiness.reason);
+      alert(readiness.reason);
       return;
     }
-    void submitRegistration();
+    if (verifiedMode) {
+      registration.writeContract({
+        address: CONTRACT_ADDRESSES.agentRegistry,
+        abi: agentRegistryAbi,
+        functionName: "registerAgentVerified",
+        args: [
+          name.trim(),
+          desc.trim(),
+          endpoint.trim(),
+          verifiedNullifier as `0x${string}`,
+          verifiedProof as `0x${string}`,
+          filledGuardians,
+        ],
+        value: depositData,
+      });
+      return;
+    }
+    registration.writeContract({
+      address: CONTRACT_ADDRESSES.agentRegistry,
+      abi: agentRegistryAbi,
+      functionName: "registerAgent",
+      args: [name.trim(), desc.trim(), endpoint.trim(), filledGuardians],
+      value: plainDeposit,
+    });
   }
 
-  const depositEth = depositAmount === undefined ? "0" : formatEther(depositAmount);
+  function runOperation(
+    functionName: "deregister" | "vetoRecovery" | "approveRecovery" | "withdraw" | "bindPoH",
+    args: unknown[],
+    label: string,
+  ) {
+    setOpLabel(label);
+    operations.writeContract({
+      address: CONTRACT_ADDRESSES.agentRegistry,
+      abi: agentRegistryAbi,
+      functionName,
+      args: args as never,
+    });
+  }
+
   const successLabel = registrationEvent
     ? formatMessage(a.registered, { id: registrationEvent.args.tokenId.toString() })
     : registrationFeedback.phase === "success"
       ? a.missingEvent
       : undefined;
 
-  const recoveryWindowHours = ownRecovery?.[6] === 0 ? 24 : 48;
-  const recoveryRequiredApprovals = ownRecovery?.[6] === 0 ? "1" : a.all;
+  const recoveryWindowHours = ownRecoveryView?.[6] === 0 ? 24 : 48;
+  const recoveryRequiredApprovals = ownRecoveryView?.[6] === 0 ? "1" : a.all;
   const recoverySubjectValid = recoverySubject.trim() !== "" && isAddress(recoverySubject.trim());
 
-  const statusPill = !isConnected
-    ? undefined
-    : activeSubject
-      ? deregistered
-        ? { text: ui.statusClosed, className: "status-pill" }
-        : { text: ui.statusActive, className: "status-pill status-pill-active" }
-      : { text: ui.statusNotRegistered, className: "status-pill" };
-
   return (
-    <main className="page page-wide">
+    <main className="page">
       <div className="page-head">
         <h1 className="page-title">{a.title}</h1>
         <p className="page-sub">{a.subtitle}</p>
-
-        <dl className="agents-stats">
-          <div className="agents-stat">
-            <dt>{ui.networkCard}</dt>
-            <dd>{activeChain.name}</dd>
-          </div>
-          <div className="agents-stat">
-            <dt>{ui.depositCard}</dt>
-            <dd>{depositAmount === undefined ? t.common.loading : `${depositEth} ETH`}</dd>
-          </div>
-          <div className="agents-stat">
-            <dt>{ui.statusCard}</dt>
-            <dd>{statusPill ? <span className={statusPill.className}>{statusPill.text}</span> : "—"}</dd>
-          </div>
-        </dl>
       </div>
-
+      {!isConnected && (
+        <button
+          className="button button-primary mt-4"
+          onClick={() => connectors[0] && connect({ connector: connectors[0] })}
+          disabled={!connectors[0] || isConnecting}
+        >
+          {isConnecting ? t.common.connecting : t.common.connectWallet}
+        </button>
+      )}
       {!registryConfigured && <p className="form-warning mt-3" role="status">{a.registryMissing}</p>}
       {isConnected && chainId !== CHAIN_ID && (
         <p className="form-error mb-4" role="alert">
           {formatMessage(a.wrongNetwork, { chain: activeChain.name, chainId: CHAIN_ID })}
         </p>
       )}
-
-      {!isConnected ? (
-        <div className="card connect-cta">
-          <h2>{ui.connectTitle}</h2>
-          <p>{ui.connectBody}</p>
-          <button type="button" className="button button-primary" onClick={() => picker.open("connect")}>
-            {t.common.connectWallet}
-          </button>
-        </div>
-      ) : (
+      {isConnected && (
         <>
-          {!activeSubject ? (
-            <form className="card" onSubmit={(event) => { event.preventDefault(); register(); }}>
-              <section className="form-section">
-                <div className="form-section-head">
-                  <h2 className="form-section-title">{ui.sectionBasics}</h2>
-                  <p className="form-hint">{ui.sectionBasicsHint}</p>
-                </div>
-                <input aria-label={a.name} placeholder={a.name} value={name} onChange={(e) => setName(e.target.value)} className="field-input" />
-                <input aria-label={a.description} placeholder={a.description} value={desc} onChange={(e) => setDesc(e.target.value)} className="field-input" />
-                <input aria-label={a.endpoint} placeholder={a.endpoint} value={endpoint} onChange={(e) => setEndpoint(e.target.value)} className="field-input" inputMode="url" />
-              </section>
+          <p className="form-hint mb-4">{formatMessage(a.currentSubject, { address: address ?? "" })}</p>
 
-              <section className="form-section">
-                <div className="form-section-head">
-                  <h2 className="form-section-title">{ui.sectionGuardians}</h2>
-                  <p className="form-hint">{ui.sectionGuardiansHint}</p>
-                </div>
-                <div className="form-grid-2">
-                  <label className="field-label">
-                    {a.guardian1}
-                    <input aria-label={a.guardian1Aria} placeholder="0x…" value={guardian1} onChange={(e) => setGuardian1(e.target.value)} className="field-input" />
-                  </label>
-                  <label className="field-label">
-                    {a.guardian2}
-                    <input aria-label={a.guardian2} placeholder="0x…" value={guardian2} onChange={(e) => setGuardian2(e.target.value)} className="field-input" />
-                  </label>
-                </div>
-                <label className="field-label">
-                  {a.guardian3}
-                  <input aria-label={a.guardian3} placeholder={a.optionalAddress} value={guardian3} onChange={(e) => setGuardian3(e.target.value)} className="field-input" />
+          {!activeSubject && (
+            <div className="card space-y-3">
+              <input aria-label={a.name} placeholder={a.name} value={name} onChange={(e) => setName(e.target.value)}
+                className="field-input" />
+              <input aria-label={a.description} placeholder={a.description} value={desc} onChange={(e) => setDesc(e.target.value)}
+                className="field-input" />
+              <input aria-label={a.endpoint} placeholder={a.endpoint} value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
+                className="field-input" />
+              <label className="field-label">
+                {a.guardian1}
+                <input aria-label={a.guardian1Aria} placeholder="0x…" value={guardian1} onChange={(e) => setGuardian1(e.target.value)} className="field-input" />
+              </label>
+              <label className="field-label">
+                {a.guardian2}
+                <input aria-label={a.guardian2} placeholder="0x…" value={guardian2} onChange={(e) => setGuardian2(e.target.value)} className="field-input" />
+              </label>
+              <label className="field-label">
+                {a.guardian3}
+                <input aria-label={a.guardian3} placeholder={a.optionalAddress} value={guardian3} onChange={(e) => setGuardian3(e.target.value)} className="field-input" />
+              </label>
+              <details className="labs-card agent-labs">
+                <summary>{t.auth.labs}</summary>
+                <p className="form-hint">{t.auth.worldIdLabs}</p>
+                <label className="field-checkbox">
+                  <input type="checkbox" aria-label={a.verifiedMode} checked={verifiedMode} onChange={(e) => setVerifiedMode(e.target.checked)} />
+                  {a.verifiedModeHelp}
                 </label>
-                {guardianError && <p className="form-hint">{ui.guardianHint}</p>}
-              </section>
+                {verifiedMode && address && (isLocalMock ? (
+                  <>
+                    <label className="field-label">{a.nullifier}<input aria-label={a.nullifierAria} placeholder="0x…" value={mockNullifier} onChange={(e) => setMockNullifier(e.target.value)} className="field-input" /></label>
+                    <label className="field-label">{a.proof}<input aria-label={a.proofAria} placeholder="0x01" value={mockProof} onChange={(e) => setMockProof(e.target.value)} className="field-input" /></label>
+                  </>
+                ) : verifierBound ? (
+                  <WorldIdButton subject={address} disabled={busy} label={a.worldIdButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={setAttestation} />
+                ) : <p className="form-warning" role="status">{a.verifierMissing}</p>)}
+              </details>
+              <p className="form-hint">
+                {a.depositHelp}
+              </p>
+              <button
+                onClick={register}
+                disabled={!readiness.ready}
+                title={readiness.ready ? undefined : readiness.reason}
+                className="button button-primary"
+              >
+                {busy
+                  ? a.registering
+                  : depositData === undefined
+                    ? t.common.loading
+                    : formatMessage(a.registerDeposit, { amount: verifiedMode ? depositEth : plainDepositEth })}
+              </button>
+              {!readiness.ready && readiness.code !== "invalid-input" && (
+                <p className="form-warning" role="status">{readiness.reason}</p>
+              )}
+            </div>
+          )}
 
-              <section className="form-section">
-                <details className="labs-card agent-labs">
-                  <summary>{t.auth.labs}</summary>
-                  <p className="form-hint">{t.auth.worldIdLabs}</p>
-                  <div className="switch-row">
-                    <span className="switch-row-text">
-                      <span>{a.verifiedMode}</span>
-                      <span>{a.verifiedModeHelp}</span>
-                    </span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={verifiedMode}
-                      aria-label={a.verifiedMode}
-                      className="switch"
-                      onClick={() => setVerifiedMode((current) => !current)}
-                    />
-                  </div>
-                  {verifiedMode && address && (isLocalMock ? (
-                    <div className="form-grid-2">
-                      <label className="field-label">{a.nullifier}<input aria-label={a.nullifierAria} placeholder="0x…" value={mockNullifier} onChange={(e) => setMockNullifier(e.target.value)} className="field-input" /></label>
-                      <label className="field-label">{a.proof}<input aria-label={a.proofAria} placeholder="0x01" value={mockProof} onChange={(e) => setMockProof(e.target.value)} className="field-input" /></label>
-                    </div>
-                  ) : verifierBound ? (
-                    <WorldIdButton subject={address} disabled={busy} label={a.worldIdButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={setAttestation} />
-                  ) : <p className="form-warning" role="status">{a.verifierMissing}</p>)}
-                </details>
-              </section>
-
-              <div className="form-section">
-                <p className="form-hint">{a.depositHelp}</p>
-                <div className="action-row">
-                  <button
-                    type="submit"
-                    disabled={!readiness.ready}
-                    title={readiness.ready ? undefined : readiness.reason}
-                    className="button button-primary"
-                  >
-                    {busy
-                      ? a.registering
-                      : depositAmount === undefined
-                        ? t.common.loading
-                        : formatMessage(a.registerDeposit, { amount: depositEth })}
-                  </button>
-                </div>
-                {!readiness.ready && readiness.code !== "invalid-input" && (
-                  <p className="form-warning" role="status">{readiness.reason}</p>
-                )}
-                {actionError && <p className="form-error" role="alert">{actionError}</p>}
-              </div>
-            </form>
-          ) : (
+          {activeSubject && (
             <div className="space-y-3">
-              <section className="card">
+              <div className="card space-y-3">
                 <h2 className="card-title">{a.identity}</h2>
-                <dl className="detail-grid mt-3">
-                  <div>
-                    <dt>{a.status}</dt>
-                    <dd>
-                      <span className={deregistered ? "status-pill" : "status-pill status-pill-active"}>
-                        {deregistered ? a.deregistered : a.active}
-                      </span>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{a.poh}</dt>
-                    <dd>
-                      <span className={pohVerified ? "status-pill status-pill-active" : "status-pill status-pill-warning"}>
-                        {pohVerified ? a.verified : a.unverified}
-                      </span>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{a.lockedDeposit}</dt>
-                    <dd>{lockedDeposit === undefined ? "—" : `${formatEther(lockedDeposit)} ETH`}</dd>
-                  </div>
-                  <div>
-                    <dt>{a.pending}</dt>
-                    <dd>{pendingAmount > 0n ? `${formatEther(pendingAmount)} ETH` : "—"}</dd>
-                  </div>
-                </dl>
-
-                {!deregistered && pohVerified === false && (
-                  <div className="callout callout-action mt-3" role="alert">
-                    <p className="warning-text"><TriangleAlert size={14} aria-hidden="true" /> {a.notVerified}</p>
-                    <p className="form-hint">{a.notVerifiedRisk}</p>
+                <p className="text-sm">
+                  {a.status} {deregistered ? <strong className="warning-text">{a.deregistered}</strong> : <strong>{a.active}</strong>} ·{" "}
+                  {a.poh} {poHVerified ? <strong>{a.verified}</strong> : <strong className="warning-text">{a.unverified}</strong>} ·{" "}
+                  {a.lockedDeposit} <strong>{lockedDeposit === undefined ? "—" : `${formatEther(lockedDeposit)} ETH`}</strong> ·{" "}
+                  {a.pending} <strong>{pendingBalance === undefined ? "—" : `${formatEther(pendingBalance)} ETH`}</strong>
+                </p>
+                {activeSubject && !deregistered && poHVerified === false && (
+                  <div className="callout space-y-2" role="alert">
+                    <p className="warning-text">{a.notVerified}</p>
+                    <p className="text-sm">
+                      {a.notVerifiedRisk}
+                    </p>
                     {isLocalMock ? (
                       <>
-                        <div className="form-grid-2">
-                          <label className="field-label">{a.bindNullifier}<input aria-label={a.bindNullifier} placeholder="0x…" value={bindMockNullifier} onChange={(e) => setBindMockNullifier(e.target.value)} className="field-input" /></label>
-                          <label className="field-label">{a.bindProof}<input aria-label={a.bindProof} placeholder="0x01" value={bindMockProof} onChange={(e) => setBindMockProof(e.target.value)} className="field-input" /></label>
-                        </div>
-                        <div>
-                          <button type="button" className="button button-primary" disabled={!bindReady} title={bindReady ? undefined : a.bindInvalid} onClick={() => void submitOperation("bindPoH", [bindMockNullifier.trim(), bindMockProof.trim()], a.bindSuccess, "bind")}>
-                            <ShieldCheck size={15} aria-hidden="true" />
-                            {a.bindButton}
-                          </button>
-                        </div>
+                        <label className="field-label">{a.bindNullifier}<input aria-label={a.bindNullifier} placeholder="0x…" value={bindMockNullifier} onChange={(e) => setBindMockNullifier(e.target.value)} className="field-input" /></label>
+                        <label className="field-label">{a.bindProof}<input aria-label={a.bindProof} placeholder="0x01" value={bindMockProof} onChange={(e) => setBindMockProof(e.target.value)} className="field-input" /></label>
+                        <button className="button button-primary" disabled={!bindReady} title={bindReady ? undefined : a.bindInvalid} onClick={() => runOperation("bindPoH", [bindMockNullifier.trim(), bindMockProof.trim()], a.bindSuccess)}>{a.bindButton}</button>
                       </>
                     ) : verifierBound && address ? (
-                      <WorldIdButton subject={address} disabled={opsBusy} label={a.bindButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={(value) => void submitOperation("bindPoH", [value.nullifier, value.proof], a.bindSuccess, "bind")} />
+                      <WorldIdButton subject={address} disabled={opsBusy} label={a.bindButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={(value) => runOperation("bindPoH", [value.nullifier, value.proof], a.bindSuccess)} />
                     ) : <p className="form-warning" role="status">{a.verifierMissing}</p>}
                   </div>
                 )}
-
-                {pendingAmount > 0n && (
-                  <div className="action-row mt-3">
+                {!deregistered && (
+                  <div className="action-row">
                     <button
-                      type="button"
+                      className="button button-secondary"
+                      disabled={!deregisterReady}
+                      title={deregisterReady ? undefined : (hasLiveRecovery ? a.recoveryBlocks : (obligationReason ?? a.conditions))}
+                      onClick={() => runOperation("deregister", [], a.deregisterSuccess)}
+                    >
+                      {a.deregister}
+                    </button>
+                  </div>
+                )}
+                {!deregisterReady && activeSubject && !deregistered && (
+                  <p className="form-warning" role="status">
+                    {hasLiveRecovery ? a.recoveryDeregisterBlock : (obligationReason ?? a.walletCheck)}
+                  </p>
+                )}
+                {Number(pendingBalance ?? 0) > 0 && (
+                  <div className="action-row">
+                    <button
                       className="button button-primary"
                       disabled={!WRITES_ENABLED || opsBusy}
-                      onClick={() => void submitOperation("withdraw", [address], a.withdrawSuccess, "withdraw")}
+                      onClick={() => runOperation("withdraw", [address], a.withdrawSuccess)}
                     >
                       {a.withdrawDeposit}
                     </button>
                   </div>
                 )}
                 <TransactionStatus feedback={operationsFeedback} />
-              </section>
+              </div>
 
-              {!deregistered && (
-                <section className="card danger-zone">
-                  <h2 className="card-title">{ui.dangerZone}</h2>
-                  <p className="form-hint">{ui.dangerZoneHint}</p>
-                  <div className="action-row mt-3">
-                    <button
-                      type="button"
-                      className="button button-danger"
-                      disabled={!deregisterReady}
-                      title={deregisterReady ? undefined : (hasLiveRecovery ? a.recoveryBlocks : (obligationReason ?? a.conditions))}
-                      onClick={() => void submitOperation("deregister", [], a.deregisterSuccess, "deregister")}
-                    >
-                      {a.deregister}
-                    </button>
-                  </div>
-                  {!deregisterReady && (
-                    <p className="form-warning" role="status">
-                      {hasLiveRecovery ? a.recoveryDeregisterBlock : (obligationReason ?? a.walletCheck)}
-                    </p>
-                  )}
-                </section>
-              )}
-
-              <section className="card">
+              <div className="card space-y-3">
                 <h2 className="card-title">{a.recovery}</h2>
                 {hasLiveRecovery ? (
-                  <div className="callout callout-action mt-3">
+                  <div className="callout space-y-2">
                     <p className="text-sm">
                       {formatMessage(a.recoveryLive, {
-                        wallet: shortAddress(ownRecovery?.[0] ?? ""),
-                        approvals: String(ownRecovery?.[5] ?? 0),
+                        wallet: shortAddress(ownRecoveryView?.[0] ?? ""),
+                        approvals: String(ownRecoveryView?.[5] ?? 0),
                         required: recoveryRequiredApprovals,
-                        path: ownRecovery?.[6] === 0 ? a.samePersonPath : a.guardianPath,
-                        date: new Date(Number(ownRecovery?.[2] ?? 0) * 1000).toLocaleString(locale),
+                        path: ownRecoveryView?.[6] === 0 ? a.samePersonPath : a.guardianPath,
+                        date: new Date(Number(ownRecoveryView?.[2] ?? 0) * 1000).toLocaleString(locale),
                       })}
                     </p>
                     <p className="form-hint">{formatMessage(a.vetoWarning, { hours: recoveryWindowHours })}</p>
-                    <div>
-                      <button
-                        type="button"
-                        className="button button-warning"
-                        disabled={!WRITES_ENABLED || opsBusy}
-                        onClick={() => void submitOperation("vetoRecovery", [address], a.vetoSuccess, "recovery")}
-                      >
-                        {a.veto}
-                      </button>
-                    </div>
+                    <button
+                      className="button button-warning"
+                      disabled={!WRITES_ENABLED || opsBusy}
+                      onClick={() => runOperation("vetoRecovery", [address], a.vetoSuccess)}
+                    >
+                      {a.veto}
+                    </button>
                   </div>
                 ) : (
-                  <p className="form-hint mt-3">{a.noRecovery}</p>
+                  <p className="form-hint">
+                    {a.noRecovery}
+                  </p>
                 )}
-                <label className="field-label mt-3">
+                <label className="field-label">
                   {a.approveHelp}
                   <input aria-label={a.protectedAddress} placeholder="0x…" value={recoverySubject} onChange={(e) => setRecoverySubject(e.target.value)} className="field-input" />
                 </label>
-                <div className="action-row mt-3">
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    disabled={!WRITES_ENABLED || opsBusy || !recoverySubjectValid}
-                    onClick={() => void submitOperation("approveRecovery", [recoverySubject.trim()], a.approveSuccess, "recovery")}
-                  >
-                    {a.approve}
-                  </button>
-                </div>
-              </section>
+                <button
+                  className="button button-secondary"
+                  disabled={!WRITES_ENABLED || opsBusy || !recoverySubjectValid}
+                  onClick={() => runOperation("approveRecovery", [recoverySubject.trim()], a.approveSuccess)}
+                >
+                  {a.approve}
+                </button>
+              </div>
             </div>
           )}
 
-          {actionError && activeSubject && <p className="form-error" role="alert">{actionError}</p>}
           <TransactionStatus feedback={registrationFeedback} successLabel={successLabel} />
 
-          <AgentDirectory
-            locale={locale}
-            registryConfigured={registryConfigured}
-            refreshToken={directoryToken}
-          />
+          <h2 className="section-title mt-8 mb-2">{formatMessage(a.registeredAgents, { count: String(agentCount ?? 0) })}</h2>
+          {count === 0 ? (
+            <p className="form-hint">{a.noAgents}</p>
+          ) : (
+            <ul className="agent-list space-y-2">
+              {agentList?.map((item, i) => {
+                const agent = item?.status === "success" ? (item.result as unknown as AgentMetadata) : undefined;
+                return (
+                  <li key={i} className="list-row text-sm break-all">
+                    <span className="font-semibold">#{i}</span>
+                    {agent ? (
+                      <> · {agent[0]} ({agent[1]}) · {agent[2]} · {agent[3]}</>
+                    ) : (
+                      <> · {t.common.failedToLoad}</>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </>
       )}
     </main>
-  );
-}
-
-/**
- * 已注册智能体目录。
- * 单独成组件：注册表单里的每次按键都不会牵动这里的批量读取。
- */
-function AgentDirectory({
-  locale,
-  registryConfigured,
-  refreshToken,
-}: {
-  locale: string;
-  registryConfigured: boolean;
-  refreshToken: number;
-}) {
-  const { dictionary: t } = useLocale();
-  const a = t.agents;
-  const ui = t.agentUi;
-
-  const { data: agentCount, refetch: refetchCount } = useReadContract({
-    address: CONTRACT_ADDRESSES.agentRegistry,
-    abi: agentRegistryAbi,
-    functionName: "agentCount" as const,
-    query: { enabled: registryConfigured },
-  });
-  const count = Number(agentCount ?? 0);
-  const { data: agentList, refetch: refetchList } = useReadContracts({
-    contracts: Array.from({ length: count }, (_, i) => ({
-      address: CONTRACT_ADDRESSES.agentRegistry,
-      abi: agentRegistryAbi,
-      functionName: "agents" as const,
-      args: [BigInt(i)] as const,
-    })),
-    query: { enabled: registryConfigured && count > 0 },
-  });
-
-  // 只在真的有新注册落地后刷新，避免挂载时打一次无谓的请求。
-  const skipInitial = useRef(true);
-  useEffect(() => {
-    if (skipInitial.current) {
-      skipInitial.current = false;
-      return;
-    }
-    void refetchCount();
-    void refetchList();
-  }, [refreshToken, refetchCount, refetchList]);
-
-  return (
-    <section className="mt-8">
-      <div className="agents-head mb-3">
-        <h2 className="section-title">{formatMessage(a.registeredAgents, { count: String(count) })}</h2>
-        <button
-          type="button"
-          className="chip-button"
-          onClick={() => { void refetchCount(); void refetchList(); }}
-        >
-          <RefreshCw size={14} aria-hidden="true" />
-          {ui.refreshList}
-        </button>
-      </div>
-      {count === 0 ? (
-        <p className="form-hint">{a.noAgents}</p>
-      ) : (
-        <ul className="agents-grid" role="list">
-          {agentList?.map((item, i) => {
-            const agent = item?.status === "success" ? (item.result as unknown as AgentMetadata) : undefined;
-            return (
-              <li key={i} className="agent-card">
-                <div className="agent-card-head">
-                  <span className="agent-card-id">#{i}</span>
-                  <span className="agent-card-id">
-                    {agent && Number(agent[4]) > 0 ? new Date(Number(agent[4]) * 1000).toLocaleDateString(locale) : "—"}
-                  </span>
-                </div>
-                {agent ? (
-                  <>
-                    <h3 className="agent-card-name">{agent[0]}</h3>
-                    <p className="agent-card-desc">{agent[1]}</p>
-                    <div className="agent-card-meta">
-                      <span title={ui.agentEndpoint}>{agent[2] || "—"}</span>
-                      <span title={ui.agentOwner}>{agent[3]}</span>
-                    </div>
-                  </>
-                ) : (
-                  <p className="agent-card-desc">{t.common.failedToLoad}</p>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
   );
 }
