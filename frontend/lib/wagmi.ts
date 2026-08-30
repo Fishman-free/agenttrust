@@ -12,15 +12,3 @@ export const wagmiConfig = createConfig({
     [activeChain.id]: http(),
   } as Record<(typeof activeChain)["id"], ReturnType<typeof http>>,
 });
-
-/** Storage key where wagmi persists the recently used connector id.
- *
- * Wagmi reads this on `WagmiProvider` mount and, if set, calls `reconnect()` synchronously.
- * That race used to swallow the wallet picker: a user who connected MetaMask once and then
- * killed MetaMask would click "Connect wallet", the picker would race against
- * `reconnect()` re-firing MetaMask, and the user saw it as "MetaMask jumped straight to
- * MetaMask with no choice". `<WagmiProviders>` disables that on mount so every connection
- * starts from the picker (a single, observable source of truth). If the user explicitly
- * wants to re-enter the auto-reconnect path, the account menu can clear this key first.
- */
-export const WAGMI_RECENT_CONNECTOR_KEY = "wagmi.recentConnectorId";
