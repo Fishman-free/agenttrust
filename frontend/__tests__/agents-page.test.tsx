@@ -1,11 +1,15 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   account: { address: "0x1111111111111111111111111111111111111111", chainId: 31337, isConnected: true },
-  connector: { id: "configured-injected" },
+  connectors: [
+    { id: "io.metamask", name: "MetaMask", type: "injected", rdns: "io.metamask" },
+    { id: "io.rabby", name: "Rabby", type: "injected", rdns: "io.rabby" },
+  ],
   connect: vi.fn(),
+  connectAsync: vi.fn(async () => ({ accounts: ["0x1111111111111111111111111111111111111111"], chainId: 31337 })),
   writeContract: vi.fn(),
   refetchCount: vi.fn(),
   refetchList: vi.fn(),
@@ -16,7 +20,14 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("wagmi", () => ({
   useAccount: () => mocks.account,
-  useConnect: () => ({ connect: mocks.connect, connectors: [mocks.connector], isPending: false }),
+  useConnectors: () => mocks.connectors,
+  useConnections: () => [],
+  useConnect: () => ({
+    connect: mocks.connect,
+    connectAsync: mocks.connectAsync,
+    connectors: mocks.connectors,
+    isPending: false,
+  }),
   useWriteContract: () => ({ data: mocks.feedback.current.hash, writeContract: mocks.writeContract, isPending: false, error: null }),
   useReadContract: ({ functionName }: { functionName: string }) => {
     if (functionName === "registrationDeposit") return { data: BigInt(1) };
@@ -78,12 +89,32 @@ describe("AgentsPage", () => {
     });
   });
 
-  it("uses the configured connector instead of constructing a duplicate", async () => {
+  it("opens the wallet chooser instead of reusing a previously picked wallet", async () => {
     mocks.account.isConnected = false;
     render(<AgentsPage />);
 
     await userEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
-    expect(mocks.connect).toHaveBeenCalledWith({ connector: mocks.connector });
+
+    // 每次点击都必须先看到选择页，而不是静默连到上一次那个钱包。
+    const dialog = await screen.findByRole("dialog", { name: "Connect a wallet" });
+    expect(within(dialog).getByRole("button", { name: /Rabby/ })).toBeInTheDocument();
+
+    // 未安装的一律走「获取」链接，不能被当成可连接项。
+    expect(mocks.connectAsync).not.toHaveBeenCalled();
+  });
+
+  it("connects with the wallet the user picked, not a hardcoded connector", async () => {
+    mocks.account.isConnected = false;
+    render(<AgentsPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
+    const dialog = await screen.findByRole("dialog", { name: "Connect a wallet" });
+    await userEvent.click(within(dialog).getByRole("button", { name: /MetaMask/ }));
+
+    expect(mocks.connectAsync).toHaveBeenCalledWith({
+      connector: expect.objectContaining({ id: "io.metamask" }),
+    });
+    expect(mocks.connect).not.toHaveBeenCalled();
   });
 
   it("submits the on-chain registrationDeposit without multiplying it", async () => {

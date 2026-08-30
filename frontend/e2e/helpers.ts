@@ -3,34 +3,55 @@ import { switchAccount } from "./provider";
 
 const lastTransactionHash = new WeakMap<Page, string>();
 
+/** 钱包选择页：每次连接都必须先出现，然后在其中选定 E2E 模拟的 MetaMask。 */
+export async function pickMetaMask(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Connect a wallet" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: /MetaMask/ }).click();
+  await expect(dialog).toBeHidden({ timeout: 10_000 });
+}
+
 export async function authenticateLocally(page: Page) {
   await page.goto("/login/");
   await page.getByRole("button", { name: "Connect wallet and sign in" }).click();
+  await pickMetaMask(page);
   await expect(page).toHaveURL(/\/agents\/?$/);
   await expect(page.getByRole("region", { name: "Authentication status" })).toBeVisible();
 }
 
+/** 从账户触发器读取完整地址（title 属性承载完整地址，供守护人字段复用）。 */
+async function currentAccount(page: Page) {
+  return (await page.locator(".account-trigger[title]").getAttribute("title"))?.toLowerCase();
+}
+
 export async function connectWallet(page: Page) {
-  await page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Connect wallet" }).click();
-  await expect(page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Disconnect" })).toBeVisible();
+  // 登录流程已连接钱包时（序列化 beforeEach 后常见），直接确认账户入口存在即可。
+  // 未连接时：点页首「Connect wallet」（页面主体若还有同名按钮，取页首那个）→ 选择页 → MetaMask。
+  const connect = page.getByRole("button", { name: "Connect wallet", exact: true }).first();
+  if (await connect.isVisible()) {
+    await connect.click();
+    await pickMetaMask(page);
+  }
+  await expect(page.getByRole("button", { name: "Open account menu" })).toBeVisible();
 }
 
 export async function selectAccount(page: Page, index: number) {
   await page.waitForLoadState("domcontentloaded");
   const address = await switchAccount(page, index);
-  const connect = page.getByRole("region", { name: "Wallet status" }).getByRole("button", { name: "Connect wallet" });
-  if (await connect.isVisible()) await connect.click();
-  await expect.poll(async () => (await page.locator(".wallet-value[title]").getAttribute("title"))?.toLowerCase()).toBe(address.toLowerCase());
+  const connect = page.getByRole("button", { name: "Connect wallet", exact: true }).first();
+  if (await connect.isVisible()) {
+    await connect.click();
+    await pickMetaMask(page);
+  }
+  await expect.poll(async () => await currentAccount(page), { timeout: 15_000 }).toBe(address.toLowerCase());
   if (await page.locator(".binding-card").isVisible()) {
     await page.getByRole("region", { name: "Authentication status" }).getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/\/login\//);
-    await page.getByRole("button", { name: /^(Connect wallet and sign in|Sign in with connected wallet)$/ }).click();
+    await page.getByRole("button", { name: "Connect wallet and sign in" }).click();
+    await pickMetaMask(page);
     await expect(page).not.toHaveURL(/\/login\//);
-    const walletRegion = page.getByRole("region", { name: "Wallet status" });
-    await expect(walletRegion).toBeVisible();
-    const reconnect = walletRegion.getByRole("button", { name: "Connect wallet" });
-    if (await reconnect.isVisible()) await reconnect.click();
-    await expect.poll(async () => (await page.locator(".wallet-value[title]").getAttribute("title"))?.toLowerCase()).toBe(address.toLowerCase());
+    await expect(page.getByRole("button", { name: "Open account menu" })).toBeVisible();
+    await expect.poll(async () => await currentAccount(page)).toBe(address.toLowerCase());
     await expect(page.locator(".binding-card")).toBeHidden();
   }
   return address;
@@ -72,9 +93,9 @@ export async function registerAgentVerified(page: Page, accountIndex: number, na
 
 async function fillRegistrationForm(page: Page, accountIndex: number, name: string) {
   await selectAccount(page, 8);
-  const guardianA = (await page.locator(".wallet-value[title]").getAttribute("title"))!;
+  const guardianA = (await page.locator(".account-trigger[title]").getAttribute("title"))!;
   await selectAccount(page, 9);
-  const guardianB = (await page.locator(".wallet-value[title]").getAttribute("title"))!;
+  const guardianB = (await page.locator(".account-trigger[title]").getAttribute("title"))!;
   await selectAccount(page, accountIndex);
   await page.getByLabel("Agent name (e.g. DataAgent)").fill(name);
   await page.getByLabel("Capability description (e.g. on-chain data analysis)").fill(`${name} E2E capability`);

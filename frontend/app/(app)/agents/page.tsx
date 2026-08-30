@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useAccount, useConnect, useReadContract, useReadContracts, useWriteContract } from "wagmi";
+import { useAccount, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { formatEther, isAddress } from "viem";
 import { agentRegistryAbi, guaranteeEscrowAbi, schellingVotingAbi } from "@/lib/abi";
 import { CHAIN_ID, CHAIN_MODE, CONTRACT_ADDRESSES, WRITE_BLOCK_REASON, WRITES_ENABLED, activeChain, isZeroAddress } from "@/lib/config";
@@ -10,7 +10,9 @@ import { WorldIdButton } from "@/app/components/world-id-button";
 import type { RegistryAttestation } from "@/lib/world-id";
 import { getWriteReadiness } from "@/lib/write-readiness";
 import { TransactionStatus, useTransactionFeedback } from "@/app/components/transaction-status";
+import { ConnectWalletButton } from "@/app/components/wallet-status";
 import { formatMessage, useLocale } from "@/lib/locale";
+import { useTxRecorder } from "@/lib/tx-history";
 
 type AgentMetadata = readonly [
   name: string,
@@ -41,7 +43,6 @@ export default function AgentsPage() {
   const { locale, dictionary: t } = useLocale();
   const a = t.agents;
   const { address, chainId, isConnected } = useAccount();
-  const { connect, connectors, isPending: isConnecting } = useConnect();
   const registration = useWriteContract();
   const operations = useWriteContract();
   const [name, setName] = useState("");
@@ -166,6 +167,8 @@ export default function AgentsPage() {
     writeError: operations.error,
     successLabel: opLabel,
   });
+  useTxRecorder(registrationFeedback, { kind: "agent", subject: address, chainId });
+  useTxRecorder(operationsFeedback, { kind: "agent", subject: address, chainId });
   const registrationEvent = registrationFeedback.receipt
     ? parseAgentRegistered(registrationFeedback.receipt, CONTRACT_ADDRESSES.agentRegistry, agentRegistryAbi)
     : undefined;
@@ -297,15 +300,7 @@ export default function AgentsPage() {
         <h1 className="page-title">{a.title}</h1>
         <p className="page-sub">{a.subtitle}</p>
       </div>
-      {!isConnected && (
-        <button
-          className="button button-primary mt-4"
-          onClick={() => connectors[0] && connect({ connector: connectors[0] })}
-          disabled={!connectors[0] || isConnecting}
-        >
-          {isConnecting ? t.common.connecting : t.common.connectWallet}
-        </button>
-      )}
+      {!isConnected && <div className="mt-4"><ConnectWalletButton /></div>}
       {!registryConfigured && <p className="form-warning mt-3" role="status">{a.registryMissing}</p>}
       {isConnected && chainId !== CHAIN_ID && (
         <p className="form-error mb-4" role="alert">
