@@ -4,18 +4,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 export const AUTH_API = "/api/auth";
 export const CANONICAL_SITE = "https://agenttrust.site";
-// The login UI renders these providers in declaration order: Google → GitHub → Apple → Casdoor.
-// Adding a provider requires updating `PROVIDERS` in `auth-bff/src/config.ts` and adding a
-// CHECK-constraint migration; see `auth-bff/migrations/003_add_github_provider.sql` for the
-// shape of the change.
-export const OIDC_PROVIDER_ORDER = ["google", "github", "apple", "casdoor"] as const;
-export type OidcProvider = (typeof OIDC_PROVIDER_ORDER)[number];
-export type AuthIdentity = { provider: typeof OIDC_PROVIDER_ORDER[number]; email: string | null };
+export type OidcProvider = "google" | "apple";
+export type AuthIdentity = { provider: "google" | "apple" | "casdoor"; email: string | null };
 export type AuthAccount = { id: string; created_at: string; wallet: `0x${string}` | null; identities: AuthIdentity[] };
-type CapabilityState = { configured: boolean };
 export type AuthCapabilities = {
   wallet: { enabled: boolean; chainId: number; siwe: boolean };
-  oidc: Record<OidcProvider, CapabilityState>;
+  oidc: { google: { configured: boolean }; apple: { configured: boolean }; casdoor?: { configured: boolean } };
 };
 export type AuthSession = { authenticated: false } | { authenticated: true; account: AuthAccount; csrfToken: string };
 export type AuthState = "loading" | "authenticated" | "anonymous" | "unavailable";

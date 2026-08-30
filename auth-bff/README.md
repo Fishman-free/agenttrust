@@ -7,14 +7,14 @@ Standalone Node 22 / TypeScript ESM authentication BFF using Fastify, Zod, Postg
 All paths below are prefixed with `/api/auth`. Every `POST` requires `Origin` to exactly equal `AUTH_ORIGIN`; authenticated `POST` requests also require `X-CSRF-Token` from the authenticated session response. JSON request bodies reject unknown fields.
 
 - `GET /health` → `{ ok, service, database }`; performs a PostgreSQL readiness query.
-- `GET /capabilities` → `{ wallet: { enabled, chainId, siwe }, oidc: { google: { configured }, github: { configured }, apple: { configured }, casdoor: { configured } } }`. The nested shape is stable.
+- `GET /capabilities` → `{ wallet: { enabled, chainId, siwe }, oidc: { google: { configured }, apple: { configured }, casdoor: { configured } } }`. The nested shape is stable.
 - `GET /session` → `{ authenticated: false }` when no valid session, otherwise `{ authenticated: true, csrfToken, account: { id, created_at, wallet, identities: [{ provider, issuer, email }] } }`. Responses are `Cache-Control: no-store`; use `csrfToken` as `X-CSRF-Token` for logout and wallet linking.
 - `POST /logout` with no body → `204`; revokes the current session and clears session/CSRF cookies.
 - `POST /wallet/challenge` with `{ address }` → `{ message, nonce, expiresAt, chainId, purpose: "wallet_login" }`.
 - `POST /wallet/verify` with `{ nonce, message, signature }` → `{ authenticated: true, account }` and sets session/CSRF cookies.
 - `POST /wallet/link/challenge` with `{ address }` → the same challenge shape with `purpose: "wallet_link"`; requires session and CSRF.
 - `POST /wallet/link/verify` with `{ nonce, message, signature }` → `{ linked: true, account }`; requires session and CSRF.
-- `POST /oidc/:provider/start` with optional `{ returnTo }` → `{ authorizationUrl }` for `google`, `github`, `apple`, or `casdoor`. The server persists state, PKCE verifier, and OIDC nonce; the URL includes state, PKCE challenge, and nonce.
+- `POST /oidc/:provider/start` with optional `{ returnTo }` → `{ authorizationUrl }` for `google`, `apple`, or `casdoor`. The server persists state, PKCE verifier, and OIDC nonce; the URL includes state, PKCE challenge, and nonce.
 - `GET /oidc/:provider/callback?code=...&state=...` validates state, PKCE, and the persisted expected OIDC nonce, keys identities by validated `issuer + subject`, creates a session, then returns `303` to the sanitized `returnTo`.
 
 Casdoor is treated only as a standards-based OIDC provider. No Casdoor Web3 or wallet API is used. Every OIDC provider returns `503 provider_not_configured` until issuer, client ID, client secret, and redirect URI are all supplied.

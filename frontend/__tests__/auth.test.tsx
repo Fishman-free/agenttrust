@@ -5,7 +5,7 @@ import { AuthProvider, canonicalLoginUrl, sanitizeReturnTo, useAuth, type AuthCa
 const address = `0x${"12".repeat(20)}` as const;
 const capabilities: AuthCapabilities = {
   wallet: { enabled: true, chainId: 31337, siwe: true },
-  oidc: { google: { configured: true }, github: { configured: false }, apple: { configured: false }, casdoor: { configured: false } },
+  oidc: { google: { configured: true }, apple: { configured: false } },
 };
 const account = { id: "account-1", created_at: "2026-08-28T00:00:00.000Z", wallet: address, identities: [] };
 function Wrapper({ children }: { children: React.ReactNode }) { return <AuthProvider>{children}</AuthProvider>; }
