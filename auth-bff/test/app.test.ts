@@ -37,7 +37,7 @@ describe("Auth BFF HTTP boundary", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       wallet: { enabled: true, chainId: 31337, siwe: true },
-      oidc: { google: { configured: false }, apple: { configured: false }, casdoor: { configured: false } },
+      oidc: { google: { configured: false }, github: { configured: false }, apple: { configured: false }, casdoor: { configured: false } },
     });
     expect(response.headers["cache-control"]).toBe("no-store");
   });

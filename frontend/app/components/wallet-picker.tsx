@@ -41,6 +41,9 @@ export function WalletPickerProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<WalletPickerMode>("connect");
   // 每次打开都带上新的序号：面板随之重挂载，上一次的错误与 pending 状态不会残留。
   const [openSeq, setOpenSeq] = useState(0);
+  // 累计上次的连接尝试编号 + 结果：用于在下一轮重开时显示「上一次的尝试未完成」横幅，
+  // 让用户明确地看到「我点了 MetaMask 但没反应，这次再试就重新选择」。
+  const [lastAttempt, setLastAttempt] = useState<{ walletId: string; walletName: string; seq: number } | undefined>();
 
   const open = useCallback((nextMode: WalletPickerMode = "connect") => {
     setMode(nextMode);
@@ -53,7 +56,16 @@ export function WalletPickerProvider({ children }: { children: ReactNode }) {
   return (
     <WalletPickerContext.Provider value={api}>
       {children}
-      <WalletPicker key={openSeq} isOpen={isOpen} mode={mode} onClose={close} />
+      <WalletPicker
+        key={openSeq}
+        isOpen={isOpen}
+        mode={mode}
+        onClose={close}
+        openSeq={openSeq}
+        lastAttempt={lastAttempt}
+        onAttemptFinished={(walletId, walletName) => setLastAttempt({ walletId, walletName, seq: openSeq })}
+        onAttemptCleared={() => setLastAttempt(undefined)}
+      />
     </WalletPickerContext.Provider>
   );
 }
@@ -69,10 +81,18 @@ export function WalletPicker({
   isOpen,
   mode,
   onClose,
+  openSeq,
+  lastAttempt,
+  onAttemptFinished,
+  onAttemptCleared,
 }: {
   isOpen: boolean;
   mode: WalletPickerMode;
   onClose: () => void;
+  openSeq: number;
+  lastAttempt?: { walletId: string; walletName: string; seq: number };
+  onAttemptFinished: (walletId: string, walletName: string) => void;
+  onAttemptCleared: () => void;
 }) {
   const { dictionary: t } = useLocale();
   const w = t.walletPicker;
@@ -87,6 +107,9 @@ export function WalletPicker({
   const titleId = useId();
 
   const activeConnectorName = activeConnector?.name;
+  // 最近一次尝试是不是在这次打开之前发生的、且未在该轮打开中收尾？
+  // 是的话在头部追加一行提示，避免「刚刚点了 MetaMask 没反应」的用户被静默重置。
+  const showingPreviousAttempt = lastAttempt && lastAttempt.seq < openSeq;
 
   // 打开时记住来源焦点，关闭后归还；同时锁定滚动。
   useEffect(() => {
@@ -147,15 +170,18 @@ export function WalletPicker({
     if (!connector) return;
     setLocalError(undefined);
     setPendingId(definition.id);
+    onAttemptCleared();
     reset();
     try {
       await connectAsync({ connector });
+      onAttemptFinished(definition.id, definition.name);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       setLocalError(
         formatMessage(w.failure, { name: definition.name, reason: friendlyReason(message, formatMessage(w.rejected, { name: definition.name })) }),
       );
       setPendingId(undefined);
+      onAttemptFinished(definition.id, definition.name);
     }
   }
 
@@ -191,6 +217,11 @@ export function WalletPicker({
               <div>
                 <h2 className="picker-title" id={titleId}>{title}</h2>
                 <p className="picker-sub">{heading}</p>
+                {showingPreviousAttempt && (
+                  <p className="picker-previous-attempt" role="status">
+                    {formatMessage(w.previousAttemptInterrupted, { name: lastAttempt!.walletName })}
+                  </p>
+                )}
               </div>
               <button type="button" className="picker-close" onClick={onClose} aria-label={t.common.close}>
                 <X size={16} aria-hidden="true" />

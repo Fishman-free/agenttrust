@@ -17,7 +17,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <LocaleProvider>
       {/* reducedMotion="user"：尊重系统「减弱动态效果」，Motion 自动用淡入淡出替代位移与弹簧。 */}
       <MotionConfig reducedMotion="user">
-        <WagmiProvider config={wagmiConfig}>
+        {/* reconnectOnMount={false}: wagmi default auto-fires the previously used connector
+            on mount (stored under `wagmi.recentConnectorId`). Disabling it ensures every
+            wallet connect begins from the picker UI — the only observable path — so the
+            user is never silently redirected away from a freshly-opened picker when the
+            last-used wallet is locked or has been closed. Active sessions still reattach
+            via the cookie-driven SIWE session above; only the wagmi connector state is
+            now opt-in. */}
+        <WagmiProvider config={wagmiConfig} reconnectOnMount={false}>
           <QueryClientProvider client={queryClient}>
             <AuthProvider>
               <WalletPickerProvider>
