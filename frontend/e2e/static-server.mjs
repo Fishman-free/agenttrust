@@ -31,7 +31,7 @@ createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (url.pathname.startsWith("/api/auth/")) {
     try {
-      if (request.method === "GET" && url.pathname === "/api/auth/capabilities") return json(response, 200, { wallet: { enabled: true, chainId: 31337, siwe: true }, oidc: { google: { configured: false }, github: { configured: false }, apple: { configured: false }, casdoor: { configured: false } } });
+      if (request.method === "GET" && url.pathname === "/api/auth/capabilities") return json(response, 200, { wallet: { enabled: true, chainId: 31337, siwe: true }, oidc: { google: { configured: false }, apple: { configured: false }, casdoor: { configured: false } } });
       if (request.method === "GET" && url.pathname === "/api/auth/session") {
         const session = auth(request);
         return json(response, 200, session ? { authenticated: true, account: accountView(session), csrfToken: session.csrfToken } : { authenticated: false });
@@ -69,7 +69,7 @@ createServer(async (request, response) => {
         sessions.set(id, next);
         return json(response, 200, { authenticated: true, account: accountView(next) }, { "set-cookie": `agenttrust_e2e=${id}; HttpOnly; SameSite=Lax; Path=/` });
       }
-      if (request.method === "POST" && /^\/api\/auth\/oidc\/(google|github|apple|casdoor)\/start$/.test(url.pathname)) return json(response, 503, { error: "provider_not_configured" });
+      if (request.method === "POST" && /^\/api\/auth\/oidc\/(google|apple)\/start$/.test(url.pathname)) return json(response, 503, { error: "provider_not_configured" });
       if (request.method === "POST" && url.pathname === "/api/auth/logout") {
         const session = auth(request);
         if (!requireCsrf(request, session)) return json(response, 403, { error: "csrf_validation_failed" });

@@ -1,9 +1,7 @@
 import { z } from "zod";
 
 export const PURPOSES = ["wallet_login", "wallet_link"] as const;
-// Provider order matters: the frontend button row renders in this order
-// (Google → GitHub → Apple → Casdoor) so add new OIDC providers at the end.
-export const PROVIDERS = ["google", "github", "apple", "casdoor"] as const;
+export const PROVIDERS = ["google", "apple", "casdoor"] as const;
 export type Purpose = (typeof PURPOSES)[number];
 export type Provider = (typeof PROVIDERS)[number];
 
@@ -25,7 +23,6 @@ const envSchema = z.object({
   CHALLENGE_TTL_SECONDS: z.coerce.number().int().min(60).max(600).default(300),
   OIDC_FLOW_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(600),
   GOOGLE_OIDC_ISSUER: optionalUrl, GOOGLE_OIDC_CLIENT_ID: z.string().default(""), GOOGLE_OIDC_CLIENT_SECRET: z.string().default(""), GOOGLE_OIDC_REDIRECT_URI: optionalUrl,
-  GITHUB_OIDC_ISSUER: optionalUrl, GITHUB_OIDC_CLIENT_ID: z.string().default(""), GITHUB_OIDC_CLIENT_SECRET: z.string().default(""), GITHUB_OIDC_REDIRECT_URI: optionalUrl,
   APPLE_OIDC_ISSUER: optionalUrl, APPLE_OIDC_CLIENT_ID: z.string().default(""), APPLE_OIDC_CLIENT_SECRET: z.string().default(""), APPLE_OIDC_REDIRECT_URI: optionalUrl,
   CASDOOR_OIDC_ISSUER: optionalUrl, CASDOOR_OIDC_CLIENT_ID: z.string().default(""), CASDOOR_OIDC_CLIENT_SECRET: z.string().default(""), CASDOOR_OIDC_REDIRECT_URI: optionalUrl,
 });

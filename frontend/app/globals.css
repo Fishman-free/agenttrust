@@ -672,36 +672,25 @@ section, li, main > div.border { border-color: var(--border); background: var(--
    stack on the right). Left column is intentionally a bit
    larger so the page reads as a clear story + work-area pair.
    ============================================================ */
-.login-page {
-  min-height: 100svh;
-  padding: clamp(1.5rem, 3vw, 2.5rem) max(1rem, calc((100vw - 76rem) / 2)) clamp(2rem, 5vw, 3.5rem);
-  background:
-    radial-gradient(60rem 38rem at 80% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%),
-    var(--background);
-}
+.login-page { min-height: 100svh; padding: 1.25rem max(1rem, calc((100vw - 68rem) / 2)); background: radial-gradient(circle at 75% 10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 30%); }
 .login-header { display: flex; align-items: center; justify-content: space-between; }
-.login-header .brand { font-weight: 700; letter-spacing: -0.01em; color: var(--foreground); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.95rem; }
-
-.login-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(22rem, 0.95fr); gap: clamp(2.5rem, 6vw, 5.5rem); align-items: center; min-height: calc(100svh - 6rem); padding-block: 3rem; }
-.login-intro { display: grid; gap: clamp(0.85rem, 1.6vw, 1.25rem); max-width: 38rem; }
-.login-intro h1 { max-width: 14ch; margin: 0.25rem 0 0; font-size: clamp(2.6rem, 5.4vw, 4.6rem); line-height: 0.98; letter-spacing: -0.045em; font-weight: 700; }
-.login-intro > p { max-width: 36rem; color: var(--muted); font-size: clamp(1.05rem, 1.3vw, 1.25rem); line-height: 1.45; margin: 0; }
-.login-intro ul { margin: 1rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: 0.95rem; line-height: 1.55; }
-.login-intro li + li { margin-top: 0.4rem; }
-.login-stack { display: grid; gap: 1rem; width: 100%; }
+.login-grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(22rem, 1fr); gap: clamp(2rem, 7vw, 6rem); align-items: center; min-height: calc(100svh - 5rem); padding-block: 3rem; }
+.login-intro h1 { max-width: 11ch; margin: 1rem 0; font-size: clamp(2.5rem, 6vw, 5.2rem); line-height: 0.96; letter-spacing: -0.055em; }
+.login-intro > p { max-width: 36rem; color: var(--muted); font-size: 1.05rem; }
+.login-intro ul { margin: 2rem 0 0; padding-left: 1.2rem; color: var(--muted); }
+.login-stack { display: grid; gap: 0.85rem; }
 .login-card, .login-social, .labs-card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: var(--card-shadow); }
-.login-card { position: relative; padding: clamp(1.5rem, 2.4vw, 2rem); display: grid; gap: 0.65rem; }
-.login-card h2 { margin: 0.35rem 0 0; font-size: 1.05rem; }
-.login-card p { margin: 0; color: var(--muted); font-size: 0.85rem; line-height: 1.5; }
-.login-card-primary { padding: clamp(1.65rem, 2.8vw, 2.25rem); border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
+.login-card { position: relative; padding: 1.35rem; }
+.login-card h2, .identity-placeholder h2 { margin: 0.65rem 0 0.3rem; font-size: 1.05rem; }
+.login-card p { margin: 0; color: var(--muted); font-size: 0.85rem; }
+.login-card-primary { padding: 1.6rem; border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
 .login-card-tag { position: absolute; inset: 1rem 1rem auto auto; color: var(--accent); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
-.login-action { width: 100%; margin-top: 0.65rem; }
+.login-action { width: 100%; margin-top: 1.15rem; }
 .login-social-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-.login-social { min-height: 4.5rem; display: grid; grid-template-columns: auto 1fr auto; gap: 0.1rem 0.65rem; align-items: center; padding: 0.85rem 1rem; color: var(--foreground); text-align: left; }
-.login-social small { grid-column: 2 / 4; color: var(--muted); }
-.login-social.is-disabled { cursor: not-allowed; opacity: 0.6; }
-.google-mark { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 999px; background: var(--surface); border: 1px solid var(--hairline); font-weight: 800; color: var(--accent); font-size: 0.85rem; }
-.identity-placeholder { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.85rem; }
+.login-social { min-height: 4.5rem; display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.5rem; align-items: center; padding: 0.85rem; color: var(--foreground); text-align: left; }
+.login-social small { grid-column: 2; color: var(--muted); }
+.google-mark { font-weight: 800; color: var(--accent); }
+.identity-placeholder { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.8rem; }
 .identity-placeholder h2 { margin-top: 0; }
 .identity-placeholder > span { color: var(--muted); font-size: 0.72rem; }
 .labs-card { padding: 0.9rem 1rem; box-shadow: none; }
@@ -725,11 +714,8 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 .recovery-panel p { max-width: 50rem; color: var(--muted); }
 .testnet-warning { display: flex; gap: 0.8rem; margin-top: 1rem; padding: 1.1rem; border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--warning) 7%, var(--surface)); }
 .testnet-warning p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.83rem; }
-@media (max-width: 950px) {
-  .login-grid { grid-template-columns: 1fr; min-height: auto; }
-  .login-intro h1 { max-width: none; font-size: clamp(2.4rem, 9vw, 3.6rem); }
-}
 @media (max-width: 850px) {
+  .login-grid { grid-template-columns: 1fr; min-height: auto; }
   .login-intro h1 { max-width: none; }
   .flow-list { grid-template-columns: 1fr; }
   .flow-list li { min-height: auto; flex-direction: row; border-right: 0; border-bottom: 1px solid var(--hairline); }
