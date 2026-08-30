@@ -668,262 +668,46 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 .home-login-link { padding: 0.42rem 0.78rem; border: 1px solid var(--hairline); border-radius: 999px; text-decoration: none; font-size: 0.76rem; font-weight: 650; }
 
 /* ============================================================
-   Login page — Apple-style hero.
-   - Large expressive title, tight letter-spacing on big type, comfortable on small.
-   - Decorative layered radial gradients at center-right and bottom-left, blur(material).
-   - Stack column on the right is wider and reads as the work area; left is the story.
+   Login page — two-column layout (intro on the left, sign-in
+   stack on the right). Left column is intentionally a bit
+   larger so the page reads as a clear story + work-area pair.
    ============================================================ */
 .login-page {
-  position: relative;
-  display: grid;
-  grid-template-rows: auto auto 1fr;
-  gap: clamp(2rem, 6vw, 4.5rem);
   min-height: 100svh;
-  padding: clamp(1.25rem, 3vw, 2.25rem) max(1rem, calc((100vw - 84rem) / 2)) clamp(2rem, 6vw, 4rem);
+  padding: clamp(1.5rem, 3vw, 2.5rem) max(1rem, calc((100vw - 76rem) / 2)) clamp(2rem, 5vw, 3.5rem);
   background:
-    radial-gradient(60rem 38rem at 78% -6%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%),
-    radial-gradient(46rem 30rem at 10% 105%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 65%),
-    linear-gradient(180deg, var(--background), color-mix(in srgb, var(--accent) 4%, var(--background)));
-  overflow: clip;
+    radial-gradient(60rem 38rem at 80% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%),
+    var(--background);
 }
-.login-page::before {
-  /* soft material haze behind the hero */
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(60rem 30rem at 50% 90%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%);
-  filter: blur(60px);
-  opacity: 0.6;
-  z-index: -1;
-}
-.login-header { display: flex; align-items: center; justify-content: space-between; z-index: 1; }
+.login-header { display: flex; align-items: center; justify-content: space-between; }
 .login-header .brand { font-weight: 700; letter-spacing: -0.01em; color: var(--foreground); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.95rem; }
 
-.login-hero {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  gap: clamp(1rem, 2.5vw, 1.6rem);
-  max-width: 38rem;
-}
-.login-hero-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.4rem 0.85rem;
-  align-self: start;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--hairline));
-  background: color-mix(in srgb, var(--surface) 75%, transparent);
-  backdrop-filter: blur(8px);
-  color: var(--accent);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.login-hero-title {
-  margin: 0;
-  font-size: clamp(3.2rem, 9vw, 7.2rem);
-  line-height: 0.92;
-  letter-spacing: -0.045em;
-  font-weight: 700;
-  color: var(--foreground);
-  text-wrap: balance;
-  font-feature-settings: "ss01", "ss02";
-}
-.login-hero-title em {
-  /* The "signed by you." half receives the brand accent and a slight italic-push.
-     Forcing *gradient* on individual characters keeps the look expressive without
-     going full AI-style gimmick — the gradient is just accent→background accent. */
-  font-style: normal;
-  background: linear-gradient(120deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--foreground)));
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-}
-.login-hero-lead {
-  margin: 0;
-  max-width: 36rem;
-  font-size: clamp(1.05rem, 1.4vw, 1.25rem);
-  line-height: 1.5;
-  color: var(--muted);
-}
-.login-hero-benefits {
-  margin: 1.5rem 0 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.55rem;
-  color: var(--muted);
-  font-size: 0.95rem;
-}
-.login-hero-benefits li {
-  display: grid;
-  grid-template-columns: 1rem 1fr;
-  gap: 0.7rem;
-  align-items: center;
-}
-.login-hero-benefits-marker {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-.login-grid {
-  display: grid;
-  grid-template-columns: minmax(22rem, 26rem);
-  justify-content: end;
-  width: 100%;
-  gap: 0;
-  z-index: 1;
-}
-.login-stack { display: grid; gap: 1.1rem; width: 100%; }
-.login-card,
-.login-social,
-.labs-card {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  box-shadow: var(--card-shadow);
-}
-.login-card { position: relative; padding: clamp(1.4rem, 2.4vw, 2rem); display: grid; gap: 0.85rem; }
-.login-card-head {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.85rem;
-  align-items: center;
-}
-.login-card-icon {
-  display: grid;
-  place-items: center;
-  width: 2.6rem;
-  height: 2.6rem;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-  color: var(--accent);
-}
-.login-card-icon-muted {
-  background: color-mix(in srgb, var(--muted) 14%, var(--surface));
-  color: var(--muted);
-}
-.login-card-head h2 { margin: 0; font-size: 1.1rem; font-weight: 650; letter-spacing: -0.015em; }
-.login-card-meta {
-  display: inline-block;
-  margin-top: 0.25rem;
-  font-size: 0.72rem;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-weight: 600;
-}
-.login-card-body { margin: 0; color: var(--muted); font-size: 0.92rem; line-height: 1.5; }
-.login-card-body-tight { font-size: 0.82rem; color: var(--muted); margin-bottom: 0.4rem; }
-.login-card-primary {
-  padding: clamp(1.6rem, 2.8vw, 2.4rem);
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-  background:
-    radial-gradient(48rem 22rem at 0% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%),
-    color-mix(in srgb, var(--surface) 96%, transparent);
-}
-.login-card-tag {
-  position: absolute;
-  inset: clamp(0.9rem, 1.6vw, 1.1rem) clamp(0.9rem, 1.6vw, 1.1rem) auto auto;
-  color: var(--accent);
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-.login-action { width: 100%; margin-top: 0.6rem; min-height: 2.85rem; font-size: 1rem; padding-block: 0.85rem; }
-
-.login-social-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.75rem;
-}
-.login-social {
-  /* Optical alignment: mark + name + status; mark never wraps. */
-  min-height: 4.5rem;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 0.7rem 0.7rem;
-  align-items: center;
-  padding: 0.95rem 1.05rem;
-  color: var(--foreground);
-  text-align: left;
-  background: color-mix(in srgb, var(--background) 75%, transparent);
-  border-radius: calc(var(--radius-lg) * 0.8);
-  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
-}
-.login-social:not(:disabled):hover {
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--hairline));
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 14%, transparent);
-}
-.login-social:not(:disabled):active { transform: translateY(0); }
-.login-social-mark {
-  display: grid;
-  place-items: center;
-  width: 2.2rem;
-  height: 2.2rem;
-  border-radius: 12px;
-  border: 1px solid var(--hairline);
-  background: var(--surface);
-}
-.login-social-mark-google { color: #1A1A1A; }
-.login-social-mark-github { color: var(--foreground); }
-.login-social-mark-apple { color: var(--foreground); background: #111; }
-.login-social-mark-apple > svg { color: #fff; }
-.login-social-mark-casdoor { color: var(--accent); }
-.login-social-mark.is-dim { opacity: 0.42; filter: grayscale(0.6); }
-.login-social-text { display: grid; gap: 0.15rem; min-width: 0; }
-.login-social-name { font-weight: 650; font-size: 0.98rem; letter-spacing: -0.01em; }
-.login-social-text small { color: var(--muted); font-size: 0.74rem; line-height: 1.2; }
-.login-social.is-disabled { cursor: not-allowed; }
-.login-social.is-disabled .login-social-name { color: var(--muted); }
-.login-social-warn {
-  width: 1.45rem;
-  height: 1.45rem;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 800;
-  color: var(--warning, #b45309);
-  background: color-mix(in srgb, var(--warning, #b45309) 14%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--warning, #b45309) 30%, var(--border));
-}
-.login-social-empty {
-  margin: 0.4rem 0 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-  padding: 0.85rem 1rem;
-  border-radius: 12px;
-  border: 1px dashed var(--hairline);
-  background: color-mix(in srgb, var(--background) 60%, transparent);
-}
-
-.identity-placeholder {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 0.95rem;
-}
+.login-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(22rem, 0.95fr); gap: clamp(2.5rem, 6vw, 5.5rem); align-items: center; min-height: calc(100svh - 6rem); padding-block: 3rem; }
+.login-intro { display: grid; gap: clamp(0.85rem, 1.6vw, 1.25rem); max-width: 38rem; }
+.login-intro h1 { max-width: 14ch; margin: 0.25rem 0 0; font-size: clamp(2.6rem, 5.4vw, 4.6rem); line-height: 0.98; letter-spacing: -0.045em; font-weight: 700; }
+.login-intro > p { max-width: 36rem; color: var(--muted); font-size: clamp(1.05rem, 1.3vw, 1.25rem); line-height: 1.45; margin: 0; }
+.login-intro ul { margin: 1rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: 0.95rem; line-height: 1.55; }
+.login-intro li + li { margin-top: 0.4rem; }
+.login-stack { display: grid; gap: 1rem; width: 100%; }
+.login-card, .login-social, .labs-card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: var(--card-shadow); }
+.login-card { position: relative; padding: clamp(1.5rem, 2.4vw, 2rem); display: grid; gap: 0.65rem; }
+.login-card h2 { margin: 0.35rem 0 0; font-size: 1.05rem; }
+.login-card p { margin: 0; color: var(--muted); font-size: 0.85rem; line-height: 1.5; }
+.login-card-primary { padding: clamp(1.65rem, 2.8vw, 2.25rem); border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
+.login-card-tag { position: absolute; inset: 1rem 1rem auto auto; color: var(--accent); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.login-action { width: 100%; margin-top: 0.65rem; }
+.login-social-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.login-social { min-height: 4.5rem; display: grid; grid-template-columns: auto 1fr auto; gap: 0.1rem 0.65rem; align-items: center; padding: 0.85rem 1rem; color: var(--foreground); text-align: left; }
+.login-social small { grid-column: 2 / 4; color: var(--muted); }
+.login-social.is-disabled { cursor: not-allowed; opacity: 0.6; }
+.google-mark { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 999px; background: var(--surface); border: 1px solid var(--hairline); font-weight: 800; color: var(--accent); font-size: 0.85rem; }
+.identity-placeholder { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.85rem; }
 .identity-placeholder h2 { margin-top: 0; }
-.identity-placeholder > p { font-size: 0.78rem; color: var(--muted); margin: 0; line-height: 1.4; }
-
-.labs-card { padding: 1.05rem 1.15rem; box-shadow: none; }
-.labs-card summary { display: flex; align-items: center; gap: 0.55rem; cursor: pointer; font-weight: 650; font-size: 0.88rem; }
-.labs-card > p { color: var(--muted); font-size: 0.83rem; margin-top: 0.5rem; line-height: 1.45; }
+.identity-placeholder > span { color: var(--muted); font-size: 0.72rem; }
+.labs-card { padding: 0.9rem 1rem; box-shadow: none; }
+.labs-card summary { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 650; }
+.labs-card > p { color: var(--muted); font-size: 0.8rem; }
 .agent-labs[open] { display: grid; gap: 0.8rem; }
-
 .home-story { padding: clamp(4rem, 8vw, 7rem) 0; background: var(--background); }
 .story-heading { max-width: 46rem; margin-bottom: 2rem; }
 .story-heading > span, .story-grid article > span, .recovery-panel > span { color: var(--accent); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
@@ -941,16 +725,11 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 .recovery-panel p { max-width: 50rem; color: var(--muted); }
 .testnet-warning { display: flex; gap: 0.8rem; margin-top: 1rem; padding: 1.1rem; border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--warning) 7%, var(--surface)); }
 .testnet-warning p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.83rem; }
-@media (max-width: 1100px) {
-  .login-page { grid-template-rows: auto auto auto; }
-  .login-grid { justify-content: stretch; }
-  .login-hero { max-width: none; }
-  .login-hero-title { font-size: clamp(2.8rem, 8vw, 4.6rem); }
+@media (max-width: 950px) {
+  .login-grid { grid-template-columns: 1fr; min-height: auto; }
+  .login-intro h1 { max-width: none; font-size: clamp(2.4rem, 9vw, 3.6rem); }
 }
 @media (max-width: 850px) {
-  .login-grid { grid-template-columns: 1fr; min-height: auto; }
-  .login-hero { padding-block: 0.5rem; }
-  .login-hero-title { font-size: clamp(2.4rem, 9vw, 3.4rem); letter-spacing: -0.035em; }
   .login-intro h1 { max-width: none; }
   .flow-list { grid-template-columns: 1fr; }
   .flow-list li { min-height: auto; flex-direction: row; border-right: 0; border-bottom: 1px solid var(--hairline); }
@@ -959,12 +738,11 @@ section, li, main > div.border { border-color: var(--border); background: var(--
   .header-tools { width: 100%; justify-content: flex-end; }
 }
 @media (max-width: 520px) {
-  .login-social-list { grid-template-columns: 1fr; }
+  .login-social-row { grid-template-columns: 1fr; }
   .identity-placeholder { grid-template-columns: auto 1fr; }
-  .identity-placeholder > .login-card-meta { grid-column: 2; }
+  .identity-placeholder > span { grid-column: 2; }
   .home-account-actions { margin-left: auto; }
   .auth-status { max-width: 9rem; }
-  .login-card-primary { padding: 1.4rem; }
 }
 
 .binding-gate { min-height: calc(100svh - 8rem); display: grid; place-items: center; padding: 2rem 1rem; }

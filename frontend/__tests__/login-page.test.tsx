@@ -47,18 +47,15 @@ vi.mock("@/lib/locale", () => ({
     auth: {
       login: "Sign in", logout: "Sign out", status: "Authentication status", signedIn: "Signed in",
       checking: "Checking session…", redirectingCanonical: "Redirecting…",
-      accessEyebrow: "Secure workspace access", accessEyebrowTag: "Auth BFF · SIWE session",
-      heroEyebrow: "Sign in", heroTitle: "Identity, signed by you.", heroTitleEmphasized: "signed by you.",
-      heroLead: "Hero lead", benefitSession: "Server session", benefitWallet: "SIWE", benefitSeparate: "Stay distinct",
+      accessEyebrow: "Secure workspace access",
+      title: "Sign in to AgentTrust", subtitle: "Authentication protects the workspace session.",
+      benefitSession: "Server session", benefitWallet: "SIWE", benefitSeparate: "Stay distinct",
       loginOptions: "Sign-in options", recommended: "Recommended",
-      walletTitle: "Wallet account", walletDescription: "Wallet description", walletBadge: "On-chain users",
-      socialBadge: "Web2", providersHeading: "Sign in with a social account",
-      providersHint: "Each button is hidden when the underlying provider is not configured.",
+      walletTitle: "Wallet account", walletDescription: "Wallet description",
       signing: "Waiting…", signWallet: "Sign with connected wallet", connectAndSign: "Connect wallet and sign in",
       walletMissing: "No wallet", loginFailed: "Sign-in failed.", continueCanonical: "Continue on agenttrust.site",
-      configuring: "Configuring", setupRequired: "Setup required (Auth BFF)",
-      setupHint: "Set the matching OIDC issuer, client ID, client secret, and redirect URI.",
-      availableSoon: "Available soon", strongIdentityTitle: "Strong identity registration",
+      configuring: "Configuring", availableSoon: "Available soon",
+      strongIdentityTitle: "Strong identity registration",
       strongIdentityPlaceholder: "No real-name verification currently offered.", planned: "Planned",
       labs: "Labs", worldIdLabs: "World ID is an experimental Proof-of-Humanity signal.",
       continueWith: "Continue", redirecting: "Redirecting…",
@@ -108,50 +105,36 @@ beforeEach(() => {
 });
 afterEach(() => delete (window as unknown as Record<string, unknown>).location);
 
-describe("LoginPage hero", () => {
-  it("renders the hero title and lead copy", () => {
+describe("LoginPage intro + sign-in stack", () => {
+  it("renders the intro title, lead, and three benefit bullets on the left", () => {
     render(<LoginPage />);
-    expect(screen.getByRole("heading", { level: 1, name: /identity, signed by you\./i })).toBeInTheDocument();
-    expect(screen.getByText(/hero lead/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: /sign in to agenttrust/i })).toBeInTheDocument();
+    expect(screen.getByText(/authentication protects the workspace session/i)).toBeInTheDocument();
     expect(screen.getByText(/server session/i)).toBeInTheDocument();
+    expect(screen.getByText(/siwe/i)).toBeInTheDocument();
+    expect(screen.getByText(/stay distinct/i)).toBeInTheDocument();
   });
 
-  it("renders four provider buttons in canonical order", () => {
+  it("renders the three social provider buttons in canonical order with configuring state for the unconfigured ones", () => {
     render(<LoginPage />);
-    const googleButton = screen.getByRole("button", { name: /Continue Google/i });
-    const githubButton = screen.getByRole("button", { name: /GitHub · Setup required/i });
-    const appleButton = screen.getByRole("button", { name: /Apple · Setup required/i });
-    const casdoorButton = screen.getByRole("button", { name: /Casdoor · Setup required/i });
-    expect(googleButton).toHaveAttribute("data-provider", "google");
-    expect(githubButton).toHaveAttribute("data-provider", "github");
+    const googleButton = screen.getByRole("button", { name: "Continue Google" });
+    const githubButton = screen.getByRole("button", { name: "Configuring GitHub" });
+    const appleButton = screen.getByRole("button", { name: "Configuring Apple" });
+    expect(googleButton).not.toBeDisabled();
     expect(githubButton).toBeDisabled();
-    // DOM order: google → github → apple → casdoor
-    const all = screen.getAllByRole("button");
-    const order = ["google", "github", "apple", "casdoor"].map((provider) => all.findIndex((button) => button.getAttribute("data-provider") === provider));
-    expect(order).toEqual(order.slice().sort((a, b) => a - b));
-    [appleButton, casdoorButton].forEach((button) => expect(button).toBeDisabled());
+    expect(appleButton).toBeDisabled();
+    // DOM order: google → github → apple
+    const buttons = screen.getAllByRole("button").map((b) => b.textContent ?? "");
+    expect(buttons.findIndex((t) => t.includes("Google"))).toBeLessThan(buttons.findIndex((t) => t.includes("GitHub")));
+    expect(buttons.findIndex((t) => t.includes("GitHub"))).toBeLessThan(buttons.findIndex((t) => t.includes("Apple")));
   });
-
-  it("shows the setup-required copy for unconfigured providers", () => {
-    render(<LoginPage />);
-    expect(screen.getAllByText(/Setup required \(Auth BFF\)/i)).toHaveLength(3);
-  });
-
-  it("renders the empty-state hint when no providers are configured", () => {
-    mocks.capabilities = { wallet: { enabled: true, chainId: 31337, siwe: true }, oidc: { google: { configured: false }, github: { configured: false }, apple: { configured: false }, casdoor: { configured: false } } };
-    render(<LoginPage />);
-    expect(screen.getAllByText(/Setup required \(Auth BFF\)/i)).toHaveLength(4);
-    expect(screen.getByText(/OIDC issuer, client ID/i)).toBeInTheDocument();  });
 
   it("starts OIDC for the configured provider when its button is clicked", async () => {
     mocks.startOidc.mockResolvedValue("https://accounts.example/authorize");
-    // Stub window.location.assign so the click handler doesn't try to navigate the test runner.
     const assignSpy = vi.fn();
     Object.defineProperty(window, "location", { value: { ...(window.location as object), assign: assignSpy }, configurable: true });
     render(<LoginPage />);
-    const googleButton = document.querySelector<HTMLButtonElement>('button[data-provider="google"]');
-    expect(googleButton).not.toBeNull();
-    await userEvent.click(googleButton!);
+    await userEvent.click(screen.getByRole("button", { name: /Continue Google/i }));
     expect(mocks.startOidc).toHaveBeenCalledWith("google", "/agents/");
     expect(assignSpy).toHaveBeenCalledWith("https://accounts.example/authorize");
   });
