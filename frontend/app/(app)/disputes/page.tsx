@@ -18,6 +18,7 @@ import { getWriteReadiness, type WriteReadiness } from "@/lib/write-readiness";
 import { cidsFromDigest, digestFromCidOrHex, gatewayUrl, pinFileToPinata, verifyRawContent } from "@/lib/ipfs";
 import { assertCapturedWallet, canClaimVote, parseUnsignedId, prepareAndSubmitVote, type VotePreparationMutex } from "./workflow";
 import { useLocale, type Locale } from "@/lib/locale";
+import { useTxRecorder } from "@/lib/tx-history";
 
 type CaseDetails = {
   tradeId: bigint;
@@ -402,6 +403,7 @@ export default function DisputesPage() {
     isSubmitting: writer.isPending,
     writeError: localError ?? writer.error,
   });
+  useTxRecorder(feedback, { kind: "dispute", subject: address, chainId });
   const transactionBusy = feedback.phase === "submitting" || feedback.phase === "confirming";
 
   const readiness = useCallback((authorized: boolean, stateValid: boolean, inputValid: boolean, reasons?: Parameters<typeof getWriteReadiness>[0]["reasons"]): WriteReadiness =>

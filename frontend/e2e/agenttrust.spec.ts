@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { DEPLOYMENTS } from "../lib/deployments";
 import { resetAnvilAndDeploy } from "./anvil";
-import { authenticateLocally, connectWallet, createDeliveredTrade, registerAgent, registerAgentVerified, selectAccount, waitForTransaction } from "./helpers";
+import { authenticateLocally, connectWallet, createDeliveredTrade, pickMetaMask, registerAgent, registerAgentVerified, selectAccount, waitForTransaction } from "./helpers";
 import { increaseTime, installAnvilProvider } from "./provider";
 
 test.describe.configure({ mode: "serial" });
@@ -38,6 +38,7 @@ test("anonymous deep links require authentication and restore their target after
   await gateRedirect;
   await expect(page.getByRole("button", { name: /^(Connect wallet and sign in|Sign in with connected wallet)$/ })).toBeVisible();
   await page.getByRole("button", { name: /^(Connect wallet and sign in|Sign in with connected wallet)$/ }).click();
+  await pickMetaMask(page);
   await expect(page).toHaveURL(/\/disputes\/\?tradeId=42$/);
   await expect(page.getByRole("heading", { name: "Disputes and arbitration" })).toBeVisible();
 });

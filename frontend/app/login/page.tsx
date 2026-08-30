@@ -3,22 +3,22 @@
 import { Apple, ArrowLeft, FlaskConical, ShieldCheck, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useAccount, useConnect, useSignMessage } from "wagmi";
-import { injected } from "wagmi/connectors";
+import { useConnect, useSignMessage } from "wagmi";
 import { canonicalLoginUrl, sanitizeReturnTo, useAuth, type OidcProvider } from "@/lib/auth";
 import { LanguageSwitch } from "@/app/components/language-switch";
+import { WalletPicker } from "@/app/components/wallet-picker";
 import { useLocale } from "@/lib/locale";
 
 export default function LoginPage() {
   const { state, capabilities, completeWalletLogin, startOidc } = useAuth();
-  const { address, isConnected } = useAccount();
-  const { connectAsync, isPending: connecting } = useConnect();
+  const { isPending: connecting } = useConnect();
   const { signMessageAsync } = useSignMessage();
   const { dictionary: t } = useLocale();
   const [returnTo, setReturnTo] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [oidcBusy, setOidcBusy] = useState<OidcProvider>();
   const [error, setError] = useState<string>();
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setReturnTo(sanitizeReturnTo(new URLSearchParams(window.location.search).get("returnTo"))), 0);
@@ -26,13 +26,16 @@ export default function LoginPage() {
   }, []);
   useEffect(() => { if (state === "authenticated" && returnTo) window.location.replace(returnTo); }, [state, returnTo]);
 
-  async function walletLogin() {
+  // 每次点击都先让用户挑选钱包（Rabby / MetaMask / 其它），不复用上一次的连接器。
+  function startWalletLogin() {
+    setError(undefined);
+    setPickerOpen(true);
+  }
+
+  async function signIn(account: `0x${string}`) {
     setBusy(true); setError(undefined);
-    try {
-      const account = address ?? (await connectAsync({ connector: injected() })).accounts[0];
-      if (!account) throw new Error(t.auth.walletMissing);
-      await completeWalletLogin(account, (message) => signMessageAsync({ message, account }));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : t.auth.loginFailed); }
+    try { await completeWalletLogin(account, (message) => signMessageAsync({ message, account })); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : t.auth.loginFailed); }
     finally { setBusy(false); }
   }
   async function oidcLogin(provider: OidcProvider) {
@@ -51,7 +54,7 @@ export default function LoginPage() {
       </section>
       <section className="login-stack" aria-label={t.auth.loginOptions}>
         <div className="login-card login-card-primary"><span className="login-card-tag">{t.auth.recommended}</span><Wallet size={24} aria-hidden="true" /><h2>{t.auth.walletTitle}</h2><p>{t.auth.walletDescription}</p>
-          <button className="button button-primary login-action" type="button" onClick={() => void walletLogin()} disabled={busy || connecting || !walletEnabled || unavailable}>{busy || connecting ? t.auth.signing : (isConnected ? t.auth.signWallet : t.auth.connectAndSign)}</button>
+          <button className="button button-primary login-action" type="button" onClick={startWalletLogin} disabled={busy || connecting || !walletEnabled || unavailable}>{busy || connecting ? t.auth.signing : t.auth.connectAndSign}</button>
           {!unavailable && capabilities && !walletEnabled && <p className="form-warning">{t.auth.walletUnavailable}</p>}
           {error && <p className="form-error" role="alert">{error}</p>}
           {unavailable && <a className="button button-secondary login-action" href={canonicalLoginUrl(returnTo ?? "/agents/")}>{t.auth.continueCanonical}</a>}
@@ -64,5 +67,14 @@ export default function LoginPage() {
         <details className="labs-card"><summary><FlaskConical size={18} />{t.auth.labs}</summary><p>{t.auth.worldIdLabs}</p></details>
       </section>
     </div>
+    <WalletPicker
+      open={pickerOpen}
+      onClose={() => setPickerOpen(false)}
+      onConnected={({ address: account }) => {
+        if (!account) { setError(t.auth.walletMissing); return false; }
+        void signIn(account);
+        return true; // 关闭选择页，签名进度由登录卡片承接
+      }}
+    />
   </main>;
 }

@@ -84,6 +84,22 @@ export async function installAnvilProvider(page: Page) {
     };
 
     Object.defineProperty(window, "ethereum", { configurable: false, enumerable: true, value: provider });
+
+    // EIP-6963：模拟钱包以 MetaMask 身份 announce，wagmi 的
+    // multiInjectedProviderDiscovery 才能发现它，钱包选择页才会列出「MetaMask」。
+    const providerInfo = Object.freeze({
+      uuid: "0d7a6d10-3c4e-4f2a-9d1a-6a5b2e9c3f01",
+      name: "MetaMask",
+      icon: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'><rect width='30' height='30' rx='6' fill='%23f5841f'/><text x='15' y='20' font-size='14' text-anchor='middle' fill='white'>M</text></svg>",
+      rdns: "io.metamask",
+    });
+    const announce = () => window.dispatchEvent(new CustomEvent("eip6963:announceProvider", {
+      detail: Object.freeze({ info: providerInfo, provider }),
+    }));
+    window.addEventListener("eip6963:requestProvider", announce);
+    // 兜底：若页面脚本先于 mipd 运行，稍后再补发一次 announce。
+    window.setTimeout(announce, 50);
+
     Object.defineProperty(window, "__anvilE2E", { configurable: false, value: {
       switchAccount: async (index: number) => {
         assertSafe();

@@ -2,10 +2,10 @@
 
 import { Link2, ShieldAlert } from "lucide-react";
 import { useState } from "react";
-import { useAccount, useConnect, useDisconnect, useSignMessage } from "wagmi";
-import { injected } from "wagmi/connectors";
+import { useAccount, useDisconnect, useSignMessage } from "wagmi";
 import { useAuth } from "@/lib/auth";
 import { useLocale } from "@/lib/locale";
+import { ConnectWalletButton } from "./wallet-status";
 
 function sameWallet(left?: string | null, right?: string) {
   return Boolean(left && right && left.toLowerCase() === right.toLowerCase());
@@ -14,7 +14,6 @@ function sameWallet(left?: string | null, right?: string) {
 export function WalletBindingGate({ children }: { children: React.ReactNode }) {
   const { account, linkWallet } = useAuth();
   const { address, isConnected } = useAccount();
-  const { connectAsync, isPending: connecting } = useConnect();
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
   const { dictionary: t } = useLocale();
@@ -23,11 +22,6 @@ export function WalletBindingGate({ children }: { children: React.ReactNode }) {
   const mismatch = isConnected && !sameWallet(account?.wallet, address);
   const blocked = !account?.wallet || mismatch;
 
-  async function connect() {
-    setError(undefined);
-    try { await connectAsync({ connector: injected() }); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : t.auth.walletMissing); }
-  }
   async function bind() {
     if (!address) return;
     setBusy(true); setError(undefined);
@@ -45,7 +39,7 @@ export function WalletBindingGate({ children }: { children: React.ReactNode }) {
         {account?.wallet && <p className="binding-address">{t.auth.boundWallet}: <code>{account.wallet}</code></p>}
         {address && <p className="binding-address">{t.auth.connectedWallet}: <code>{address}</code></p>}
       </div>
-      {!isConnected ? <button className="button button-primary" type="button" disabled={connecting} onClick={() => void connect()}>{connecting ? t.common.connecting : t.common.connectWallet}</button>
+      {!isConnected ? <ConnectWalletButton />
         : mismatch ? <button className="button button-secondary" type="button" onClick={() => disconnect()}>{t.wallet.disconnect}</button>
           : <button className="button button-primary" type="button" disabled={busy} onClick={() => void bind()}>{busy ? t.auth.signing : t.auth.linkWallet}</button>}
       {error && <p className="form-error" role="alert">{error}</p>}

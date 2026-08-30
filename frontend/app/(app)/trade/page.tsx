@@ -12,6 +12,7 @@ import { getTradeStateMeta, TRADE_STATE_META, type TradeAction } from "@/lib/tra
 import { getWriteReadiness, type WriteReadiness } from "@/lib/write-readiness";
 import { TradeSubmissionGate, type TradeOperationKind } from "./workflow";
 import { useLocale, type Locale } from "@/lib/locale";
+import { useTxRecorder } from "@/lib/tx-history";
 
 const enTradeMessages = {
   walletDisconnected: "Connect a wallet using the header control; this page does not create duplicate connectors.",
@@ -322,6 +323,7 @@ export default function TradePage() {
     writeError: submissionError,
     successLabel: successLabel?.[locale],
   });
+  useTxRecorder(feedback, { kind: "trade", subject: address, chainId });
   const busy = submissionLocked || feedback.phase === "submitting" || feedback.phase === "confirming";
 
   useEffect(() => {
