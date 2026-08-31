@@ -17,3 +17,6 @@ __pycache__/
 *.bbl
 *.blg
 *.out
+
+# 本地会话记忆（.workbuddy 项目数据，不纳入版本控制）
+.workbuddy/

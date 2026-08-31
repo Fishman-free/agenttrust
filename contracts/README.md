@@ -19,7 +19,7 @@ World ID app `app_01728cabff1e05950af1ff18c06c9d38` and RP `rp_fd884ac4342cc4d1`
 
 ## Tests
 
-The authoritative Foundry baseline is **165 tests passed, 0 failed, 0 skipped**, including unit, fuzz, E2E, and invariant coverage.
+The authoritative Foundry baseline is **183 tests passed, 0 failed, 0 skipped**, including unit, fuzz, E2E, and invariant coverage.
 
 ```bash
 export PATH="$HOME/.foundry/bin:$PATH"

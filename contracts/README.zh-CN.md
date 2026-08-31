@@ -19,7 +19,7 @@ World ID app `app_01728cabff1e05950af1ff18c06c9d38` 与 RP `rp_fd884ac4342cc4d1`
 
 ## 测试
 
-权威 Foundry 基线为：**165 tests passed, 0 failed, 0 skipped**，包含 unit、fuzz、E2E 与 invariant 覆盖。
+权威 Foundry 基线为：**183 tests passed, 0 failed, 0 skipped**，包含 unit、fuzz、E2E 与 invariant 覆盖。
 
 ```bash
 export PATH="$HOME/.foundry/bin:$PATH"
