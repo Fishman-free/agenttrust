@@ -57,6 +57,8 @@ export default function AgentsPage() {
   const [mockProof, setMockProof] = useState("0x01");
   const [bindMockNullifier, setBindMockNullifier] = useState("");
   const [bindMockProof, setBindMockProof] = useState("0x01");
+  const [bindPlatform, setBindPlatform] = useState("");
+  const [bindExternalId, setBindExternalId] = useState("");
   const [recoverySubject, setRecoverySubject] = useState("");
   const [opLabel, setOpLabel] = useState<string>();
   const refreshedReceipt = useRef<string | undefined>(undefined);
@@ -139,6 +141,31 @@ export default function AgentsPage() {
     query: { enabled: registryConfigured && Boolean(address) },
   });
 
+  const { data: firstAgentIdPlusOne } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "firstAgentIdPlusOne",
+    args: address ? [address] : undefined,
+    query: { enabled: registryConfigured && Boolean(address) },
+  });
+  const ownAgentId = firstAgentIdPlusOne && firstAgentIdPlusOne > 0n ? firstAgentIdPlusOne - 1n : undefined;
+
+  const { data: externalIdentity, refetch: refetchExternal } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "externalIdentities",
+    args: ownAgentId !== undefined ? [ownAgentId] : undefined,
+    query: { enabled: registryConfigured && ownAgentId !== undefined },
+  });
+  const { data: externalLevel, refetch: refetchExternalLevel } = useReadContract({
+    address: CONTRACT_ADDRESSES.agentRegistry,
+    abi: agentRegistryAbi,
+    functionName: "verificationLevelOf",
+    args: ownAgentId !== undefined ? [ownAgentId] : undefined,
+    query: { enabled: registryConfigured && ownAgentId !== undefined },
+  });
+  const externalBound = Boolean(externalIdentity && externalIdentity[0]);
+
   const { data: agentCount, refetch: refetchCount } = useReadContract({
     address: CONTRACT_ADDRESSES.agentRegistry,
     abi: agentRegistryAbi,
@@ -183,8 +210,8 @@ export default function AgentsPage() {
 
   useEffect(() => {
     if (operationsFeedback.phase !== "success") return;
-    void Promise.all([refetchDeposit(), refetchDeregistered(), refetchActive(), refetchPending(), refetchRecovery(), refetchPoH()]);
-  }, [operationsFeedback.phase, refetchDeposit, refetchDeregistered, refetchActive, refetchPending, refetchRecovery, refetchPoH]);
+    void Promise.all([refetchDeposit(), refetchDeregistered(), refetchActive(), refetchPending(), refetchRecovery(), refetchPoH(), refetchExternal(), refetchExternalLevel()]);
+  }, [operationsFeedback.phase, refetchDeposit, refetchDeregistered, refetchActive, refetchPending, refetchRecovery, refetchPoH, refetchExternal, refetchExternalLevel]);
 
   const filledGuardians = [guardian1.trim(), guardian2.trim(), guardian3.trim()]
     .filter(Boolean)
@@ -239,6 +266,11 @@ export default function AgentsPage() {
     isLocalMock && WRITES_ENABLED && isConnected && chainId === CHAIN_ID && !opsBusy && Boolean(activeSubject)
     && !deregistered && poHVerified === false && bindMockValid;
 
+  const externalBindValid = bindPlatform.trim() !== "" && bindExternalId.trim() !== "";
+  const externalBindReady =
+    WRITES_ENABLED && isConnected && chainId === CHAIN_ID && !opsBusy && Boolean(activeSubject)
+    && !deregistered && ownAgentId !== undefined && !externalBound && externalBindValid;
+
   function register() {
     if (!readiness.ready) {
       alert(readiness.reason);
@@ -271,7 +303,7 @@ export default function AgentsPage() {
   }
 
   function runOperation(
-    functionName: "deregister" | "vetoRecovery" | "approveRecovery" | "withdraw" | "bindPoH",
+    functionName: "deregister" | "vetoRecovery" | "approveRecovery" | "withdraw" | "bindPoH" | "bindExternalIdentity",
     args: unknown[],
     label: string,
   ) {
@@ -393,6 +425,35 @@ export default function AgentsPage() {
                     ) : verifierBound && address ? (
                       <WorldIdButton subject={address} disabled={opsBusy} label={a.bindButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={(value) => runOperation("bindPoH", [value.nullifier, value.proof], a.bindSuccess)} />
                     ) : <p className="form-warning" role="status">{a.verifierMissing}</p>}
+                  </div>
+                )}
+                {activeSubject && !deregistered && (
+                  <div className="callout space-y-2" role="status">
+                    <p className="text-sm">
+                      {a.externalIdentityTitle}{" "}
+                      {externalBound
+                        ? formatMessage(a.externalBound, {
+                            platform: externalIdentity?.[0] ?? "",
+                            externalId: externalIdentity?.[1] ?? "",
+                            level: Number(externalLevel ?? 0) + 1,
+                          })
+                        : a.externalUnbound}
+                    </p>
+                    {!externalBound && (
+                      <>
+                        <p className="text-sm">{a.externalIdentityHelp}</p>
+                        <label className="field-label">{a.externalPlatform}<input aria-label={a.externalPlatform} placeholder="dify / coze / openai / a2a / mcp / erc8004" value={bindPlatform} onChange={(e) => setBindPlatform(e.target.value)} className="field-input" /></label>
+                        <label className="field-label">{a.externalAgentIdLabel}<input aria-label={a.externalAgentIdLabel} placeholder="app-123" value={bindExternalId} onChange={(e) => setBindExternalId(e.target.value)} className="field-input" /></label>
+                        <button
+                          className="button button-secondary"
+                          disabled={!externalBindReady}
+                          title={externalBindReady ? undefined : a.externalBindInvalid}
+                          onClick={() => ownAgentId !== undefined && runOperation("bindExternalIdentity", [ownAgentId, bindPlatform.trim(), bindExternalId.trim()], a.externalBindSuccess)}
+                        >
+                          {a.externalBindButton}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
                 {!deregistered && (

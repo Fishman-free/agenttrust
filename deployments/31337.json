@@ -11,10 +11,10 @@
     "schellingVoting": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9"
   },
   "runtimeBytecodeHashes": {
-    "agentRegistry": "0xb831b82412784516cebba6a25dc66a1b5b8ef240eb5f69839b20a763fb53202b",
-    "reputationHub": "0x97d8f0ea00a4213196ec249cf24fd4fc8a9381074ecebcae010f3ce669f8c4c2",
-    "guaranteeEscrow": "0x2a6d23546de08fb937f2a4d142ea50d23637ce6a46c1b7b97d9df77b8793f83c",
-    "schellingVoting": "0x0cbeba04aba9987e623652536892b8f3bbe6efb962ea7b37e082336078a69465"
+    "agentRegistry": "0x23dac88dd961771f4b0140b7f281e2cc767dee6cc887f1ad42df86e906a3d7b5",
+    "reputationHub": "0x20a6cadecf56900b40c62e669502a0da4b8f9b7f62318bd7cdbcc5cc204bd4dd",
+    "guaranteeEscrow": "0x8dac49c22411373be3e65fd7a26d5fa48215d4cc70e65573fc9b530f1d331dfd",
+    "schellingVoting": "0xe40f4d3867f20124378f30a0af306e0abb76da32959cb5cab66fa528060ae683"
   },
   "deploymentMetadata": {
     "agentRegistry": {

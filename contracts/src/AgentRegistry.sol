@@ -2,8 +2,11 @@
 pragma solidity ^0.8.24;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {IAgentProofOfPersonhood} from "./interfaces/IAgentProofOfPersonhood.sol";
 
 interface ISubjectObligationOracle {
@@ -33,12 +36,37 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         GUARDIANS
     }
 
+    /// @notice External-agent binding strength, monotonic (never downgrades).
+    ///  Declared     — L1: platform + external agent id claimed, deposit at stake.
+    ///  KeyControl   — L2: control of the external agent's key proven (EIP-191 challenge or gateway attestation).
+    ///  DomainControl— L3: control of the agent's HTTPS endpoint domain proven (.well-known, ERC-8004 semantics).
+    ///  Erc8004      — L4: linked to a same-chain ERC-8004 Identity Registry entry owned by the caller.
+    enum VerificationLevel {
+        Declared,
+        KeyControl,
+        DomainControl,
+        Erc8004
+    }
+
     struct AgentInfo {
         string name;
         string description;
         string endpoint;
         address owner;
         uint256 createdAt;
+    }
+
+    /// @notice Identity of the external agent bound to an ATID.
+    /// @dev Bound once per ATID; the declared key is globally unique while the ATID lives.
+    struct ExternalIdentity {
+        string platform; // e.g. "dify", "coze", "openai", "a2a", "mcp", "erc8004"
+        string externalAgentId; // platform-local identifier
+        string domain; // L3: verified HTTPS domain
+        address controlKey; // L2: key that answered the EIP-191 challenge
+        address erc8004Registry; // L4: same-chain ERC-8004 IdentityRegistry
+        uint256 erc8004AgentId; // L4: tokenId on that registry
+        bytes32 proofHash; // keccak256 of the off-chain verification artifact (L2'/L3)
+        uint64 verifiedAt;
     }
 
     struct RecoveryRequest {
@@ -72,6 +100,18 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
     mapping(bytes32 => address) public nullifierSubject;
     mapping(address => bytes32) public subjectNullifier;
 
+    /// @notice Gateway role attesting off-chain verification artifacts (L2' generic key control, L3 domain).
+    address public identityVerifier;
+
+    /// @notice agentId → bound external identity (empty platform until bound).
+    mapping(uint256 => ExternalIdentity) public externalIdentities;
+    /// @notice keccak256(platform, externalAgentId) → agentId + 1 (0 = free). Anti-squat / anti-duplicate.
+    mapping(bytes32 => uint256) public declaredKeyToAgent;
+    /// @notice Single-use nonces for L2 EIP-191 challenges.
+    mapping(bytes32 => bool) public usedBindingNonces;
+    /// @notice agentId → current VerificationLevel.
+    mapping(uint256 => uint8) private _verificationLevels;
+
     mapping(address => address[]) private _guardians;
     mapping(address => mapping(address => bool)) public isGuardian;
 
@@ -90,6 +130,13 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
     event ObligationOraclesSet(address indexed escrow, address indexed voting);
     event SlashSourceSet(address indexed source, bool authorized);
     event GuardiansUpdated(address indexed subject, address[] guardians);
+    event IdentityVerifierSet(address indexed verifier);
+    event ExternalIdentityBound(
+        uint256 indexed agentId, address indexed owner, string platform, string externalAgentId
+    );
+    event KeyControlProved(uint256 indexed agentId, address indexed controlKey);
+    event IdentityAttested(uint256 indexed agentId, address indexed verifier, uint8 level, bytes32 proofHash);
+    event Erc8004Linked(uint256 indexed agentId, address indexed erc8004Registry, uint256 externalAgentId);
     event SubjectDeregistered(address indexed subject, uint256 indexed agentId, uint256 refundedDeposit);
     event RecoveryRequested(
         address indexed subject,
@@ -114,6 +161,123 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
     function setRegistrationDeposit(uint256 deposit) external onlyOwner {
         registrationDeposit = deposit;
         emit RegistrationDepositUpdated(deposit);
+    }
+
+    function setIdentityVerifier(address verifier) external onlyOwner {
+        identityVerifier = verifier;
+        emit IdentityVerifierSet(verifier);
+    }
+
+    /// @notice L1: bind an external agent (platform + platform-local id) to an ATID. Declared-only,
+    /// backed by the registration deposit. The declared key is globally unique; a second binder
+    /// of the same (platform, externalAgentId) reverts. One external identity per ATID lifetime.
+    function bindExternalIdentity(uint256 agentId, string calldata platform, string calldata externalAgentId) external {
+        require(_ownerOf(agentId) == msg.sender, unicode"AgentRegistry: 非 NFT 持有者");
+        require(activeSubjects[msg.sender] && !deregistered[msg.sender], unicode"AgentRegistry: 主体未激活");
+        require(bytes(platform).length != 0, unicode"AgentRegistry: 平台标识为空");
+        require(bytes(externalIdentities[agentId].platform).length == 0, unicode"AgentRegistry: 已绑定外部身份");
+
+        bytes32 declaredKey = keccak256(abi.encodePacked(platform, externalAgentId));
+        require(declaredKeyToAgent[declaredKey] == 0, unicode"AgentRegistry: 外部身份已被占用");
+
+        externalIdentities[agentId] = ExternalIdentity({
+            platform: platform,
+            externalAgentId: externalAgentId,
+            domain: "",
+            controlKey: address(0),
+            erc8004Registry: address(0),
+            erc8004AgentId: 0,
+            proofHash: bytes32(0),
+            verifiedAt: uint64(block.timestamp)
+        });
+        declaredKeyToAgent[declaredKey] = agentId + 1;
+        _verificationLevels[agentId] = uint8(VerificationLevel.Declared);
+        emit ExternalIdentityBound(agentId, msg.sender, platform, externalAgentId);
+    }
+
+    /// @notice L2 (EVM): prove control of the external agent's key. The gateway issues `nonce`;
+    /// the external agent signs the EIP-191 challenge; the ATID owner submits the signature.
+    /// Verification happens on-chain (ECDSA.recover), no trusted party involved.
+    function proveKeyControl(uint256 agentId, bytes32 nonce, bytes calldata signature) external {
+        require(_ownerOf(agentId) == msg.sender, unicode"AgentRegistry: 非 NFT 持有者");
+        require(bytes(externalIdentities[agentId].platform).length != 0, unicode"AgentRegistry: 未绑定外部身份");
+        require(!usedBindingNonces[nonce], unicode"AgentRegistry: nonce 已使用");
+
+        bytes32 digest = keccak256(abi.encodePacked("AgentTrust external-agent binding: ", agentId, nonce));
+        address controlKey = ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(digest), signature);
+        usedBindingNonces[nonce] = true;
+
+        ExternalIdentity storage identity = externalIdentities[agentId];
+        identity.controlKey = controlKey;
+        identity.verifiedAt = uint64(block.timestamp);
+        if (_verificationLevels[agentId] < uint8(VerificationLevel.KeyControl)) {
+            _verificationLevels[agentId] = uint8(VerificationLevel.KeyControl);
+        }
+        emit KeyControlProved(agentId, controlKey);
+    }
+
+    /// @notice L2' (generic, e.g. A2A Agent Card Ed25519 JWS) and L3 (domain control): the
+    /// identity verifier (off-chain gateway) attests a verification artifact hash. Levels are
+    /// monotonic — a lower level than currently recorded reverts.
+    function attestIdentity(uint256 agentId, uint8 level, bytes32 proofHash, string calldata domain) external {
+        require(
+            msg.sender == identityVerifier && identityVerifier != address(0), unicode"AgentRegistry: 非身份验证者"
+        );
+        require(bytes(externalIdentities[agentId].platform).length != 0, unicode"AgentRegistry: 未绑定外部身份");
+        require(
+            level == uint8(VerificationLevel.KeyControl) || level == uint8(VerificationLevel.DomainControl),
+            unicode"AgentRegistry: 无效验证级别"
+        );
+        require(level > _verificationLevels[agentId], unicode"AgentRegistry: 验证级别不可降级");
+        if (level == uint8(VerificationLevel.DomainControl)) {
+            require(bytes(domain).length != 0, unicode"AgentRegistry: 域名为空");
+        }
+
+        ExternalIdentity storage identity = externalIdentities[agentId];
+        identity.proofHash = proofHash;
+        if (bytes(domain).length != 0) {
+            identity.domain = domain;
+        }
+        identity.verifiedAt = uint64(block.timestamp);
+        _verificationLevels[agentId] = level;
+        emit IdentityAttested(agentId, msg.sender, level, proofHash);
+    }
+
+    /// @notice L4: link to a same-chain ERC-8004 Identity Registry entry. Trustless: requires the
+    /// caller to own both the ATID and the ERC-8004 token.
+    function linkErc8004(uint256 agentId, address erc8004Registry, uint256 externalAgentId) external {
+        require(_ownerOf(agentId) == msg.sender, unicode"AgentRegistry: 非 NFT 持有者");
+        require(bytes(externalIdentities[agentId].platform).length != 0, unicode"AgentRegistry: 未绑定外部身份");
+        require(erc8004Registry != address(0), unicode"AgentRegistry: 注册表为零");
+        require(
+            IERC721(erc8004Registry).ownerOf(externalAgentId) == msg.sender,
+            unicode"AgentRegistry: 未持有 ERC-8004 令牌"
+        );
+
+        ExternalIdentity storage identity = externalIdentities[agentId];
+        identity.erc8004Registry = erc8004Registry;
+        identity.erc8004AgentId = externalAgentId;
+        identity.verifiedAt = uint64(block.timestamp);
+        _verificationLevels[agentId] = uint8(VerificationLevel.Erc8004);
+        emit Erc8004Linked(agentId, erc8004Registry, externalAgentId);
+    }
+
+    /// @notice Current external-identity verification level of an agent (0 = unbound or Declared).
+    function verificationLevelOf(uint256 agentId) external view returns (uint8) {
+        if (bytes(externalIdentities[agentId].platform).length == 0) {
+            return 0;
+        }
+        return _verificationLevels[agentId];
+    }
+
+    /// @notice agentId bound to (platform, externalAgentId), or 0 when free/unbound.
+    function agentByDeclaredKey(string calldata platform, string calldata externalAgentId)
+        external
+        view
+        returns (uint256)
+    {
+        uint256 stored = declaredKeyToAgent[keccak256(abi.encodePacked(platform, externalAgentId))];
+        return stored == 0 ? 0 : stored - 1;
     }
 
     function setPoHVerifier(address verifier) external onlyOwner {
@@ -252,6 +416,7 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
         activeSubjects[msg.sender] = false;
         deregistered[msg.sender] = true;
         _clearGuardians(msg.sender);
+        _releaseExternalIdentity(tokenId);
         _burn(tokenId);
 
         if (amount != 0) {
@@ -459,6 +624,17 @@ contract AgentRegistry is ERC721, Ownable, ReentrancyGuard {
             isGuardian[subject][list[i]] = false;
         }
         delete _guardians[subject];
+    }
+
+    /// @notice Frees the declared key when an ATID is deregistered. The external identity dies
+    /// with the ATID; the freed key may be claimed by a future ATID (agent ownership transfer).
+    function _releaseExternalIdentity(uint256 agentId) private {
+        ExternalIdentity memory identity = externalIdentities[agentId];
+        if (bytes(identity.platform).length != 0) {
+            declaredKeyToAgent[keccak256(abi.encodePacked(identity.platform, identity.externalAgentId))] = 0;
+        }
+        delete externalIdentities[agentId];
+        delete _verificationLevels[agentId];
     }
 
     function _hasLiveRecovery(address subject) private view returns (bool) {

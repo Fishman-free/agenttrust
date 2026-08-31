@@ -92,6 +92,30 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "agentByDeclaredKey",
+    "inputs": [
+      {
+        "name": "platform",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "externalAgentId",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "agentCount",
     "inputs": [],
     "outputs": [
@@ -175,6 +199,34 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "attestIdentity",
+    "inputs": [
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "level",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "proofHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "domain",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "authorizedSlashSources",
     "inputs": [
       {
@@ -213,6 +265,29 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "bindExternalIdentity",
+    "inputs": [
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "platform",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "externalAgentId",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "bindPoH",
     "inputs": [
       {
@@ -228,6 +303,25 @@ export const agentRegistryAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "declaredKeyToAgent",
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -299,6 +393,60 @@ export const agentRegistryAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "externalIdentities",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "platform",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "externalAgentId",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "domain",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "controlKey",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "erc8004Registry",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "erc8004AgentId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "proofHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "verifiedAt",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -377,6 +525,19 @@ export const agentRegistryAbi = [
         "name": "",
         "type": "address[]",
         "internalType": "address[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "identityVerifier",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -498,6 +659,29 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "linkErc8004",
+    "inputs": [
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "erc8004Registry",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "externalAgentId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "name",
     "inputs": [],
     "outputs": [
@@ -610,6 +794,29 @@ export const agentRegistryAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "proveKeyControl",
+    "inputs": [
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "nonce",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "signature",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -927,6 +1134,19 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "setIdentityVerifier",
+    "inputs": [
+      {
+        "name": "verifier",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setObligationOracles",
     "inputs": [
       {
@@ -1169,6 +1389,25 @@ export const agentRegistryAbi = [
   },
   {
     "type": "function",
+    "name": "usedBindingNonces",
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "usedPoHNullifiers",
     "inputs": [
       {
@@ -1182,6 +1421,25 @@ export const agentRegistryAbi = [
         "name": "",
         "type": "bool",
         "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "verificationLevelOf",
+    "inputs": [
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "stateMutability": "view"
@@ -1333,6 +1591,62 @@ export const agentRegistryAbi = [
   },
   {
     "type": "event",
+    "name": "Erc8004Linked",
+    "inputs": [
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "erc8004Registry",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "externalAgentId",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ExternalIdentityBound",
+    "inputs": [
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "platform",
+        "type": "string",
+        "internalType": "string",
+        "indexed": false
+      },
+      {
+        "name": "externalAgentId",
+        "type": "string",
+        "internalType": "string",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "GuardiansUpdated",
     "inputs": [
       {
@@ -1346,6 +1660,69 @@ export const agentRegistryAbi = [
         "type": "address[]",
         "internalType": "address[]",
         "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "IdentityAttested",
+    "inputs": [
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "verifier",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      },
+      {
+        "name": "level",
+        "type": "uint8",
+        "internalType": "uint8",
+        "indexed": false
+      },
+      {
+        "name": "proofHash",
+        "type": "bytes32",
+        "internalType": "bytes32",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "IdentityVerifierSet",
+    "inputs": [
+      {
+        "name": "verifier",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "KeyControlProved",
+    "inputs": [
+      {
+        "name": "agentId",
+        "type": "uint256",
+        "internalType": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "controlKey",
+        "type": "address",
+        "internalType": "address",
+        "indexed": true
       }
     ],
     "anonymous": false
@@ -1681,6 +2058,33 @@ export const agentRegistryAbi = [
       }
     ],
     "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "ECDSAInvalidSignature",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ECDSAInvalidSignatureLength",
+    "inputs": [
+      {
+        "name": "length",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ECDSAInvalidSignatureS",
+    "inputs": [
+      {
+        "name": "s",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
   },
   {
     "type": "error",
