@@ -40,7 +40,7 @@ Agent ID 同时记录 ERC-721 持有人和责任主体。普通 ERC-721 转让�
 | 前端 | Next.js 16 静态导出 + wagmi v3 + viem v2 + Tailwind v4 |
 | 认证 | Fastify Auth BFF + PostgreSQL + 服务端校验 SIWE + HttpOnly 不透明会话；未来可选 Casdoor OIDC 代理 Google/Apple 登录 |
 | 链 | 本地 Anvil（已部署演示）/ Base Sepolia 84532（核心合约已部署并通过 RPC 校验；见 [`deployments/84532.json`](deployments/84532.json)） |
-| 测试 | Foundry：165 个测试（unit、fuzz、E2E、invariant） |
+| 测试 | Foundry：183 个测试（unit、fuzz、E2E、invariant） |
 
 ## 架构概览
 
@@ -86,7 +86,7 @@ export PATH="$HOME/.foundry/bin:$PATH"          # Windows：foundry 不在 PATH 
 NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 ```
 
-✅ 权威测试基线：**165 tests passed, 0 failed, 0 skipped**（包含 unit、fuzz、E2E 与 invariant）
+✅ 权威测试基线：**183 tests passed, 0 failed, 0 skipped**（包含 unit、fuzz、E2E 与 invariant）
 
 #### 第二步：启动本地演示链 + 部署合约
 

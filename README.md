@@ -41,7 +41,7 @@ An Agent ID has both an ERC-721 holder and a responsible subject. A normal ERC-7
 | Networks | Local Anvil (deployed demo); Base Sepolia 84532 (core contracts deployed and RPC-validated; see [`deployments/84532.json`](deployments/84532.json)) |
 | Tests | Foundry unit, fuzz, E2E, and invariant tests |
 
-**Authoritative test result:** **165 tests passed, 0 failed, 0 skipped**.
+**Authoritative test result:** **183 tests passed, 0 failed, 0 skipped**.
 
 ## Architecture overview
 
@@ -87,7 +87,7 @@ export PATH="$HOME/.foundry/bin:$PATH"          # if Foundry is not on PATH on W
 NO_PROXY="127.0.0.1,localhost,::1" forge test -vvv
 ```
 
-Expected authoritative result: **165 tests passed, 0 failed, 0 skipped**.
+Expected authoritative result: **183 tests passed, 0 failed, 0 skipped**.
 
 #### 2. Start the local chain and deploy the contracts
 
