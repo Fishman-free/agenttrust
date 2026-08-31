@@ -109,8 +109,12 @@ assert_runtime_hash() {
   address=$2
   expected=$3
   actual=$(cast codehash "$address" --rpc-url "$RPC_URL") || fail "$name codehash call failed"
-  [ "$(lower "$actual")" = "$(lower "$expected")" ] || fail "$name stale or unknown runtime bytecode: expected $expected, got $actual"
-  echo "   runtime bytecode ok: $name $address $actual"
+  if [ "$(lower "$actual")" = "$(lower "$expected")" ]; then
+    echo "   runtime bytecode ok: $name $address $actual"
+  else
+    echo "   runtime bytecode mismatch: $name expected $expected, got $actual"
+    RUNTIME_HASH_ERRORS="$RUNTIME_HASH_ERRORS $name($actual)"
+  fi
 }
 
 assert_address_call() {
@@ -142,6 +146,7 @@ assert_uint_call() {
 }
 
 validate_deployment() {
+  RUNTIME_HASH_ERRORS=""
   assert_runtime_hash AgentRegistry "$REGISTRY" "$REGISTRY_HASH"
   assert_runtime_hash ReputationHub "$HUB" "$HUB_HASH"
   assert_runtime_hash GuaranteeEscrow "$ESCROW" "$ESCROW_HASH"
@@ -159,6 +164,7 @@ validate_deployment() {
   assert_uint_call "SchellingVoting.randomCommitWindow" "$VOTING" "randomCommitWindow()(uint256)" "$RANDOM_COMMIT_WINDOW"
   assert_uint_call "SchellingVoting.revealWindow" "$VOTING" "revealWindow()(uint256)" "$REVEAL_WINDOW"
   echo "   dependency, role, ownership, and voting parameter wiring ok"
+  [ -z "$RUNTIME_HASH_ERRORS" ] || fail "stale or unknown runtime bytecode:$RUNTIME_HASH_ERRORS"
 }
 
 extract_named_addresses() {

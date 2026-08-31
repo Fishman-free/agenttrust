@@ -58,7 +58,7 @@
 
 | 标准/协议 | 说明 | 来源 |
 |---|---|---|
-| **ERC-8004 Trustless Agents** | 智能体身份+信誉+验证三注册表；MetaMask/EF/Google/Coinbase 提出；**2026-01-29 主网上线** | eips.ethereum.org/EIPS/eip-8004 |
+| **ERC-8004 Trustless Agents** | 智能体身份+信誉+验证三注册表；MetaMask/EF/Google/Coinbase 提出；**2026-01-29 主网上线**；全文已存 `papers/2608-eip-8004-trustless-agents.md`（2026-08-31 自 eips.ethereum.org 下载），AgentTrust 外部身份绑定 L1-L4 的对齐依据 | eips.ethereum.org/EIPS/eip-8004 |
 | ERC-8183 Agentic Commerce | 智能体商务全生命周期（任务→资金→交付证明→评估） | eips.ethereum.org/EIPS/eip-8183 |
 | ERC-4337 Account Abstraction | 账户抽象（paymaster/session key），**Final** | eips.ethereum.org/EIPS/eip-4337 |
 | ERC-6551 Token-Bound Accounts | NFT 自带钱包（TBA），Review 状态 | eips.ethereum.org/EIPS/eip-6551 |
