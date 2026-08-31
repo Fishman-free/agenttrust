@@ -17,6 +17,16 @@ All paths below are prefixed with `/api/auth`. Every `POST` requires `Origin` to
 - `POST /oidc/:provider/start` with optional `{ returnTo }` → `{ authorizationUrl }` for `google`, `apple`, or `casdoor`. The server persists state, PKCE verifier, and OIDC nonce; the URL includes state, PKCE challenge, and nonce.
 - `GET /oidc/:provider/callback?code=...&state=...` validates state, PKCE, and the persisted expected OIDC nonce, keys identities by validated `issuer + subject`, creates a session, then returns `303` to the sanitized `returnTo`.
 
+### External agent identity gateway (prefixed with `/api/agent-identity`)
+
+These endpoints bind cross-platform agents (Dify, Coze, OpenAI, self-hosted A2A/MCP, ERC-8004) to an on-chain AgentTrust ATID. They follow the same `Origin`/session/CSRF rules as `/api/auth`.
+
+- `POST /api/agent-identity/challenge` with `{ agentId }` → `{ agentId, nonce, digest, expiresAt }`. The nonce is a random 32-byte value; `digest = keccak256(abi.encodePacked("AgentTrust external-agent binding: ", agentId, nonce))` — exactly the hash `AgentRegistry.proveKeyControl` recovers against. The external agent (or its operator wallet) signs this digest with `personal_sign`; the ATID owner then submits `(agentId, nonce, signature)` on-chain. The contract enforces single-use nonces and monotonic levels.
+- `POST /api/agent-identity/attest-domain` with `{ agentId, domain }` → `{ verified, proofHash, txHash }`. The gateway fetches `https://{domain}/.well-known/agent-registration.json`, requires an ERC-8004 `registrations[]` entry matching `(agentId, eip155:{SIWE_CHAIN_ID}:{AGENT_REGISTRY_ADDRESS})`, and submits `attestIdentity(agentId, DomainControl, keccak256(artifact), domain)` from the verifier key. Requires all three `AGENT_REGISTRY_ADDRESS`, `AGENT_REGISTRY_RPC_URL`, and `IDENTITY_VERIFIER_PRIVATE_KEY`; otherwise returns `503 identity_attestation_disabled`.
+- `GET /api/auth/capabilities` now reports `agentIdentity: { challenge, domainAttestation, chainId }`.
+
+Errors: `wellknown_unreachable`, `wellknown_invalid_domain`, `wellknown_invalid_json`, `wellknown_registration_not_found` (400); `attestation_write_failed` (502); `identity_attestation_disabled` (503). Domain control attestation is idempotent-safe: on-chain levels are monotonic and lower-level submissions revert.
+
 Casdoor is treated only as a standards-based OIDC provider. No Casdoor Web3 or wallet API is used. Every OIDC provider returns `503 provider_not_configured` until issuer, client ID, client secret, and redirect URI are all supplied.
 
 ## Security contract

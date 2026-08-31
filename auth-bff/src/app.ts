@@ -8,6 +8,7 @@ import { ZodError, z } from "zod";
 import { PROVIDERS, type Config, type Purpose } from "./config.js";
 import { AuthRepository, type Session } from "./db.js";
 import { registerOidcRoutes } from "./oidc.js";
+import { registerAgentIdentityRoutes } from "./agent-identity-routes.js";
 import { enforceBrowserRequest, randomToken, safeEqual, setNoStore, sha256 } from "./security.js";
 import { addressSchema, buildSiweMessage, nonceSchema, signatureSchema, verifyExactSiwe } from "./siwe.js";
 
@@ -16,7 +17,11 @@ const verifySchema = z.object({ nonce: nonceSchema, message: z.string().min(1).m
 
 type Authenticated = { session: Session; tokenHash: Buffer };
 
-export async function buildApp(config: Config, repository: AuthRepository) {
+export interface IdentityDeps {
+  identity?: { fetchWellKnown?: (url: string) => Promise<Response>; attestWriter?: import("./identity-attester.js").IdentityWriter };
+}
+
+export async function buildApp(config: Config, repository: AuthRepository, deps: IdentityDeps = {}) {
   const app = Fastify({
     logger: config.NODE_ENV === "test" ? false : {
       redact: {
@@ -123,6 +128,7 @@ export async function buildApp(config: Config, repository: AuthRepository) {
     return {
       wallet: { enabled: true, chainId: config.SIWE_CHAIN_ID, siwe: true },
       oidc: Object.fromEntries(PROVIDERS.map((provider) => [provider, { configured: config.oidc[provider].configured }])),
+      agentIdentity: { challenge: true, domainAttestation: Boolean(deps.identity?.attestWriter), chainId: config.SIWE_CHAIN_ID },
     };
   });
 
@@ -184,6 +190,10 @@ export async function buildApp(config: Config, repository: AuthRepository) {
   });
 
   registerOidcRoutes(app, config, repository, issueSession);
+  registerAgentIdentityRoutes(app, config, {
+    requireAuth: async (request) => requireAuth(request),
+    requireCsrf: (request, auth) => requireCsrf(request, auth as Authenticated),
+  }, deps.identity);
 
   app.setNotFoundHandler(async (_request, reply) => reply.code(404).send({ error: "not_found" }));
   app.setErrorHandler((error, request, reply) => {
@@ -192,7 +202,7 @@ export async function buildApp(config: Config, repository: AuthRepository) {
     if (dbError.code === "23505") return reply.code(409).send({ error: dbError.constraint === "wallets_address_key" ? "wallet_already_linked" : "conflict" });
     const normalized = error instanceof Error ? error : new Error("unknown_error");
     const candidate = normalized as Error & { statusCode?: number };
-    const safeErrors = new Set(["invalid_origin", "cross_site_request_blocked", "authentication_required", "csrf_validation_failed", "invalid_or_consumed_challenge", "wallet_already_bound", "provider_not_configured", "invalid_or_consumed_oidc_state", "oidc_subject_missing", "oidc_issuer_missing", "siwe_message_mismatch", "siwe_message_invalid", "siwe_domain_mismatch", "siwe_uri_mismatch", "siwe_chain_mismatch", "siwe_nonce_mismatch", "siwe_purpose_mismatch", "siwe_expired", "siwe_issued_at_invalid", "siwe_address_mismatch", "siwe_signature_invalid"]);
+    const safeErrors = new Set(["invalid_origin", "cross_site_request_blocked", "authentication_required", "csrf_validation_failed", "invalid_or_consumed_challenge", "wallet_already_bound", "provider_not_configured", "invalid_or_consumed_oidc_state", "oidc_subject_missing", "oidc_issuer_missing", "siwe_message_mismatch", "siwe_message_invalid", "siwe_domain_mismatch", "siwe_uri_mismatch", "siwe_chain_mismatch", "siwe_nonce_mismatch", "siwe_purpose_mismatch", "siwe_expired", "siwe_issued_at_invalid", "siwe_address_mismatch", "siwe_signature_invalid", "wellknown_unreachable", "wellknown_invalid_domain", "wellknown_invalid_json", "wellknown_registration_not_found", "identity_attestation_disabled", "attestation_write_failed"]);
     const statusCode = candidate.statusCode && candidate.statusCode >= 400 && candidate.statusCode < 600
       ? candidate.statusCode : candidate.message.startsWith("siwe_") ? 400 : 500;
     if (safeErrors.has(candidate.message)) return reply.code(statusCode).send({ error: candidate.message });
