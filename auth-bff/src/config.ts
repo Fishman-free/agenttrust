@@ -25,6 +25,9 @@ const envSchema = z.object({
   GOOGLE_OIDC_ISSUER: optionalUrl, GOOGLE_OIDC_CLIENT_ID: z.string().default(""), GOOGLE_OIDC_CLIENT_SECRET: z.string().default(""), GOOGLE_OIDC_REDIRECT_URI: optionalUrl,
   APPLE_OIDC_ISSUER: optionalUrl, APPLE_OIDC_CLIENT_ID: z.string().default(""), APPLE_OIDC_CLIENT_SECRET: z.string().default(""), APPLE_OIDC_REDIRECT_URI: optionalUrl,
   CASDOOR_OIDC_ISSUER: optionalUrl, CASDOOR_OIDC_CLIENT_ID: z.string().default(""), CASDOOR_OIDC_CLIENT_SECRET: z.string().default(""), CASDOOR_OIDC_REDIRECT_URI: optionalUrl,
+  AGENT_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).default(""),
+  AGENT_REGISTRY_RPC_URL: z.string().url().default(""),
+  IDENTITY_VERIFIER_PRIVATE_KEY: z.string().regex(/^0x[0-9a-fA-F]{64}$/).default(""),
 });
 
 export type Config = ReturnType<typeof loadConfig>;
