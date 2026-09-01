@@ -26,11 +26,17 @@ describe("configuration and browser security helpers", () => {
     expect(config.oidc.casdoor.configured).toBe(false);
   });
 
-  it("treats GitHub as OAuth-only and does not require an issuer", () => {
-    const complete = { GITHUB_OIDC_CLIENT_ID: "id", GITHUB_OIDC_CLIENT_SECRET: "secret", GITHUB_OIDC_REDIRECT_URI: "http://localhost:3000/api/auth/oidc/github/callback" };
-    // GitHub 没有 OIDC discovery 端点，因此没有 issuer 也应视为已配置。
+  it("requires issuer, client id, secret and redirect URI for GitHub (standard OIDC via Casdoor)", () => {
+    const complete = {
+      GITHUB_OIDC_ISSUER: "https://login.agenttrust.site",
+      GITHUB_OIDC_CLIENT_ID: "id",
+      GITHUB_OIDC_CLIENT_SECRET: "secret",
+      GITHUB_OIDC_REDIRECT_URI: "http://localhost:3000/api/auth/oidc/github/callback",
+    };
+    // GitHub 与 Google/Apple 一样是标准 OIDC provider，经 Casdoor 中转，需要 issuer。
     expect(loadConfig({ ...baseEnv, ...complete }).oidc.github.configured).toBe(true);
-    // 但 client secret 或 redirect URI 缺失时同样 fail closed。
+    // 缺失 issuer 或 client secret 或 redirect URI 时 fail closed。
+    expect(loadConfig({ ...baseEnv, ...complete, GITHUB_OIDC_ISSUER: "" }).oidc.github.configured).toBe(false);
     expect(loadConfig({ ...baseEnv, ...complete, GITHUB_OIDC_CLIENT_SECRET: "" }).oidc.github.configured).toBe(false);
     expect(loadConfig({ ...baseEnv, ...complete, GITHUB_OIDC_REDIRECT_URI: "" }).oidc.github.configured).toBe(false);
   });

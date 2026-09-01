@@ -1,9 +1,9 @@
 -- ============================================================
--- 允许 OAuth provider 'github'。
+-- 允许 OIDC provider 'github'。
 --
--- GitHub 是纯 OAuth 2.0 提供方（授权码 + PKCE），没有 OIDC discovery 端点，
--- 也不签发 id_token；身份取自 https://api.github.com/user 的数字 ID，
--- issuer 记为人造的稳定值 'https://github.com'。见 src/oidc.ts。
+-- GitHub 与 Google / Apple 一样是标准 OIDC provider，生产上统一经 Casdoor 中转
+-- （issuer 指向 Casdoor 实例），身份键用 Casdoor 返回的 issuer + subject。
+-- 见 docs/authentication.md 与 src/oidc.ts。
 -- ============================================================
 
 ALTER TABLE oidc_identities DROP CONSTRAINT IF EXISTS oidc_identities_provider_check;
