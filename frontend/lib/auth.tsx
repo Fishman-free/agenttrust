@@ -4,12 +4,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 export const AUTH_API = "/api/auth";
 export const CANONICAL_SITE = "https://agenttrust.site";
-export type OidcProvider = "google" | "apple";
-export type AuthIdentity = { provider: "google" | "apple" | "casdoor"; email: string | null };
+/** 顺序即登录页社交按钮的渲染顺序，与 Auth BFF 的 PROVIDERS 保持一致。 */
+export const OIDC_PROVIDER_ORDER = ["google", "github", "apple", "casdoor"] as const;
+export type OidcProvider = (typeof OIDC_PROVIDER_ORDER)[number];
+export type AuthIdentity = { provider: OidcProvider; email: string | null };
 export type AuthAccount = { id: string; created_at: string; wallet: `0x${string}` | null; identities: AuthIdentity[] };
 export type AuthCapabilities = {
   wallet: { enabled: boolean; chainId: number; siwe: boolean };
-  oidc: { google: { configured: boolean }; apple: { configured: boolean }; casdoor?: { configured: boolean } };
+  oidc: Record<OidcProvider, { configured: boolean }>;
 };
 export type AuthSession = { authenticated: false } | { authenticated: true; account: AuthAccount; csrfToken: string };
 export type AuthState = "loading" | "authenticated" | "anonymous" | "unavailable";
@@ -44,6 +46,16 @@ export function canonicalLoginUrl(returnTo: string): string {
   return url.toString();
 }
 function csrfHeaders(csrfToken: string) { return { ...JSON_HEADERS, "x-csrf-token": csrfToken }; }
+
+/**
+ * 从 `auth_http_<status>` 里取出状态码，供 UI 映射成本地化文案。
+ * 直接把 auth_http_403 之类的原始码显示给用户毫无用处——它既说不清原因，
+ * 也没法指导下一步操作。
+ */
+export function authErrorStatus(error: unknown): number | undefined {
+  const match = error instanceof Error ? /^auth_http_(\d{3})$/.exec(error.message) : null;
+  return match ? Number(match[1]) : undefined;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>("loading");

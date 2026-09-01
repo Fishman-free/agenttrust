@@ -9,7 +9,7 @@ import { PROVIDERS, type Config, type Purpose } from "./config.js";
 import { AuthRepository, type Session } from "./db.js";
 import { registerOidcRoutes } from "./oidc.js";
 import { registerAgentIdentityRoutes } from "./agent-identity-routes.js";
-import { enforceBrowserRequest, randomToken, safeEqual, setNoStore, sha256 } from "./security.js";
+import { enforceBrowserRequest, randomAlphanumeric, randomToken, safeEqual, setNoStore, sha256 } from "./security.js";
 import { addressSchema, buildSiweMessage, nonceSchema, signatureSchema, verifyExactSiwe } from "./siwe.js";
 
 const challengeSchema = z.object({ address: addressSchema }).strict();
@@ -96,7 +96,8 @@ export async function buildApp(config: Config, repository: AuthRepository, deps:
 
   const issueChallenge = async (request: FastifyRequest, purpose: Purpose, accountId: string | null) => {
     const { address } = challengeSchema.parse(request.body);
-    const nonce = randomToken(18);
+    // SIWE nonce 必须纯字母数字，不能用 base64url 的 randomToken。
+    const nonce = randomAlphanumeric(18);
     const issuedAt = new Date();
     const expirationTime = new Date(issuedAt.getTime() + config.CHALLENGE_TTL_SECONDS * 1000);
     const message = buildSiweMessage(config, address, purpose, nonce, issuedAt, expirationTime);
@@ -202,7 +203,10 @@ export async function buildApp(config: Config, repository: AuthRepository, deps:
     if (dbError.code === "23505") return reply.code(409).send({ error: dbError.constraint === "wallets_address_key" ? "wallet_already_linked" : "conflict" });
     const normalized = error instanceof Error ? error : new Error("unknown_error");
     const candidate = normalized as Error & { statusCode?: number };
-    const safeErrors = new Set(["invalid_origin", "cross_site_request_blocked", "authentication_required", "csrf_validation_failed", "invalid_or_consumed_challenge", "wallet_already_bound", "provider_not_configured", "invalid_or_consumed_oidc_state", "oidc_subject_missing", "oidc_issuer_missing", "siwe_message_mismatch", "siwe_message_invalid", "siwe_domain_mismatch", "siwe_uri_mismatch", "siwe_chain_mismatch", "siwe_nonce_mismatch", "siwe_purpose_mismatch", "siwe_expired", "siwe_issued_at_invalid", "siwe_address_mismatch", "siwe_signature_invalid", "wellknown_unreachable", "wellknown_invalid_domain", "wellknown_invalid_json", "wellknown_registration_not_found", "identity_attestation_disabled", "attestation_write_failed"]);
+    // @fastify/rate-limit 抛出的错误带 429，但消息不在 safeErrors 里，会掉到 500。
+    // 那样客户端无法区分「请求太频繁」和「服务端故障」，重试逻辑无从下手。
+    if (candidate.statusCode === 429) return reply.code(429).send({ error: "rate_limited" });
+    const safeErrors = new Set(["invalid_origin", "cross_site_request_blocked", "authentication_required", "csrf_validation_failed", "invalid_or_consumed_challenge", "wallet_already_bound", "provider_not_configured", "invalid_or_consumed_oidc_state", "oidc_subject_missing", "oidc_issuer_missing", "oidc_token_exchange_failed", "siwe_message_mismatch", "siwe_message_invalid", "siwe_domain_mismatch", "siwe_uri_mismatch", "siwe_chain_mismatch", "siwe_nonce_mismatch", "siwe_purpose_mismatch", "siwe_expired", "siwe_issued_at_invalid", "siwe_address_mismatch", "siwe_signature_invalid", "wellknown_unreachable", "wellknown_invalid_domain", "wellknown_invalid_json", "wellknown_registration_not_found", "identity_attestation_disabled", "attestation_write_failed"]);
     const statusCode = candidate.statusCode && candidate.statusCode >= 400 && candidate.statusCode < 600
       ? candidate.statusCode : candidate.message.startsWith("siwe_") ? 400 : 500;
     if (safeErrors.has(candidate.message)) return reply.code(statusCode).send({ error: candidate.message });

@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 export const PURPOSES = ["wallet_login", "wallet_link"] as const;
-export const PROVIDERS = ["google", "apple", "casdoor"] as const;
+// 顺序即前端按钮行的渲染顺序。GitHub 放在 Google 之后、Apple 之前。
+export const PROVIDERS = ["google", "github", "apple", "casdoor"] as const;
+// GitHub 是纯 OAuth 2.0 提供方：没有 OIDC discovery 端点，也不签发 id_token，
+// 因此它没有 issuer，身份信息改用 api.github.com/user 拉取。见 src/oidc.ts。
+const OAUTH_ONLY_PROVIDERS: readonly Provider[] = ["github"];
 export type Purpose = (typeof PURPOSES)[number];
 export type Provider = (typeof PROVIDERS)[number];
 
@@ -12,6 +16,11 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(8323),
   DATABASE_URL: z.string().min(1),
   AUTH_ORIGIN: z.string().url(),
+  // 额外的浏览器入口 Origin，逗号分隔。localhost 与 127.0.0.1 在浏览器眼里是两个不同的
+  // Origin，而 Origin 校验是精确字符串比较：只认 localhost 会让从 127.0.0.1 打开站点的
+  // 所有写请求（钱包挑战/校验、OIDC 起跳）全部 403 invalid_origin，且前端只看到
+  // 一个无意义的 auth_http_403。生产环境不要设置此项——公网入口只应有规范域名一个 Origin。
+  AUTH_ORIGINS: z.string().default(""),
   SIWE_DOMAIN: z.string().min(1),
   SIWE_URI: z.string().url(),
   SIWE_CHAIN_ID: z.coerce.number().int().positive().default(84532),
@@ -23,6 +32,7 @@ const envSchema = z.object({
   CHALLENGE_TTL_SECONDS: z.coerce.number().int().min(60).max(600).default(300),
   OIDC_FLOW_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(600),
   GOOGLE_OIDC_ISSUER: optionalUrl, GOOGLE_OIDC_CLIENT_ID: z.string().default(""), GOOGLE_OIDC_CLIENT_SECRET: z.string().default(""), GOOGLE_OIDC_REDIRECT_URI: optionalUrl,
+  GITHUB_OIDC_ISSUER: optionalUrl, GITHUB_OIDC_CLIENT_ID: z.string().default(""), GITHUB_OIDC_CLIENT_SECRET: z.string().default(""), GITHUB_OIDC_REDIRECT_URI: optionalUrl,
   APPLE_OIDC_ISSUER: optionalUrl, APPLE_OIDC_CLIENT_ID: z.string().default(""), APPLE_OIDC_CLIENT_SECRET: z.string().default(""), APPLE_OIDC_REDIRECT_URI: optionalUrl,
   CASDOOR_OIDC_ISSUER: optionalUrl, CASDOOR_OIDC_CLIENT_ID: z.string().default(""), CASDOOR_OIDC_CLIENT_SECRET: z.string().default(""), CASDOOR_OIDC_REDIRECT_URI: optionalUrl,
   AGENT_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).default(""),
@@ -46,12 +56,23 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env) {
     const clientId = value[`${prefix}_OIDC_CLIENT_ID`];
     const clientSecret = value[`${prefix}_OIDC_CLIENT_SECRET`];
     const redirectUri = value[`${prefix}_OIDC_REDIRECT_URI`];
-    const configured = Boolean(issuer && clientId && clientSecret && redirectUri);
+    // GitHub 是 OAuth-only，没有 issuer；其余提供方四项齐全才算配置完成（fail closed）。
+    const configured = OAUTH_ONLY_PROVIDERS.includes(provider)
+      ? Boolean(clientId && clientSecret && redirectUri)
+      : Boolean(issuer && clientId && clientSecret && redirectUri);
     return [provider, { configured, issuer, clientId, clientSecret, redirectUri }];
   })) as Record<Provider, { configured: boolean; issuer: string; clientId: string; clientSecret: string; redirectUri: string }>;
+  // 允许的浏览器 Origin 集合。AUTH_ORIGIN 始终包含在内，AUTH_ORIGINS 用于本地开发
+  // 额外放行 127.0.0.1 之类的等价入口。
+  const browserOrigins = new Set<string>([authOrigin]);
+  for (const entry of value.AUTH_ORIGINS.split(",")) {
+    const trimmed = entry.trim();
+    if (trimmed) browserOrigins.add(new URL(trimmed).origin);
+  }
   return {
     ...value,
     authOrigin,
+    browserOrigins,
     returnToOrigins,
     cookieSecure,
     csrfCookieName: cookieSecure ? "__Host-auth_csrf" : `${value.COOKIE_NAME}_csrf`,
