@@ -654,8 +654,9 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 @media (prefers-reduced-motion: reduce) {
   .home-copy, .trust-visual, .page, .transaction-status { animation: none; }
   .home-button, .home-nav a, .capability-card, .capability-arrow,
-  .button, .nav-link, .field-input, .footer-links a { transition: none; }
+  .button, .nav-link, .field-input, .footer-links a, .login-social { transition: none; }
   .home-button:active, .button:active:not(:disabled) { transform: none; }
+  .login-social:active:not(:disabled) { transform: none; }
 }
 
 /* Authentication and long-form product story */
@@ -666,24 +667,43 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 .auth-signout { display: inline-flex; padding: 0.2rem; border: 0; background: transparent; color: var(--muted); }
 .auth-gate { min-height: 60svh; display: grid; place-items: center; color: var(--muted); }
 .home-login-link { padding: 0.42rem 0.78rem; border: 1px solid var(--hairline); border-radius: 999px; text-decoration: none; font-size: 0.76rem; font-weight: 650; }
-.login-page { min-height: 100svh; padding: 1.25rem max(1rem, calc((100vw - 68rem) / 2)); background: radial-gradient(circle at 75% 10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 30%); }
+.login-page { position: relative; min-height: 100svh; padding: 1.25rem max(1rem, calc((100vw - 68rem) / 2)); background: radial-gradient(circle at 78% 4%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 36%), radial-gradient(circle at 2% 90%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 42%); }
 .login-header { display: flex; align-items: center; justify-content: space-between; }
-.login-grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(22rem, 1fr); gap: clamp(2rem, 7vw, 6rem); align-items: center; min-height: calc(100svh - 5rem); padding-block: 3rem; }
-.login-intro h1 { max-width: 11ch; margin: 1rem 0; font-size: clamp(2.5rem, 6vw, 5.2rem); line-height: 0.96; letter-spacing: -0.055em; }
-.login-intro > p { max-width: 36rem; color: var(--muted); font-size: 1.05rem; }
-.login-intro ul { margin: 2rem 0 0; padding-left: 1.2rem; color: var(--muted); }
-.login-stack { display: grid; gap: 0.85rem; }
+/* 左列比右列略宽：标题放大后需要横向空间，否则会被挤成五、六行并压到右侧卡片区。 */
+.login-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(23rem, 0.95fr); gap: clamp(2rem, 7vw, 6rem); align-items: center; min-height: calc(100svh - 5rem); padding-block: 3rem; }
+
+/* 第 96 行有一条全局兜底规则 `section, li, main > div.border { background: var(--surface) }`，
+   它会把登录页的两个 <section> 和介绍列表的每个 <li> 整块刷成白底——就是标题背后那块
+   难看的背景板。这里用类选择器精准取消，其余页面继续依赖原来的兜底行为。 */
+.login-intro, .login-stack, .login-intro li { background: transparent; border-color: transparent; }
+.login-intro { min-width: 0; }
+.login-intro .home-eyebrow { display: inline-flex; margin-bottom: 0; padding: 0.34rem 0.72rem; border: 1px solid var(--hairline); border-radius: 999px; background: color-mix(in srgb, var(--surface) 62%, transparent); backdrop-filter: blur(14px) saturate(180%); font-size: 0.66rem; }
+.login-intro h1 { max-width: 13ch; margin: 1.2rem 0 0; font-size: clamp(2.75rem, 5.4vw, 5rem); font-weight: 700; line-height: 0.92; letter-spacing: -0.045em; text-wrap: balance; }
+/* 艺术字：标题做成从前景色渐变到品牌蓝的裁切文字。先保留纯色，再用 @supports 渐进增强，
+   避免 background-clip 不被支持时 color:transparent 让文字整段消失。 */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .login-intro h1 { background-image: linear-gradient(96deg, var(--foreground) 12%, color-mix(in srgb, var(--accent) 82%, var(--foreground)) 96%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+}
+.login-intro > p { max-width: 34rem; margin-top: 1.35rem; color: var(--muted); font-size: 1.05rem; line-height: 1.62; }
+.login-intro ul { display: grid; gap: 0.72rem; margin: 2.1rem 0 0; padding: 0; list-style: none; }
+.login-intro li { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 0.6rem; color: var(--muted); font-size: 0.9rem; }
+.login-intro li > svg { color: var(--accent); }
+
+.login-stack { display: grid; gap: 0.85rem; width: 100%; }
 .login-card, .login-social, .labs-card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: var(--card-shadow); }
 .login-card { position: relative; padding: 1.35rem; }
 .login-card h2, .identity-placeholder h2 { margin: 0.65rem 0 0.3rem; font-size: 1.05rem; }
 .login-card p { margin: 0; color: var(--muted); font-size: 0.85rem; }
-.login-card-primary { padding: 1.6rem; border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
+.login-card-primary { padding: 1.6rem; border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); box-shadow: var(--card-shadow), 0 20px 46px -22px color-mix(in srgb, var(--accent) 34%, transparent); }
 .login-card-tag { position: absolute; inset: 1rem 1rem auto auto; color: var(--accent); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
 .login-action { width: 100%; margin-top: 1.15rem; }
 .login-social-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-.login-social { min-height: 4.5rem; display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.5rem; align-items: center; padding: 0.85rem; color: var(--foreground); text-align: left; }
+.login-social { min-height: 4.5rem; display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.5rem; align-items: center; padding: 0.85rem; color: var(--foreground); text-align: left; transition: transform 0.14s var(--ease-standard), border-color 0.16s var(--ease-standard), background-color 0.16s var(--ease-standard); }
+.login-social:hover:not(:disabled) { background: var(--surface-muted); border-color: color-mix(in srgb, var(--accent) 34%, var(--border)); }
+.login-social:active:not(:disabled) { transform: scale(0.985); }
 .login-social small { grid-column: 2; color: var(--muted); }
-.google-mark { font-weight: 800; color: var(--accent); }
+.login-social-mark { display: grid; place-items: center; width: 1.5rem; height: 1.5rem; }
+.google-mark { font-weight: 800; font-size: 1.05rem; color: var(--accent); }
 .identity-placeholder { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.8rem; }
 .identity-placeholder h2 { margin-top: 0; }
 .identity-placeholder > span { color: var(--muted); font-size: 0.72rem; }

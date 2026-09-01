@@ -45,6 +45,10 @@ services:
       PORT: "8323"
       DATABASE_URL: postgresql://auth_bff:local-auth-only@postgres:5432/auth_bff
       AUTH_ORIGIN: http://localhost:3000
+      # 浏览器把 localhost 与 127.0.0.1 视作两个不同 Origin，而 Origin 校验是精确字符串比较：
+      # 只认 localhost 会让从 127.0.0.1 打开站点的所有写请求（钱包挑战/校验、OIDC 起跳）全部 403，
+      # 表现为「钱包连上了但点登录没反应」。这里把两个本地入口都放行。
+      AUTH_ORIGINS: http://127.0.0.1:3000
       SIWE_DOMAIN: localhost:3000
       SIWE_URI: http://localhost:3000
       SIWE_CHAIN_ID: "31337"
