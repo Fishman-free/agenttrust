@@ -3,7 +3,10 @@
 !contracts/**
 !deployments/
 !deployments/**
-contracts/broadcast/
-contracts/cache/
-contracts/out/
+contracts/broadcast
+contracts/broadcast/**
+contracts/cache
+contracts/cache/**
+contracts/out
+contracts/out/**
 contracts/.env
