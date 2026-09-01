@@ -14,7 +14,7 @@ All paths below are prefixed with `/api/auth`. Every `POST` requires `Origin` to
 - `POST /wallet/verify` with `{ nonce, message, signature }` → `{ authenticated: true, account }` and sets session/CSRF cookies.
 - `POST /wallet/link/challenge` with `{ address }` → the same challenge shape with `purpose: "wallet_link"`; requires session and CSRF.
 - `POST /wallet/link/verify` with `{ nonce, message, signature }` → `{ linked: true, account }`; requires session and CSRF.
-- `POST /oidc/:provider/start` with optional `{ returnTo }` → `{ authorizationUrl }` for `google`, `apple`, or `casdoor`. The server persists state, PKCE verifier, and OIDC nonce; the URL includes state, PKCE challenge, and nonce.
+- `POST /oidc/:provider/start` with optional `{ returnTo }` → `{ authorizationUrl }` for `google`, `github`, `apple`, or `casdoor`. The server persists state, PKCE verifier, and OIDC nonce; the URL includes state, PKCE challenge, and nonce.
 - `GET /oidc/:provider/callback?code=...&state=...` validates state, PKCE, and the persisted expected OIDC nonce, keys identities by validated `issuer + subject`, creates a session, then returns `303` to the sanitized `returnTo`.
 
 ### External agent identity gateway (prefixed with `/api/agent-identity`)
@@ -27,7 +27,7 @@ These endpoints bind cross-platform agents (Dify, Coze, OpenAI, self-hosted A2A/
 
 Errors: `wellknown_unreachable`, `wellknown_invalid_domain`, `wellknown_invalid_json`, `wellknown_registration_not_found` (400); `attestation_write_failed` (502); `identity_attestation_disabled` (503). Domain control attestation is idempotent-safe: on-chain levels are monotonic and lower-level submissions revert.
 
-Casdoor is treated only as a standards-based OIDC provider. No Casdoor Web3 or wallet API is used. Every OIDC provider returns `503 provider_not_configured` until issuer, client ID, client secret, and redirect URI are all supplied.
+Casdoor is treated only as a standards-based OIDC broker. In production, Google and GitHub login both route through Casdoor: their `issuer`, client ID, and client secret all point at the Casdoor instance, which performs the real Google/GitHub authorization. No Casdoor Web3 or wallet API is used. Every OIDC provider returns `503 provider_not_configured` until issuer, client ID, client secret, and redirect URI are all supplied.
 
 ## Security contract
 

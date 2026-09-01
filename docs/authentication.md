@@ -9,7 +9,7 @@ AgentTrust separates four states that must not be presented as one credential:
 3. an AgentRegistry entry creates the onchain Agent identity used by trades.
 4. The current Base Sepolia contracts use their PoH flag for guarantor and juror eligibility.
 
-Google and Apple login are not real-name verification. World ID is an experimental proof-of-humanity path, not legal identity. The planned enhanced identity module is not active and must not collect documents or grant onchain roles.
+Google and GitHub login are not real-name verification. World ID is an experimental proof-of-humanity path, not legal identity. The planned enhanced identity module is not active and must not collect documents or grant onchain roles.
 
 ## Wallet authentication
 
@@ -17,24 +17,26 @@ Google and Apple login are not real-name verification. World ID is an experiment
 
 Casdoor's MetaMask and Web3-Onboard providers are prohibited. Their client-side flows are not part of the AgentTrust trust boundary.
 
-## Google and Apple through Casdoor
+## Google and GitHub through Casdoor
 
 Casdoor is optional and acts only as an OIDC broker. It must not be started or exposed until at least one real OAuth provider is configured. The checked-in example pins Casdoor v3.161.1 and keeps its database and port private.
+
+The login page presents Google and GitHub. Both are standard OIDC providers from Auth BFF's point of view: their `issuer`, client ID, and client secret all point at the Casdoor instance (`login.agenttrust.site`), which performs the actual Google/GitHub authorization and returns an OIDC `id_token` with a stable `issuer + subject`. Auth BFF never talks to Google or GitHub directly, and never holds the native Google/GitHub client secrets.
 
 Before enabling `login.agenttrust.site`:
 
 - replace the default administrator credentials and require administrator MFA;
 - disable public local-password registration unless explicitly needed;
-- configure only Google and/or Apple OAuth providers;
-- verify that no MetaMask, Web3 or Web3-Onboard provider exists;
-- create a confidential OIDC application for Auth BFF;
-- keep the client secret, Google secret and Apple `.p8` key outside Git;
+- configure Google and GitHub providers inside Casdoor (the native Google/GitHub client ids and secrets live only in the Casdoor admin console);
+- verify that no MetaMask, Web3 or Web3-Onboard provider exists in Casdoor;
+- create a confidential OIDC application for Auth BFF and note its issuer, client ID, and client secret;
+- keep the Casdoor client secret, Google secret and Apple `.p8` key outside Git;
 - use Authorization Code with PKCE, state and OIDC nonce;
 - identify users by verified `issuer + subject`, never by matching email;
 - restrict the management interface by IP, VPN or a separate protected hostname;
 - back up the Casdoor database and test restoration before relying on it.
 
-Until provider credentials exist, `/api/auth/capabilities` reports Google and Apple as unavailable and the frontend displays an honest configuration placeholder.
+Until provider credentials exist, `/api/auth/capabilities` reports Google and GitHub as unavailable and the frontend displays an honest "setup required" placeholder.
 
 ## Production cookies and CSRF
 

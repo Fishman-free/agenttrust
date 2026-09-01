@@ -2,10 +2,9 @@ import { z } from "zod";
 
 export const PURPOSES = ["wallet_login", "wallet_link"] as const;
 // 顺序即前端按钮行的渲染顺序。GitHub 放在 Google 之后、Apple 之前。
+// 所有 provider 都是标准 OIDC：Google / GitHub / Apple 在生产上统一经 Casdoor 中转，
+// 因此它们的 issuer 都指向 Casdoor 实例（见 docs/authentication.md）。
 export const PROVIDERS = ["google", "github", "apple", "casdoor"] as const;
-// GitHub 是纯 OAuth 2.0 提供方：没有 OIDC discovery 端点，也不签发 id_token，
-// 因此它没有 issuer，身份信息改用 api.github.com/user 拉取。见 src/oidc.ts。
-const OAUTH_ONLY_PROVIDERS: readonly Provider[] = ["github"];
 export type Purpose = (typeof PURPOSES)[number];
 export type Provider = (typeof PROVIDERS)[number];
 
@@ -56,10 +55,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env) {
     const clientId = value[`${prefix}_OIDC_CLIENT_ID`];
     const clientSecret = value[`${prefix}_OIDC_CLIENT_SECRET`];
     const redirectUri = value[`${prefix}_OIDC_REDIRECT_URI`];
-    // GitHub 是 OAuth-only，没有 issuer；其余提供方四项齐全才算配置完成（fail closed）。
-    const configured = OAUTH_ONLY_PROVIDERS.includes(provider)
-      ? Boolean(clientId && clientSecret && redirectUri)
-      : Boolean(issuer && clientId && clientSecret && redirectUri);
+    // 所有 provider 都是标准 OIDC，四项齐全才算配置完成（fail closed）。
+    const configured = Boolean(issuer && clientId && clientSecret && redirectUri);
     return [provider, { configured, issuer, clientId, clientSecret, redirectUri }];
   })) as Record<Provider, { configured: boolean; issuer: string; clientId: string; clientSecret: string; redirectUri: string }>;
   // 允许的浏览器 Origin 集合。AUTH_ORIGIN 始终包含在内，AUTH_ORIGINS 用于本地开发
