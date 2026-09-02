@@ -29,7 +29,7 @@ Before enabling `login.agenttrust.site`:
 - disable public local-password registration unless explicitly needed;
 - configure Google and GitHub providers inside Casdoor (the native Google/GitHub client ids and secrets live only in the Casdoor admin console);
 - verify that no MetaMask, Web3 or Web3-Onboard provider exists in Casdoor;
-- create a confidential OIDC application for Auth BFF and note its issuer, client ID, and client secret;
+- create **two** confidential OIDC applications for Auth BFF — one whose only provider is Google, one whose only provider is GitHub — and note each issuer, client ID, and client secret (Auth BFF treats `google` and `github` as separate providers with independent redirect URIs);
 - keep the Casdoor client secret, Google secret and Apple `.p8` key outside Git;
 - use Authorization Code with PKCE, state and OIDC nonce;
 - identify users by verified `issuer + subject`, never by matching email;
@@ -37,6 +37,8 @@ Before enabling `login.agenttrust.site`:
 - back up the Casdoor database and test restoration before relying on it.
 
 Until provider credentials exist, `/api/auth/capabilities` reports Google and GitHub as unavailable and the frontend displays an honest "setup required" placeholder.
+
+Step-by-step server-side instructions for the administrator live in [`../deploy/casdoor-admin-setup.md`](../deploy/casdoor-admin-setup.md). The restricted `agenttrust-dev` SSH account cannot perform them: it has no Docker, Casdoor, or `/etc/agenttrust` access.
 
 ## Production cookies and CSRF
 
