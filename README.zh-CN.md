@@ -38,7 +38,7 @@ Agent ID 同时记录 ERC-721 持有人和责任主体。普通 ERC-721 转让�
 |---|---|
 | 合约 | Solidity 0.8.24 + Foundry + OpenZeppelin v5 |
 | 前端 | Next.js 16 静态导出 + wagmi v3 + viem v2 + Tailwind v4 |
-| 认证 | Fastify Auth BFF + PostgreSQL + 服务端校验 SIWE + HttpOnly 不透明会话；未来可选 Casdoor OIDC 代理 Google/Apple 登录 |
+| 认证 | Fastify Auth BFF + PostgreSQL + 服务端校验 SIWE + HttpOnly 不透明会话；可选 Casdoor OIDC 代理 Google/GitHub 登录 |
 | 链 | 本地 Anvil（已部署演示）/ Base Sepolia 84532（核心合约已部署并通过 RPC 校验；见 [`deployments/84532.json`](deployments/84532.json)） |
 | 测试 | Foundry：183 个测试（unit、fuzz、E2E、invariant） |
 
@@ -72,7 +72,7 @@ docker compose up -d --build     # 启动 PostgreSQL/Auth BFF、Anvil、部署�
 
 - 详见 [`DOCKER.zh-CN.md`](DOCKER.zh-CN.md)（含前置要求、验证、常见问题）
 - 服务按依赖启动：`postgres` → `auth-bff`，以及 `anvil` → `setup`；`frontend` 等待认证服务和合约校验均就绪
-- 钱包登录使用服务器生成的一次性 SIWE 挑战；Google/Apple 在没有真实 OAuth 凭据时诚实显示“配置中”
+- 钱包登录使用服务器生成的一次性 SIWE 挑战；Google/GitHub 在没有真实 OAuth 凭据时诚实显示“配置中”
 - 停止：`docker compose down`
 
 ### 方式二：手动启动（无 Docker 时）
@@ -121,7 +121,7 @@ npm run migrate
 npm run dev
 ```
 
-认证接口和安全边界见 [`auth-bff/README.md`](auth-bff/README.md) 与 [`docs/authentication.md`](docs/authentication.md)。在没有真实 Casdoor/OAuth 凭据时，Google 和 Apple 保持不可用。
+认证接口和安全边界见 [`auth-bff/README.md`](auth-bff/README.md) 与 [`docs/authentication.md`](docs/authentication.md)。在没有真实 Casdoor/OAuth 凭据时，Google 和 GitHub 保持不可用。
 
 #### 第四步：启动前端门户
 
@@ -161,7 +161,7 @@ npm run dev
 | 页面 | 路径 | 功能 |
 |---|---|---|
 | **公开介绍** | `/` | 无需登录即可了解协议、角色边界、找回限制和未经审计的测试网状态 |
-| **登录** | `/login` | 服务端校验的钱包 SIWE；Google/Apple 在没有 OAuth 凭据时显示配置中 |
+| **登录** | `/login` | 服务端校验的钱包 SIWE；Google/GitHub 在没有 OAuth 凭据时显示配置中 |
 | **智能体** | `/agents` | 登录并绑定钱包 → 填名称/描述/端点 → 注册；查看已注册列表与实验 PoH |
 | **交易** | `/trade` | 创建/接受/托管/担保报价/接受担保/交付/确认、timeout、retry outcome、withdraw |
 | **争议** | `/disputes` | 精确 bond → permissionless 开案 → commit/reveal/settle → claim/withdraw → 固化 juror metrics |

@@ -30,7 +30,7 @@ Before enabling `login.agenttrust.site`:
 - configure Google and GitHub providers inside Casdoor (the native Google/GitHub client ids and secrets live only in the Casdoor admin console);
 - verify that no MetaMask, Web3 or Web3-Onboard provider exists in Casdoor;
 - create **two** confidential OIDC applications for Auth BFF — one whose only provider is Google, one whose only provider is GitHub — and note each issuer, client ID, and client secret (Auth BFF treats `google` and `github` as separate providers with independent redirect URIs);
-- keep the Casdoor client secret, Google secret and Apple `.p8` key outside Git;
+- keep the Casdoor client secret and the native Google/GitHub secrets outside Git;
 - use Authorization Code with PKCE, state and OIDC nonce;
 - identify users by verified `issuer + subject`, never by matching email;
 - restrict the management interface by IP, VPN or a separate protected hostname;
