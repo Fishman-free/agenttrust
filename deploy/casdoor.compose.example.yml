@@ -1,4 +1,4 @@
-# Optional social-login stack. Do not start until Google or Apple credentials exist.
+# Optional social-login stack. Do not start until Google or GitHub credentials exist.
 # Casdoor is an OIDC broker only; never enable its MetaMask/Web3 providers.
 services:
   casdoor-postgres:
