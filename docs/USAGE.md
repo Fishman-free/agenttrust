@@ -122,7 +122,7 @@ npm run dev                      # open http://localhost:3000
 | `curl http://localhost:3000/healthz` | HTTP 200 |
 | Network badge | Green indicator and `Local Anvil`, not `Research Preview` |
 
-**Authoritative test result:** **165 tests passed, 0 failed, 0 skipped**.
+**Authoritative test result:** **183 tests passed, 0 failed, 0 skipped**.
 
 ---
 

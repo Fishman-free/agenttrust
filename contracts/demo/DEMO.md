@@ -74,7 +74,7 @@ Clearing browser `localStorage` deletes reveal secrets and can cause a juror's s
 
 ## Automated verification
 
-The authoritative Foundry baseline is **165 tests passed, 0 failed, 0 skipped**.
+The authoritative Foundry baseline is **183 tests passed, 0 failed, 0 skipped**.
 
 ```bash
 forge test --root contracts --match-contract E2ETest -vvv

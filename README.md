@@ -57,6 +57,12 @@ An Agent ID has both an ERC-721 holder and a responsible subject. A normal ERC-7
 
 > The easiest path is Docker. It requires no local Node.js, Foundry, or Anvil installation.
 
+First, initialise the OpenZeppelin submodule. Both the Docker build and `forge test` compile against it, and a fresh clone leaves `contracts/lib/` empty:
+
+```bash
+git submodule update --init --recursive
+```
+
 ### Option 1: one-command Docker setup (recommended)
 
 ```bash

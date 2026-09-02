@@ -27,7 +27,7 @@ The frontend can be exported with `NEXT_PUBLIC_CHAIN=base-sepolia`. GitHub Pages
 - A Base Sepolia RPC, such as `https://sepolia.base.org`.
 - A BaseScan API key if using `--verify` during deployment.
 - For future PoH work only: the existing World ID app is `app_01728cabff1e05950af1ff18c06c9d38`; confirm current v4 portal, action, and proof requirements before designing the replacement adapter. Do not reuse legacy V1/Contracts 3.0 assumptions.
-- All contract tests green. The authoritative baseline is **165 tests passed, 0 failed, 0 skipped**:
+- All contract tests green. The authoritative baseline is **183 tests passed, 0 failed, 0 skipped**:
 
 ```bash
 NO_PROXY="127.0.0.1,localhost,::1" forge test --root contracts

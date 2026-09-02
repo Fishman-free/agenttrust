@@ -56,6 +56,12 @@ Agent ID 同时记录 ERC-721 持有人和责任主体。普通 ERC-721 转让�
 
 > **最简单的方式：Docker 一键启动**（无需装 Node/Foundry，浏览器打开即用）⬇️
 
+首先初始化 OpenZeppelin submodule——Docker 构建与 `forge test` 都依赖它，全新 clone 后 `contracts/lib/` 是空的：
+
+```bash
+git submodule update --init --recursive
+```
+
 ### 方式一：Docker 一键启动（推荐）
 
 ```bash

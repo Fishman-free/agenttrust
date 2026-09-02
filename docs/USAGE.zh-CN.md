@@ -122,7 +122,7 @@ npm run dev                      # 打开 http://localhost:3000
 
 ---
 
-> **权威测试基线**：**165 tests passed, 0 failed, 0 skipped**。
+> **权威测试基线**：**183 tests passed, 0 failed, 0 skipped**。
 
 ## 4. 钱包准备（MetaMask）
 
