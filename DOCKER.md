@@ -12,6 +12,11 @@ Open http://localhost:3000 in a browser
 
 - **Docker Desktop** with Docker Compose
 - Access to Docker Hub and `ghcr.io` for the initial Foundry, Node, and nginx image pulls
+- The `contracts/lib/openzeppelin-contracts` submodule. The Compose build copies `contracts/` into the contracts image and runs `forge build` there, so an uninitialised submodule fails the build. Initialise it once after cloning:
+
+```bash
+git submodule update --init --recursive
+```
 
 > **Windows proxy note:** host proxy settings can cause `cast` or `forge` calls to localhost to return 502. The Compose `setup` container connects to the `anvil` service over the internal Docker network, so it bypasses the host proxy. The browser connects directly to `http://127.0.0.1:8545`.
 
@@ -41,7 +46,7 @@ curl http://localhost:8545
 docker compose logs setup
 ```
 
-The authoritative contract-test result is **165 tests passed, 0 failed, 0 skipped**. Run the tests outside this runtime-only Compose flow with the command documented in [`README.md`](README.md).
+The authoritative contract-test result is **183 tests passed, 0 failed, 0 skipped**. Run the tests outside this runtime-only Compose flow with the command documented in [`README.md`](README.md).
 
 ## How it works
 

@@ -12,6 +12,11 @@
 
 - **Docker**（Docker Desktop，含 Docker Compose）
 - 首次构建会拉取 Foundry 与 Node/nginx 镜像，需能访问 Docker Hub / ghcr.io
+- `contracts/lib/openzeppelin-contracts` submodule。Compose 构建会把 `contracts/` 复制进合约镜像并执行 `forge build`，submodule 未初始化会导致构建失败。clone 后执行一次：
+
+```bash
+git submodule update --init --recursive
+```
 
 > **Windows 注意**：若宿主机配置了系统代理，`cast`/`forge` 访问 localhost 可能报 502。
 > 本 compose 的 `setup` 容器**在容器内网**访问 `anvil` 服务，不经过宿主代理，不受影响；
@@ -43,7 +48,7 @@ curl http://localhost:8545
 docker compose logs setup
 ```
 
-权威合约测试结果为：**165 tests passed, 0 failed, 0 skipped**。Compose 只负责运行环境；测试命令见 [`README.zh-CN.md`](README.zh-CN.md)。
+权威合约测试结果为：**183 tests passed, 0 failed, 0 skipped**。Compose 只负责运行环境；测试命令见 [`README.zh-CN.md`](README.zh-CN.md)。
 
 ## 工作原理
 

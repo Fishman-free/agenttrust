@@ -74,7 +74,7 @@ npm --prefix frontend run dev
 
 ## 自动验证
 
-权威 Foundry 基线为：**165 tests passed, 0 failed, 0 skipped**。
+权威 Foundry 基线为：**183 tests passed, 0 failed, 0 skipped**。
 
 ```bash
 forge test --root contracts --match-contract E2ETest -vvv

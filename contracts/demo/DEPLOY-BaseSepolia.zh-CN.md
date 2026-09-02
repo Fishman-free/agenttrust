@@ -27,7 +27,7 @@ World ID 与四合约 manifest 分开记录。旧版 `WorldIDPoHVerifier` 不得
 - Base Sepolia RPC，例如 `https://sepolia.base.org`。
 - 如需在部署时使用 `--verify`，准备 BaseScan API key。
 - 仅供未来 PoH 工作：现有 World ID app 为 `app_01728cabff1e05950af1ff18c06c9d38`；设计替代适配器前，必须核对当前 v4 Portal、action 和证明要求，不得复用旧版 V1/Contracts 3.0 假设。
-- 合约测试全部通过。权威基线为：**165 tests passed, 0 failed, 0 skipped**：
+- 合约测试全部通过。权威基线为：**183 tests passed, 0 failed, 0 skipped**：
 
 ```bash
 NO_PROXY="127.0.0.1,localhost,::1" forge test --root contracts
