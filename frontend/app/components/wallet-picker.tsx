@@ -3,7 +3,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useConnect, useConnections, useConnectors } from "wagmi";
+import { useAccount, useConnect, useConnections, useConnectors, useDisconnect } from "wagmi";
 import {
   buildWalletOptions,
   readPreferredWallet,
@@ -32,6 +32,9 @@ export function WalletPicker({ open, onClose, onConnected, onError }: WalletPick
   const { dictionary: t } = useLocale();
   const connectors = useConnectors();
   const { connectAsync, isPending } = useConnect();
+  // 当前生效的连接。用来判断某一行到底是「正在用」还是「以前连过、现在不是它」。
+  const { connector: activeConnector } = useAccount();
+  const { disconnectAsync } = useDisconnect();
   const reduceMotion = useReducedMotion();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [activeRdns, setActiveRdns] = useState<string>();
@@ -102,15 +105,24 @@ export function WalletPicker({ open, onClose, onConnected, onError }: WalletPick
       setError(undefined);
       setActiveRdns(option.rdns);
       try {
-        // 该钱包此前已经连接成功：跳过 connectAsync（它会抛「Connector already connected」），
-        // 直接复用现有连接继续后续流程（如登录签名、切钱包提示）。
-          const existing = connections.find((connection) => connection.connector.id === option.connector?.id);
-        if (existing) {
-          rememberPreferredWallet(option.rdns);
-          setJustConnected(option.rdns);
-          const keepOpen = await onConnected?.({ rdns: option.rdns, address: existing.accounts[0] });
-          if (keepOpen !== false) close();
-          return;
+        // ⚠️ 只有「它正是当前连接」这一条分支才需要特殊处理，其余一律走 connectAsync。
+        //
+        // 原来的写法只要 connections 里能找到就直接 return，于是
+        // 「先连 Rabby → 再连 MetaMask → 想切回 Rabby」变成一次无声的无效点击：
+        // 弹层关了，current 还停在 MetaMask。原因是 connections 保存的是**所有**已建立过的
+        // 连接，而 current 只指向其中一个，找到 ≠ 正在用。必须让 connectAsync 真正切过去。
+        //
+        // connectAsync 只有在目标**就是**当前连接时才抛 ConnectorAlreadyConnectedError
+        // （@wagmi/core/actions/connect.js:12），所以「以前连过、现在不是它」是安全路径。
+        const isActive = Boolean(
+          activeConnector
+            && connections.some(
+              (connection) => connection.connector === activeConnector && connection.connector.id === option.connector?.id,
+            ),
+        );
+        if (isActive) {
+          // 同一个钱包要换账户：先断开再连，让钱包插件重新弹出账户选择。
+          await disconnectAsync({ connector: option.connector });
         }
         const result = await connectAsync({ connector: option.connector });
         rememberPreferredWallet(option.rdns);
@@ -124,7 +136,7 @@ export function WalletPicker({ open, onClose, onConnected, onError }: WalletPick
         setActiveRdns(undefined);
       }
     },
-    [close, connectAsync, connections, fail, onConnected],
+    [activeConnector, close, connectAsync, connections, disconnectAsync, fail, onConnected],
   );
 
   const onKeyDown = useCallback(
@@ -200,6 +212,7 @@ export function WalletPicker({ open, onClose, onConnected, onError }: WalletPick
             <ul className="wallet-option-list">
               {optionsWithFallback.map((option, index) => {
                 const connecting = activeRdns === option.rdns && isPending;
+                const isCurrent = Boolean(activeConnector && option.connector && option.connector.id === activeConnector.id);
                 const isPreferred = Boolean(preferred) && preferred === option.rdns && option.detected;
                 return (
                   <motion.li
@@ -220,14 +233,20 @@ export function WalletPicker({ open, onClose, onConnected, onError }: WalletPick
                       <span className="wallet-option-text">
                         <span className="wallet-option-name">
                           {option.name}
-                          {isPreferred && <span className="wallet-option-flag">{t.wallet.lastUsed}</span>}
+                          {isCurrent ? (
+                            <span className="wallet-option-flag is-current">{t.wallet.connected}</span>
+                          ) : isPreferred ? (
+                            <span className="wallet-option-flag">{t.wallet.lastUsed}</span>
+                          ) : null}
                         </span>
                         <span className="wallet-option-meta">
                           {connecting
                             ? formatMessage(t.wallet.connectingTo, { wallet: option.name })
-                            : option.detected
-                              ? t.wallet.detected
-                              : t.wallet.notDetected}
+                            : isCurrent
+                              ? t.wallet.connectedHint
+                              : option.detected
+                                ? t.wallet.detected
+                                : t.wallet.notDetected}
                         </span>
                       </span>
                       <span className="wallet-option-action" aria-hidden="true">
@@ -264,6 +283,7 @@ export function WalletPicker({ open, onClose, onConnected, onError }: WalletPick
             {error && <p className="form-error wallet-sheet-error" role="alert">{error}</p>}
 
             <p className="wallet-sheet-foot">{t.wallet.disclaimer}</p>
+            {activeConnector && <p className="wallet-sheet-foot">{t.wallet.accountSwitchHint}</p>}
           </motion.div>
         </motion.div>
       )}

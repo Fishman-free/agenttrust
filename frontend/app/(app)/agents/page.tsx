@@ -11,6 +11,7 @@ import type { RegistryAttestation } from "@/lib/world-id";
 import { getWriteReadiness } from "@/lib/write-readiness";
 import { TransactionStatus, useTransactionFeedback } from "@/app/components/transaction-status";
 import { ConnectWalletButton } from "@/app/components/wallet-status";
+import { WalletPicker } from "@/app/components/wallet-picker";
 import { formatMessage, useLocale } from "@/lib/locale";
 import { useTxRecorder } from "@/lib/tx-history";
 
@@ -65,7 +66,9 @@ function shortAddress(value: string) {
 export default function AgentsPage() {
   const { locale, dictionary: t } = useLocale();
   const a = t.agents;
-  const { address, chainId, isConnected } = useAccount();
+  const { address, chainId, isConnected, connector } = useAccount();
+  const [walletPickerOpen, setWalletPickerOpen] = useState(false);
+  const connectorName = connector?.name && connector.name !== "Injected" ? connector.name : t.common.unknown;
   const registration = useWriteContract();
   const operations = useWriteContract();
   const [name, setName] = useState("");
@@ -366,6 +369,22 @@ export default function AgentsPage() {
       )}
       {isConnected && (
         <>
+          {/* 责任主体就是当前钱包地址，所以切换入口必须留在这页里：
+              未连接时下方有连接按钮，但一旦连上它就没了，只剩这行纯文本，
+              用户在这页根本换不了钱包（唯一入口藏在页头头像菜单里）。 */}
+          <div className="subject-bar">
+            <span className="subject-bar-text">
+              <span className="subject-bar-label">{a.currentWallet}</span>
+              <span className="subject-bar-value">{connectorName} · {shortAddress(address ?? "")}</span>
+            </span>
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => setWalletPickerOpen(true)}
+            >
+              {t.wallet.switchWallet}
+            </button>
+          </div>
           <p className="form-hint mb-4">{formatMessage(a.currentSubject, { address: address ?? "" })}</p>
 
           {!activeSubject && (
@@ -578,6 +597,7 @@ export default function AgentsPage() {
           )}
         </>
       )}
+      <WalletPicker open={walletPickerOpen} onClose={() => setWalletPickerOpen(false)} />
     </main>
   );
 }

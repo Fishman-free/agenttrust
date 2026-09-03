@@ -280,6 +280,23 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 }
 .callout strong { font-weight: 650; }
 
+/* 当前责任主体 / 钱头条：注册页里唯一常驻的钱包切换入口。 */
+.subject-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  margin-bottom: 0.6rem;
+  padding: 0.7rem 1rem;
+  background: color-mix(in srgb, var(--surface-muted) 68%, var(--surface));
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+}
+.subject-bar-text { display: grid; gap: 0.12rem; min-width: 0; }
+.subject-bar-label { color: var(--muted); font-size: 0.72rem; }
+.subject-bar-value { font-size: 0.85rem; font-weight: 650; overflow-wrap: anywhere; }
+
 .notice { border: 1px solid var(--hairline); border-radius: 14px; padding: 1rem 1.1rem; text-align: center; }
 .notice-warning {
   background: color-mix(in srgb, var(--warning) 8%, var(--surface));
@@ -870,6 +887,11 @@ section, li, main > div.border { border-color: var(--border); background: var(--
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+/* 正在用的钱包：与「上次使用」区分开，绿色一眼可辨。 */
+.wallet-option-flag.is-current {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
 }
 .wallet-option-meta { color: var(--muted); font-size: 0.73rem; }
 .wallet-option-action { display: inline-flex; align-items: center; color: var(--muted); }
