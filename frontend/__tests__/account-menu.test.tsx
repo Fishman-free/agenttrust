@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => {
   return {
     ADDRESS,
     OTHER: "0x2222222222222222222222222222222222222222",
-    account: { address: ADDRESS, chainId: 31337, isConnected: true },
+    account: { address: ADDRESS, chainId: 31337, isConnected: true, connector: { name: "Rabby" } },
   disconnect: vi.fn(),
   switchChain: vi.fn(),
   connectAsync: vi.fn(async () => ({ accounts: [ADDRESS], chainId: 31337 })),
@@ -99,6 +99,7 @@ beforeEach(() => {
   mocks.account.address = ADDRESS;
   mocks.account.chainId = 31337;
   mocks.account.isConnected = true;
+  mocks.account.connector = { name: "Rabby" };
   mocks.reads = {
     deposits: 10n ** 18n,
     pendingWithdrawals: 0n,
@@ -137,9 +138,17 @@ describe("AccountMenu", () => {
   it("shows the locked deposit and withdrawable balance", async () => {
     mocks.reads.pendingWithdrawals = 5n * 10n ** 17n;
     const menu = await openMenu();
-
     expect(within(menu).getByText("1 ETH")).toBeInTheDocument();
     expect(within(menu).getByText("0.5 ETH")).toBeInTheDocument();
+  });
+
+  it("reopens the network guide from the menu when the wallet is on the wrong chain", async () => {
+    mocks.account.chainId = 1;
+    const menu = await openMenu();
+
+    // 弹窗被关掉之后，账户菜单里的告警仍是回到指引的入口。
+    await userEvent.click(within(menu).getByRole("button", { name: "Show me the steps" }));
+    expect(await screen.findByRole("heading", { name: "Switch Rabby to Anvil" })).toBeInTheDocument();
   });
 
   it("renames the account and scopes the nickname to that address", async () => {

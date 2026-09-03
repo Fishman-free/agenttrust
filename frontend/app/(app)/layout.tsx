@@ -8,6 +8,7 @@ import { docsUrl, REPO_URL } from "@/lib/docs";
 import { useLocale } from "@/lib/locale";
 import { AuthGate } from "../components/auth-gate";
 import { AuthStatus } from "../components/auth-status";
+import { NetworkSwitchGate } from "../components/network-switch-dialog";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { locale, dictionary: t } = useLocale();
@@ -17,5 +18,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     </nav><div className="header-tools"><LanguageSwitch /><AuthStatus /><WalletStatus /></div></div></header>
     <div className="app-main"><AuthGate>{children}</AuthGate></div>
     <footer className="site-footer"><div className="footer-inner"><span>{t.app.footer}</span><nav className="footer-links" aria-label={t.common.docsAndRepo}><a href={docsUrl(locale)} target="_blank" rel="noopener noreferrer">{t.common.usageDocs}</a><a href={REPO_URL} target="_blank" rel="noopener noreferrer">GitHub</a></nav></div></footer>
+    <NetworkSwitchGate />
   </div>;
 }
