@@ -5,7 +5,7 @@
 AgentTrust separates four states that must not be presented as one credential:
 
 1. An application session proves a successful wallet signature or OIDC login.
-2. A linked wallet proves control of the address used for transaction prompts.
+2. Linked wallets prove control of the addresses used for transaction prompts. One account may hold several linked wallets: wallets are payment instruments, not a one-to-one identity binding. A wallet address still belongs to at most one account, so wallet SIWE login keeps a unique account owner. Connecting an unlinked wallet offers a signed challenge to add it; there is no unrecoverable "wallet mismatch" lockout.
 3. an AgentRegistry entry creates the onchain Agent identity used by trades.
 4. The current Base Sepolia contracts use their PoH flag for guarantor and juror eligibility.
 

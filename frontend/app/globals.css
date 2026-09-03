@@ -750,6 +750,8 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 .binding-card p { margin: 0; color: var(--muted); }
 .binding-icon { width: 2.8rem; height: 2.8rem; display: grid; place-items: center; border-radius: 14px; color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, var(--surface)); }
 .binding-address { overflow-wrap: anywhere; font-size: 0.76rem; }
+.binding-address ul { margin: 0.35rem 0 0; padding-left: 1.1rem; display: grid; gap: 0.25rem; }
+.binding-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .wallet-gated-content { display: none; }
 .wallet-content { display: contents; }
 .wallet-content.wallet-gated-content { display: none; }

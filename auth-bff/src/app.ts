@@ -172,8 +172,13 @@ export async function buildApp(config: Config, repository: AuthRepository, deps:
   app.post("/api/auth/wallet/link/challenge", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {
     const auth = await requireAuth(request);
     requireCsrf(request, auth);
-    const account = await repository.accountView(auth.session.account_id);
-    if (account?.wallet) throw Object.assign(new Error("wallet_already_bound"), { statusCode: 409 });
+    // 一个账户可以关联多个钱包：不再因为「已经有绑定」而拒绝。
+    // 只拦截地址本身的归属冲突——已在本账户上属于幂等重复，已在别的账户上则
+    // 不能重复关联，避免用户签完名才在 verify 阶段拿到一个无法自救的 409。
+    const { address } = challengeSchema.parse(request.body);
+    const owner = await repository.findWalletOwner(address);
+    if (owner === auth.session.account_id) throw Object.assign(new Error("wallet_already_bound"), { statusCode: 409 });
+    if (owner) throw Object.assign(new Error("wallet_already_linked"), { statusCode: 409 });
     setNoStore(reply);
     return issueChallenge(request, "wallet_link", auth.session.account_id);
   });
@@ -206,7 +211,7 @@ export async function buildApp(config: Config, repository: AuthRepository, deps:
     // @fastify/rate-limit 抛出的错误带 429，但消息不在 safeErrors 里，会掉到 500。
     // 那样客户端无法区分「请求太频繁」和「服务端故障」，重试逻辑无从下手。
     if (candidate.statusCode === 429) return reply.code(429).send({ error: "rate_limited" });
-    const safeErrors = new Set(["invalid_origin", "cross_site_request_blocked", "authentication_required", "csrf_validation_failed", "invalid_or_consumed_challenge", "wallet_already_bound", "provider_not_configured", "invalid_or_consumed_oidc_state", "oidc_subject_missing", "oidc_issuer_missing", "siwe_message_mismatch", "siwe_message_invalid", "siwe_domain_mismatch", "siwe_uri_mismatch", "siwe_chain_mismatch", "siwe_nonce_mismatch", "siwe_purpose_mismatch", "siwe_expired", "siwe_issued_at_invalid", "siwe_address_mismatch", "siwe_signature_invalid", "wellknown_unreachable", "wellknown_invalid_domain", "wellknown_invalid_json", "wellknown_registration_not_found", "identity_attestation_disabled", "attestation_write_failed"]);
+    const safeErrors = new Set(["invalid_origin", "cross_site_request_blocked", "authentication_required", "csrf_validation_failed", "invalid_or_consumed_challenge", "wallet_already_bound", "wallet_already_linked", "provider_not_configured", "invalid_or_consumed_oidc_state", "oidc_subject_missing", "oidc_issuer_missing", "siwe_message_mismatch", "siwe_message_invalid", "siwe_domain_mismatch", "siwe_uri_mismatch", "siwe_chain_mismatch", "siwe_nonce_mismatch", "siwe_purpose_mismatch", "siwe_expired", "siwe_issued_at_invalid", "siwe_address_mismatch", "siwe_signature_invalid", "wellknown_unreachable", "wellknown_invalid_domain", "wellknown_invalid_json", "wellknown_registration_not_found", "identity_attestation_disabled", "attestation_write_failed"]);
     const statusCode = candidate.statusCode && candidate.statusCode >= 400 && candidate.statusCode < 600
       ? candidate.statusCode : candidate.message.startsWith("siwe_") ? 400 : 500;
     if (safeErrors.has(candidate.message)) return reply.code(statusCode).send({ error: candidate.message });

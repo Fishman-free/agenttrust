@@ -8,15 +8,20 @@ cache/
 __pycache__/
 *.pyc
 
-# 论文素材与工具目录
-基于区块链的智能体交互安全性研究_学术论文(1).pdf
+# 璁烘枃绱犳潗涓庡伐鍏风洰褰?
+鍩轰簬鍖哄潡閾剧殑鏅鸿兘浣撲氦浜掑畨鍏ㄦ€х爺绌禵瀛︽湳璁烘枃(1).pdf
 .spec-workflow/
 
-# LaTeX 编译辅助文件（保留 main.pdf 源码产物）
+# LaTeX 缂栬瘧杈呭姪鏂囦欢锛堜繚鐣?main.pdf 婧愮爜浜х墿锛?
 *.aux
 *.bbl
 *.blg
 *.out
 
-# 本地会话记忆（.workbuddy 项目数据，不纳入版本控制）
+# 鏈湴浼氳瘽璁板繂锛?workbuddy 椤圭洰鏁版嵁锛屼笉绾冲叆鐗堟湰鎺у埗锛?
 .workbuddy/
+
+
+
+# Local secrets (SSH keys), never commit
+.secrets/

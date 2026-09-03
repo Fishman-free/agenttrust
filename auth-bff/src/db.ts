@@ -75,6 +75,15 @@ export class AuthRepository {
     );
   }
 
+  /** 地址归属的账户；一个地址全局最多归属一个账户（wallets.address UNIQUE）。 */
+  async findWalletOwner(address: Address): Promise<string | null> {
+    const result = await this.pool.query<{ account_id: string }>(
+      "SELECT account_id FROM wallets WHERE address = $1",
+      [address.toLowerCase()],
+    );
+    return result.rows[0]?.account_id ?? null;
+  }
+
   async createSession(client: Queryable, input: { accountId: string; tokenHash: Buffer; csrfHash: Buffer; expiresAt: Date }) {
     await client.query(
       "INSERT INTO sessions (account_id, token_hash, csrf_hash, expires_at) VALUES ($1, $2, $3, $4)",
@@ -102,10 +111,20 @@ export class AuthRepository {
     );
   }
 
+  /**
+   * 账户视图：一个账户可关联多个钱包，wallets 按 linked_at 稳定排序返回。
+   * jsonb_agg 经 node-postgres 直接反序列化为 JS 数组；FILTER + COALESCE
+   * 保证没有钱包时返回空数组而不是 null。
+   */
   async accountView(accountId: string) {
-    const account = await this.pool.query<{ id: string; created_at: Date; wallet: string | null }>(
-      `SELECT a.id, a.created_at, w.address AS wallet FROM accounts a
-       LEFT JOIN wallets w ON w.account_id = a.id WHERE a.id = $1`, [accountId],
+    const account = await this.pool.query<{ id: string; created_at: Date; wallets: string[] }>(
+      `SELECT a.id, a.created_at,
+              COALESCE(jsonb_agg(w.address ORDER BY w.linked_at, w.id)
+                         FILTER (WHERE w.address IS NOT NULL), '[]'::jsonb) AS wallets
+       FROM accounts a
+       LEFT JOIN wallets w ON w.account_id = a.id
+       WHERE a.id = $1
+       GROUP BY a.id, a.created_at`, [accountId],
     );
     if (!account.rows[0]) return null;
     const identities = await this.pool.query<{ provider: Provider; issuer: string; email: string | null }>(

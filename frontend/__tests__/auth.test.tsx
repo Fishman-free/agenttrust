@@ -7,7 +7,7 @@ const capabilities: AuthCapabilities = {
   wallet: { enabled: true, chainId: 31337, siwe: true },
   oidc: { google: { configured: true }, github: { configured: false }, apple: { configured: false }, casdoor: { configured: false } },
 };
-const account = { id: "account-1", created_at: "2026-08-28T00:00:00.000Z", wallet: address, identities: [] };
+const account = { id: "account-1", created_at: "2026-08-28T00:00:00.000Z", wallets: [address], identities: [] };
 function Wrapper({ children }: { children: React.ReactNode }) { return <AuthProvider>{children}</AuthProvider>; }
 function response(value: unknown, status = 200) { return new Response(status === 204 ? null : JSON.stringify(value), { status, headers: { "content-type": "application/json" } }); }
 afterEach(() => vi.unstubAllGlobals());

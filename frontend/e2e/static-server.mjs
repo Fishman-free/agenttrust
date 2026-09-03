@@ -25,7 +25,7 @@ function requireCsrf(request, session) { return Boolean(session && request.heade
 function challengeMessage(address, nonce, purpose) {
   return `agenttrust.site wants you to sign in with your Ethereum account:\n${address}\n\nAgentTrust ${purpose}\n\nURI: http://127.0.0.1:3000\nVersion: 1\nChain ID: 31337\nNonce: ${nonce}`;
 }
-function accountView(session) { return { id: session.id, created_at: session.createdAt, wallet: session.wallet, identities: session.identities }; }
+function accountView(session) { return { id: session.id, created_at: session.createdAt, wallets: session.wallets, identities: session.identities }; }
 
 createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -59,13 +59,14 @@ createServer(async (request, response) => {
         const address = `0x${challenge.address.slice(2)}`;
         if (!await verifyMessage({ address, message, signature })) return json(response, 400, { error: "siwe_signature_invalid" });
         if (linking) {
-          if (session.wallet) return json(response, 409, { error: "conflict" });
-          session.wallet = address;
+          // 一个账户可关联多个钱包；同一地址重复关联按幂等冲突处理。
+          if (session.wallets.some((wallet) => wallet.toLowerCase() === challenge.address)) return json(response, 409, { error: "wallet_already_bound" });
+          if (!session.wallets.includes(address)) session.wallets.push(address);
           return json(response, 200, { linked: true, account: accountView(session) });
         }
         const id = randomBytes(24).toString("hex");
         const csrfToken = randomBytes(24).toString("hex");
-        const next = { id, createdAt: new Date().toISOString(), wallet: address, identities: [], csrfToken };
+        const next = { id, createdAt: new Date().toISOString(), wallets: [address], identities: [], csrfToken };
         sessions.set(id, next);
         return json(response, 200, { authenticated: true, account: accountView(next) }, { "set-cookie": `agenttrust_e2e=${id}; HttpOnly; SameSite=Lax; Path=/` });
       }
