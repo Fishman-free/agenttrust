@@ -1,32 +1,57 @@
 @import "tailwindcss";
 
 /* ============================================================
-   AgentTrust 设计语言 · Apple 简约风
-   - 系统字体优先、发丝线分隔、通透材质、克制而有目的的动效
+   AgentTrust 设计语言 · 暗色协议落地页
+   - 常驻暗色：深空底色 + 通透材质 + 有目的的发光，全站统一
+   - 字体自托管：Doto（点阵展示字体，OFL）+ Space Grotesk（UI，OFL）
+     中文回退到 Noto Serif SC / Noto Sans SC（layout.tsx 从 Google Fonts 引入）
    - 动效只作用于 transform / opacity，UI ≤ 300ms，尊重 reduced-motion
    ============================================================ */
 
+/* 自托管可变字体：latin 子集，两个文件合计 <30KB。
+   中文不在 latin 覆盖范围，自动回退到下一顺位的 Noto 系列字体。 */
+@font-face {
+  font-family: "Doto";
+  src: url("/fonts/Doto-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/SpaceGrotesk-Variable.woff2") format("woff2");
+  font-weight: 300 700;
+  font-display: swap;
+}
+
 :root {
-  color-scheme: light dark;
-  --background: #f5f5f7;   /* Apple 灰 */
-  --surface: #ffffff;
-  --surface-muted: #f0f0f2;
-  --foreground: #1d1d1f;
-  --muted: #6e6e73;
-  --border: #d7d7dc;
-  --hairline: color-mix(in srgb, var(--foreground) 9%, transparent);
-  --accent: #0071e3;        /* Apple 蓝 */
+  color-scheme: dark;
+  --background: #06070b;    /* 深空底，视频与渐变都在它之上 */
+  --surface: #101219;
+  --surface-muted: #181b24;
+  --foreground: #f2f2f4;
+  --muted: #9a9aa2;
+  --border: #2b2e3a;
+  --hairline: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --accent: #4d8dff;        /* 比默认暗色蓝更亮一档，保证 4.5:1 对比 */
   --accent-contrast: #ffffff;
-  --warning: #b25000;
-  --danger: #d70015;
-  --success: #248a3d;
-  --focus: #0071e3;
+  --warning: #ff9f0a;
+  --danger: #ff453a;
+  --success: #30d158;
+  --focus: #64a3ff;
   --radius: 0.875rem;       /* 14px：小容器 */
   --radius-lg: 1.125rem;    /* 18px：卡片 */
   --card-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 6px 18px rgba(0, 0, 0, 0.05),
-    0 24px 48px rgba(0, 0, 0, 0.05);
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 10px 30px rgba(0, 0, 0, 0.35);
+  /* 主 CTA 的柔和白光晕（落地页参考稿同款语言） */
+  --glow-cta:
+    0 0 0 1px rgba(255, 255, 255, 0.15),
+    0 0 22px rgba(120, 170, 255, 0.32),
+    0 0 44px rgba(120, 170, 255, 0.12);
+  --glow-cta-hover:
+    0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 0 30px rgba(120, 170, 255, 0.45),
+    0 0 64px rgba(120, 170, 255, 0.18);
   /* 动效令牌：iOS 式强减速曲线 + 轻微回弹的 pop */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
@@ -36,32 +61,12 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
-    "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
+  --font-sans: "Space Grotesk", -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
     "Microsoft YaHei", "Noto Sans SC", "Segoe UI", ui-sans-serif, sans-serif;
   --font-serif: "Noto Serif SC", ui-serif, Georgia, serif;
+  --font-display: "Doto", "Noto Serif SC", ui-serif, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b0c0f;
-    --surface: #17181c;
-    --surface-muted: #222328;
-    --foreground: #f2f2f4;
-    --muted: #9a9aa2;
-    --border: #33343a;
-    --hairline: color-mix(in srgb, var(--foreground) 10%, transparent);
-    --accent: #0a84ff;
-    --accent-contrast: #ffffff;
-    --warning: #ff9f0a;
-    --danger: #ff453a;
-    --success: #30d158;
-    --focus: #64a3ff;
-    --card-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.35),
-      0 10px 30px rgba(0, 0, 0, 0.35);
-  }
 }
 
 * { box-sizing: border-box; }
@@ -69,7 +74,11 @@ html { background: var(--background); }
 body {
   min-width: 320px;
   margin: 0;
-  background: var(--background);
+  /* 纯色太平：叠两层极淡的品牌色径向渐变给背景纵深（遵守「禁纯白/纯灰底」） */
+  background:
+    radial-gradient(52rem 30rem at 85% -8%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+    radial-gradient(44rem 28rem at -10% 108%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 70%),
+    var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
   font-size: 1rem;
@@ -507,16 +516,143 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 }
 .home-preview p { margin: 0; color: var(--muted); font-size: 0.78rem; }
 
-.home-hero { background: transparent; }
-.home-hero-grid {
+/* ---- 落地页首屏：满幅视频背景舞台（参考稿构图） ---- */
+.home-hero-stage {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(22rem, 0.95fr);
-  align-items: center;
-  gap: clamp(2.5rem, 6vw, 6rem);
-  padding-block: clamp(3rem, 5vw, 4.5rem);
+  place-items: center;
+  min-height: calc(100svh - 4.25rem);
+  padding-block: clamp(3rem, 6vh, 5rem);
+  overflow: hidden;
+}
+.home-bg-video {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+/* 压暗四周、保住中央主体：文字对比度 ≥ 4.5:1 的前提下让视频透出来 */
+.home-bg-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    radial-gradient(62rem 36rem at 50% 40%, rgba(6, 7, 11, 0.16), rgba(6, 7, 11, 0.74) 80%),
+    linear-gradient(to bottom, rgba(6, 7, 11, 0.6), rgba(6, 7, 11, 0.22) 24%, rgba(6, 7, 11, 0.6) 80%, var(--background) 99%);
+}
+.home-hero-inner {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  justify-items: center;
+  width: min(58rem, calc(100% - 2rem));
+  text-align: center;
 }
 
-.home-copy { animation: home-enter 650ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* 信任行：三个交叠圆环 + 一枚对齐标识胶囊（暗环白芯，参考稿同款语言） */
+.home-trust {
+  --trust-size: clamp(2.4rem, 4.5vw, 2.75rem);
+  display: flex;
+  align-items: center;
+  margin-bottom: clamp(1.2rem, 2.5vh, 2rem);
+}
+.home-trust-ring {
+  position: relative;
+  width: var(--trust-size);
+  height: var(--trust-size);
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  background: #20222c;
+  display: grid;
+  place-items: center;
+  transition: transform 350ms var(--ease-standard);
+}
+.home-trust-ring:nth-child(1) { z-index: 1; }
+.home-trust-ring:nth-child(2) { z-index: 2; }
+.home-trust-ring:nth-child(3) { z-index: 4; }
+.home-trust-ring + .home-trust-ring { margin-left: calc(var(--trust-size) * -0.42); }
+.home-trust-ring:hover { transform: translateY(-2px); }
+.home-trust-ring > span {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #fff;
+  color: #111;
+  display: grid;
+  place-items: center;
+}
+.home-trust-ring svg { width: calc(var(--trust-size) * 0.34); height: calc(var(--trust-size) * 0.34); }
+.home-trust-pill {
+  height: var(--trust-size);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  margin-left: calc(var(--trust-size) * -0.42);
+  padding-inline: 0.95rem calc(0.95rem - var(--trust-size) * 0.1);
+  padding-left: calc(var(--trust-size) * 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: #20222c;
+  color: #c4c2c3;
+  font-size: clamp(0.72rem, 1.4vw, 0.84rem);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 主标题：Doto 点阵（中文自动回退 Noto Serif SC），纯白无渐变 */
+.home-headline {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2.5rem, 7vw, 5.4rem);
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+.home-lead-hero {
+  max-width: min(34rem, 92%);
+  margin: clamp(1rem, 2.2vh, 1.5rem) 0 0;
+  color: #d0d0d0;
+  font-size: clamp(1rem, 1.55vw + 2pt, 1.2rem);
+  line-height: 1.6;
+  opacity: 0.85;
+}
+
+/* 协议指标条：展示字体数字 + 弱化标签，全部是链上可核验的真实常量 */
+.home-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.9rem;
+  width: 100%;
+  max-width: 56rem;
+  margin: clamp(2rem, 5vh, 3.2rem) 0 0;
+}
+.home-stats div { display: grid; justify-items: center; gap: 0.28rem; text-align: center; }
+.home-stats dt {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 2.4vw, 1.9rem);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.home-stats dd { margin: 0; color: #8e8e93; font-size: clamp(0.66rem, 1.2vw, 0.78rem); }
+
+/* 入场编排：单一 reveal 曲线，靠 delay 类做节奏（不用散落微交互） */
+.home-anim-d0 { animation: home-enter 850ms var(--ease-out) both; }
+.home-anim-d1 { animation: home-enter 850ms 0.12s var(--ease-out) both; }
+.home-anim-d2 { animation: home-enter 850ms 0.28s var(--ease-out) both; }
+.home-anim-d3 { animation: home-enter 850ms 0.4s var(--ease-out) both; }
+.home-anim-d4 { animation: home-enter 850ms 0.52s var(--ease-out) both; }
+
+@media (max-width: 720px) {
+  .home-stats { grid-template-columns: repeat(2, 1fr); gap: 1.1rem 0.6rem; }
+  .home-trust-pill { padding-inline: 0.8rem; }
+}
 .home-eyebrow {
   display: flex;
   align-items: center;
@@ -528,17 +664,6 @@ section, li, main > div.border { border-color: var(--border); background: var(--
   font-weight: 700;
   letter-spacing: 0.1em;
 }
-.home-copy h1 {
-  max-width: 11ch;
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: clamp(2.65rem, 5vw, 4.65rem);
-  font-weight: 600;
-  letter-spacing: -0.055em;
-  line-height: 1.08;
-  text-wrap: balance;
-}
-.home-lead { max-width: 40rem; margin: 1.4rem 0 0; color: var(--muted); font-size: clamp(0.95rem, 1.5vw, 1.08rem); line-height: 1.8; }
 .home-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.8rem; }
 .home-button {
   min-height: 2.9rem;
@@ -560,43 +685,11 @@ section, li, main > div.border { border-color: var(--border); background: var(--
     box-shadow 180ms var(--ease-standard);
 }
 .home-button:active { transform: scale(0.97); }
-.home-button-primary { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); }
-.home-button-primary:hover { box-shadow: 0 0.55rem 1.5rem color-mix(in srgb, var(--accent) 22%, transparent); }
-.home-button-secondary { background: var(--surface); }
+/* 主 CTA：柔和光晕 + 悬停增强（参考稿语言）；reduced-motion 下去掉位移 */
+.home-button-primary { border-color: transparent; background: #fff; color: #06070b; }
+.home-button-primary:hover { box-shadow: var(--glow-cta-hover); transform: translateY(-2px) scale(1.02); }
+.home-button-secondary { background: rgba(16, 18, 25, 0.62); color: var(--foreground); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
 .home-button-secondary:hover { border-color: var(--accent); color: var(--accent); }
-
-.home-proof { display: flex; gap: 2rem; margin: 2rem 0 0; }
-.home-proof div { display: grid; gap: 0.08rem; }
-.home-proof dt { font-family: var(--font-mono); font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.home-proof dd { margin: 0; color: var(--muted); font-size: 0.7rem; }
-
-.trust-visual {
-  position: relative;
-  min-height: 22rem;
-  border: 1px solid var(--hairline);
-  border-radius: 1.1rem;
-  background:
-    linear-gradient(color-mix(in srgb, var(--border) 42%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--border) 42%, transparent) 1px, transparent 1px),
-    color-mix(in srgb, var(--surface) 92%, transparent);
-  background-size: 2rem 2rem;
-  box-shadow: 0 1.5rem 4rem color-mix(in srgb, var(--foreground) 8%, transparent);
-  overflow: hidden;
-  animation: home-enter 750ms 120ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.trust-visual::after { content: ""; position: absolute; inset: 15% 20%; border-radius: 50%; background: color-mix(in srgb, var(--accent) 12%, transparent); filter: blur(3rem); }
-.trust-visual-meta { position: absolute; z-index: 2; inset: 1rem 1rem auto; display: flex; justify-content: space-between; color: var(--muted); font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.08em; }
-.trust-visual svg { position: absolute; z-index: 1; inset: 1.5rem 0 0; width: 100%; height: calc(100% - 1.5rem); }
-.trust-lines { fill: none; stroke: color-mix(in srgb, var(--foreground) 24%, transparent); stroke-width: 1.2; }
-.trust-nodes { fill: var(--foreground); }
-.trust-core-ring { fill: color-mix(in srgb, var(--surface) 85%, transparent); stroke: var(--accent); stroke-width: 1.5; }
-.trust-core { fill: var(--accent); }
-.trust-label, .trust-core-label { position: absolute; z-index: 3; padding: 0.2rem 0.42rem; border: 1px solid var(--hairline); border-radius: 0.3rem; background: var(--surface); color: var(--muted); font-size: 0.65rem; }
-.trust-label-identity { top: 19%; left: 13%; }
-.trust-label-escrow { top: 19%; right: 13%; }
-.trust-label-voting { bottom: 17%; left: 13%; }
-.trust-label-reputation { right: 13%; bottom: 17%; }
-.trust-core-label { top: calc(50% + 2.2rem); left: 50%; border: 0; background: transparent; font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.08em; transform: translateX(-50%); }
 
 .home-capabilities { border-top: 1px solid var(--hairline); background: color-mix(in srgb, var(--surface) 68%, var(--background)); }
 .home-capabilities .home-container { padding-block: clamp(2.5rem, 5vw, 4rem); }
@@ -632,9 +725,6 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 }
 
 @media (max-width: 900px) {
-  .home-hero-grid { grid-template-columns: 1fr; gap: 2.5rem; padding-block: 3.5rem; }
-  .home-copy { max-width: 42rem; }
-  .trust-visual { min-height: 19rem; }
   .capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -644,12 +734,8 @@ section, li, main > div.border { border-color: var(--border); background: var(--
   .home-network-badge { grid-column: 2; }
   .home-preview-inner { align-items: flex-start; padding-block: 0.65rem; }
   .home-preview p { line-height: 1.5; }
-  .home-hero-grid { padding-block: 2.8rem; }
-  .home-copy h1 { font-size: clamp(2.45rem, 13vw, 3.5rem); }
-  .home-lead { margin-top: 1.1rem; }
-  .home-proof { gap: 1.25rem; }
-  .trust-visual { min-height: 16.5rem; }
-  .trust-visual-meta { font-size: 0.52rem; }
+  .home-headline { font-size: clamp(2.2rem, 11vw, 3.2rem); }
+  .home-trust { margin-bottom: 1.4rem; }
   .home-section-heading { align-items: flex-start; flex-direction: column; gap: 0.5rem; }
   .capability-card { min-height: 13rem; padding: 1.1rem; }
 }
@@ -662,15 +748,17 @@ section, li, main > div.border { border-color: var(--border); background: var(--
   .home-preview-inner > span { flex: 0 0 auto; }
   .home-actions { display: grid; grid-template-columns: 1fr; }
   .home-button { width: 100%; }
-  .home-proof { justify-content: space-between; gap: 0.5rem; }
-  .trust-label { display: none; }
+  .home-trust-pill { font-size: 0.66rem; }
   .capability-grid { grid-template-columns: 1fr; }
   .capability-card { min-height: 11.5rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-copy, .trust-visual, .page, .transaction-status { animation: none; }
+  .home-bg-video { display: none; }
+  .home-anim-d0, .home-anim-d1, .home-anim-d2, .home-anim-d3, .home-anim-d4,
+  .home-eyebrow, .page, .transaction-status { animation: none; }
   .home-button, .home-nav a, .capability-card, .capability-arrow,
+  .home-button-primary:hover, .home-trust-ring,
   .button, .nav-link, .field-input, .footer-links a, .login-social { transition: none; }
   .home-button:active, .button:active:not(:disabled) { transform: none; }
   .login-social:active:not(:disabled) { transform: none; }
@@ -707,11 +795,18 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 .login-intro li > svg { color: var(--accent); }
 
 .login-stack { display: grid; gap: 0.85rem; width: 100%; }
-.login-card, .login-social, .labs-card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: var(--card-shadow); }
+.login-card, .login-social, .labs-card {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: var(--card-shadow);
+}
 .login-card { position: relative; padding: 1.35rem; }
 .login-card h2, .identity-placeholder h2 { margin: 0.65rem 0 0.3rem; font-size: 1.05rem; }
 .login-card p { margin: 0; color: var(--muted); font-size: 0.85rem; }
-.login-card-primary { padding: 1.6rem; border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); box-shadow: var(--card-shadow), 0 20px 46px -22px color-mix(in srgb, var(--accent) 34%, transparent); }
+.login-card-primary { padding: 1.6rem; border-color: color-mix(in srgb, var(--accent) 34%, var(--border)); box-shadow: var(--card-shadow), 0 0 0 1px rgba(255, 255, 255, 0.06), 0 20px 46px -22px color-mix(in srgb, var(--accent) 40%, transparent); }
 .login-card-tag { position: absolute; inset: 1rem 1rem auto auto; color: var(--accent); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
 .login-action { width: 100%; margin-top: 1.15rem; }
 .login-social-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }

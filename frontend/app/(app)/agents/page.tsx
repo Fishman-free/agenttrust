@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { formatEther, isAddress } from "viem";
 import { agentRegistryAbi, guaranteeEscrowAbi, schellingVotingAbi } from "@/lib/abi";
+import { mcpGuideUrl } from "@/lib/docs";
 import { CHAIN_ID, CHAIN_MODE, CONTRACT_ADDRESSES, WRITE_BLOCK_REASON, WRITES_ENABLED, activeChain, isZeroAddress } from "@/lib/config";
 import { parseAgentRegistered } from "@/lib/receipt-events";
 import { WorldIdButton } from "@/app/components/world-id-button";
@@ -395,6 +396,8 @@ export default function AgentsPage() {
                 className="field-input" />
               <input aria-label={a.endpoint} placeholder={a.endpoint} value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
                 className="field-input" />
+              {/* 端点是注册时卡得最多的字段（要填什么？怎么暴露？），直接给教程入口 */}
+              <p className="form-hint"><a href={mcpGuideUrl(locale)} target="_blank" rel="noopener noreferrer">{a.endpointGuide}</a></p>
               <label className="field-label">
                 {a.guardian1}
                 <input aria-label={a.guardian1Aria} placeholder="0x…" value={guardian1} onChange={(e) => setGuardian1(e.target.value)} className="field-input" />
