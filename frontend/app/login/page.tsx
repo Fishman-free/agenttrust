@@ -14,6 +14,7 @@ import {
 } from "@/lib/auth";
 import { LanguageSwitch } from "@/app/components/language-switch";
 import { WalletPicker } from "@/app/components/wallet-picker";
+import { AmbientBackground } from "@/app/components/ambient-background";
 import { useLocale } from "@/lib/locale";
 
 /** 当前版本的 lucide-react 没有 GitHub 品牌图标，直接内联官方 mark 路径。 */
@@ -103,6 +104,7 @@ export default function LoginPage() {
   );
 
   return <main className="login-page">
+    <AmbientBackground intense />
     <header className="login-header"><Link href="/" className="brand"><ArrowLeft size={16} />AgentTrust</Link><LanguageSwitch /></header>
     <div className="login-grid">
       <section className="login-intro">

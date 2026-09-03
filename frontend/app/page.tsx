@@ -3,8 +3,9 @@
 import { Activity, ArrowUpRight, BookOpen, Bot, Fingerprint, GraduationCap, Scale, ShieldCheck, Wallet } from "lucide-react";
 import Link from "next/link";
 import { activeChain, WRITES_ENABLED } from "../lib/config";
-import { docsUrl, tradingGuideUrl } from "../lib/docs";
+import { docsUrl, mcpGuideUrl, tradingGuideUrl } from "../lib/docs";
 import { formatMessage, useLocale } from "../lib/locale";
+import { AmbientBackground } from "./components/ambient-background";
 import { LanguageSwitch } from "./components/language-switch";
 
 function Logo() {
@@ -31,6 +32,8 @@ export default function Home() {
     { value: "10", label: t.home.statStatesLabel },
   ] as const;
   return <main className="home-main">
+    {/* 全页氛围背景：视频 fixed 铺满整页（不只是首屏），下方内容直接压在视频+遮罩上 */}
+    <AmbientBackground />
     <header className="home-header"><div className="home-container home-topbar">
       <Link href="/" className="home-logo-link" aria-label={t.common.agentTrustHome}><Logo /></Link>
       <nav className="home-nav" aria-label={t.common.primaryNav}><Link href="/agents">{t.common.agents}</Link><Link href="/trade">{t.common.trade}</Link><Link href="/disputes">{t.common.disputes}</Link><Link href="/reputation">{t.common.reputation}</Link><a href={documentationUrl} target="_blank" rel="noopener noreferrer">{t.common.usageDocs}</a></nav>
@@ -38,13 +41,8 @@ export default function Home() {
       <span className={`home-network-badge ${previewMode ? "is-preview" : "is-live"}`}><span className="home-status-dot" />{previewMode ? t.home.preview : activeChain.name}</span>
     </div></header>
     {previewMode && <div className="home-preview" role="status"><div className="home-container home-preview-inner"><span>{t.home.preview}</span><p>{formatMessage(t.home.previewMessage, { chain: activeChain.name })}</p></div></div>}
-    {/* 首屏：满幅循环视频 + 居中 hero（标题 / 副标题 / CTA / 协议指标）。
-        视频纯装饰：pointer-events 关闭、无字幕内容，reduced-motion 下整体隐藏只留渐变底。 */}
+    {/* 首屏：满屏 hero（标题 / 副标题 / CTA / 协议指标）。视频已在页面根部 fixed 铺满。 */}
     <section className="home-hero-stage" aria-labelledby="home-title">
-      <video className="home-bg-video" autoPlay muted loop playsInline tabIndex={-1} aria-hidden="true">
-        <source src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/media/hero-loop.mp4`} type="video/mp4" />
-      </video>
-      <div className="home-bg-scrim" aria-hidden="true" />
       <div className="home-hero-inner">
         {/* 信任行：钱包 / 智能体 / 裁决三枚交叠圆环 + 对齐标识。纯装饰，图标不给文字名。 */}
         <div className="home-trust home-anim-d0" aria-hidden="true">
@@ -64,6 +62,8 @@ export default function Home() {
       </div>
     </section>
     <section className="home-capabilities" aria-labelledby="capabilities-title"><div className="home-container"><div className="home-section-heading"><div><span>{t.home.protocolModules}</span><h2 id="capabilities-title">{t.home.modulesTitle}</h2></div><p>{t.home.modulesHint}</p></div><div className="capability-grid">{capabilities.map(({ href, icon: Icon, eyebrow, title, description }) => <Link href={href} className="capability-card" key={href}><div className="capability-card-top"><span className="capability-icon"><Icon size={19} aria-hidden="true" /></span><ArrowUpRight className="capability-arrow" size={18} aria-hidden="true" /></div><span className="capability-eyebrow">{eyebrow}</span><h3>{title}</h3><p>{description}</p></Link>)}</div></div></section>
+    {/* 新手教程区：两条行式链接（无卡片框），直达 GitHub 上的两份教程 */}
+    <section className="home-guides" aria-labelledby="guides-title"><div className="home-container"><div className="home-section-heading"><div><span>{t.home.guidesEyebrow}</span><h2 id="guides-title">{t.home.guidesTitle}</h2></div></div><a className="guide-row" href={mcpGuideUrl(locale)} target="_blank" rel="noopener noreferrer"><span className="guide-icon"><BookOpen size={20} aria-hidden="true" /></span><span className="guide-copy"><h3>{t.home.guideMcpTitle}</h3><p>{t.home.guideMcpDesc}</p></span><ArrowUpRight className="guide-arrow" size={20} aria-hidden="true" /></a><a className="guide-row" href={tradingGuideUrl(locale)} target="_blank" rel="noopener noreferrer"><span className="guide-icon"><GraduationCap size={20} aria-hidden="true" /></span><span className="guide-copy"><h3>{t.home.guideTradingTitle}</h3><p>{t.home.guideTradingDesc}</p></span><ArrowUpRight className="guide-arrow" size={20} aria-hidden="true" /></a></div></section>
     <section className="home-story"><div className="home-container">
       <div className="story-heading"><span>{t.home.flowEyebrow}</span><h2>{t.home.flowTitle}</h2></div>
       <ol className="flow-list">{t.home.flowSteps.map((step, index) => <li key={step}><span>{String(index + 1).padStart(2, "0")}</span><strong>{step}</strong></li>)}</ol>
