@@ -99,7 +99,8 @@ async function fillRegistrationForm(page: Page, accountIndex: number, name: stri
   await selectAccount(page, accountIndex);
   await page.getByLabel("Agent name (e.g. DataAgent)").fill(name);
   await page.getByLabel("Capability description (e.g. on-chain data analysis)").fill(`${name} E2E capability`);
-  await page.getByLabel("MCP/A2A endpoint (https://…)").fill(`https://localhost/${name.toLowerCase()}`);
+  // 端点注册后永久不可改，前端会拒绝 localhost / 内网地址，E2E 必须用合法的公网 https 形式。
+  await page.getByLabel("MCP/A2A endpoint (https://…)").fill(`https://${name.toLowerCase()}.example.com/mcp`);
   await page.getByLabel("Guardian 1 (required)").fill(guardianA);
   await page.getByLabel("Guardian 2 (required)").fill(guardianB);
 }
