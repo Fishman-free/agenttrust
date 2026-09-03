@@ -41,7 +41,9 @@ describe("Home", () => {
     expect(video).toHaveAttribute("loop");
     expect(video).toHaveAttribute("playsinline");
     expect(video).toHaveAttribute("aria-hidden", "true");
-    expect(container.querySelector('source[src="/media/hero-loop.mp4"]')).not.toBeNull();
+    // basePath 兼容：本地/东京为 /media/hero-loop.mp4，Pages 构建注入 NEXT_PUBLIC_BASE_PATH 后带前缀
+    const videoSrc = container.querySelector("source[src]")?.getAttribute("src") ?? "";
+    expect(videoSrc.endsWith("/media/hero-loop.mp4")).toBe(true);
   });
 
   it("links first-time visitors to the trusted-trading guide", () => {

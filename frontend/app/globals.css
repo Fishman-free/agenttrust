@@ -8,20 +8,8 @@
    - 动效只作用于 transform / opacity，UI ≤ 300ms，尊重 reduced-motion
    ============================================================ */
 
-/* 自托管可变字体：latin 子集，两个文件合计 <30KB。
-   中文不在 latin 覆盖范围，自动回退到下一顺位的 Noto 系列字体。 */
-@font-face {
-  font-family: "Doto";
-  src: url("/fonts/Doto-Variable.woff2") format("woff2");
-  font-weight: 100 900;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Space Grotesk";
-  src: url("/fonts/SpaceGrotesk-Variable.woff2") format("woff2");
-  font-weight: 300 700;
-  font-display: swap;
-}
+/* 自托管字体 @font-face 已移至 public/fonts/fonts.css（相对路径，兼容 basePath 子路径部署），
+   由 app/layout.tsx 以 <link> 引入；变量 --font-sans / --font-display 在下方 @theme 中引用。 */
 
 :root {
   color-scheme: dark;
