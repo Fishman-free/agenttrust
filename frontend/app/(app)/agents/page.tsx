@@ -13,6 +13,7 @@ import { getWriteReadiness } from "@/lib/write-readiness";
 import { TransactionStatus, useTransactionFeedback } from "@/app/components/transaction-status";
 import { ConnectWalletButton } from "@/app/components/wallet-status";
 import { WalletPicker } from "@/app/components/wallet-picker";
+import { AmbientBackground } from "@/app/components/ambient-background";
 import { formatMessage, useLocale } from "@/lib/locale";
 import { useTxRecorder } from "@/lib/tx-history";
 
@@ -357,6 +358,7 @@ export default function AgentsPage() {
 
   return (
     <main className="page">
+      <AmbientBackground intense />
       <div className="page-head">
         <h1 className="page-title">{a.title}</h1>
         <p className="page-sub">{a.subtitle}</p>

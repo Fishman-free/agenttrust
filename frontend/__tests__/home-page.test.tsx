@@ -29,10 +29,14 @@ describe("Home", () => {
     expect(container.querySelector(".home-trust")).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("loops a decorative background video inside the hero stage", () => {
+  it("loops a decorative full-page ambient background video", () => {
     const { container } = render(<Home />);
 
-    const video = container.querySelector("video.home-bg-video");
+    // 2026-09 改版：视频从 hero-stage 上移到页面根部的 .ambient-bg（fixed 铺满整页）
+    const ambient = container.querySelector(".ambient-bg");
+    expect(ambient).not.toBeNull();
+    expect(ambient).toHaveAttribute("aria-hidden", "true");
+    const video = ambient?.querySelector("video");
     expect(video).not.toBeNull();
     expect(video).toHaveAttribute("autoplay");
     // React 把 muted 作为 DOM property（mutedProp）而不是 HTML attribute 写入，
@@ -40,7 +44,6 @@ describe("Home", () => {
     expect((video as HTMLVideoElement).muted).toBe(true);
     expect(video).toHaveAttribute("loop");
     expect(video).toHaveAttribute("playsinline");
-    expect(video).toHaveAttribute("aria-hidden", "true");
     // basePath 兼容：本地/东京为 /media/hero-loop.mp4，Pages 构建注入 NEXT_PUBLIC_BASE_PATH 后带前缀
     const videoSrc = container.querySelector("source[src]")?.getAttribute("src") ?? "";
     expect(videoSrc.endsWith("/media/hero-loop.mp4")).toBe(true);
@@ -50,6 +53,20 @@ describe("Home", () => {
     render(<Home />);
 
     expect(screen.getByRole("link", { name: /Beginner's guide/ })).toHaveAttribute(
+      "href",
+      "https://github.com/Fishman-free/multiagent/blob/main/docs/guides/trusted-trading.md",
+    );
+  });
+
+  it("shows both beginner tutorials as guide rows", () => {
+    render(<Home />);
+
+    expect(screen.getByRole("heading", { name: /Start from zero/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /MCP\/A2A endpoint setup guide/ })).toHaveAttribute(
+      "href",
+      "https://github.com/Fishman-free/multiagent/blob/main/docs/guides/mcp-a2a-endpoints.md",
+    );
+    expect(screen.getByRole("link", { name: /Trusted trading walkthrough/ })).toHaveAttribute(
       "href",
       "https://github.com/Fishman-free/multiagent/blob/main/docs/guides/trusted-trading.md",
     );
