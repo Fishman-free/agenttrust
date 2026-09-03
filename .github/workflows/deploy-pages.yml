@@ -12,6 +12,12 @@ on:
   # 加 workflow_dispatch 后，合并完只需 `gh workflow run "Deploy Base Sepolia app" --ref main`
   # 即可把 Pages 拉到最新。
   workflow_dispatch:
+  # 每日兜底重建。
+  # 上面两个入口都要人来记：dispatch 要手动敲，workflow_run 又等不到 auto-merge 的 push。
+  # cron 由 GitHub 自己发起，不受 GITHUB_TOKEN 的连锁抑制，所以是唯一能确定生效、
+  # 又不需要额外 secret（PAT）的自动兜底。Pages 落后最多一天，重建是幂等的。
+  schedule:
+    - cron: "17 2 * * *"
 
 permissions: {}
 
@@ -23,6 +29,7 @@ jobs:
   build:
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
       (
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'push' &&
@@ -59,12 +66,18 @@ jobs:
         run: npm test -- __tests__/config.test.ts
         working-directory: frontend
 
+      - name: Resolve Pages base path
+        id: pages-base
+        # GITHUB_REPOSITORY 恒为 owner/repo，与事件类型无关；
+        # github.event.repository.name 在 schedule 事件里不保证存在。
+        run: echo "value=/${GITHUB_REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
+
       - name: Build Base Sepolia app
         run: npm run build
         working-directory: frontend
         env:
           NEXT_PUBLIC_CHAIN: base-sepolia
-          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.pages-base.outputs.value }}
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
