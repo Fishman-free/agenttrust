@@ -72,7 +72,7 @@ describe("Auth BFF HTTP boundary", () => {
     const csrfToken = "current-csrf-token";
     const repository = {
       findSession: async () => ({ id: "session-id", account_id: "account-id", csrf_hash: sha256(csrfToken), expires_at: new Date(Date.now() + 60_000) }),
-      accountView: async () => ({ id: "account-id", created_at: new Date(), wallet: null, identities: [] }),
+      accountView: async () => ({ id: "account-id", created_at: new Date(), wallets: [], identities: [] }),
     } as unknown as AuthRepository;
     const app = await buildApp(config, repository);
     apps.push(app);
@@ -89,7 +89,7 @@ describe("Auth BFF HTTP boundary", () => {
     let updatedHash: Buffer | undefined;
     const repository = {
       findSession: async () => ({ id: "session-id", account_id: "account-id", csrf_hash: sha256("old-token"), expires_at: new Date(Date.now() + 60_000) }),
-      accountView: async () => ({ id: "account-id", created_at: new Date(), wallet: null, identities: [] }),
+      accountView: async () => ({ id: "account-id", created_at: new Date(), wallets: [], identities: [] }),
       updateSessionCsrf: async (_sessionId: string, csrfHash: Buffer) => { updatedHash = csrfHash; },
     } as unknown as AuthRepository;
     const app = await buildApp(config, repository);
@@ -104,21 +104,65 @@ describe("Auth BFF HTTP boundary", () => {
     expect(response.headers["set-cookie"]).toContain(config.csrfCookieName);
   });
 
-  it("does not issue a replacement-wallet challenge for an account that is already bound", async () => {
+  const linkChallengeHeaders = (csrfToken: string) => ({
+    origin: config.authOrigin,
+    cookie: `${config.COOKIE_NAME}=opaque-session; ${config.csrfCookieName}=${csrfToken}`,
+    "x-csrf-token": csrfToken,
+  });
+  const session = (csrfToken: string) => ({
+    findSession: async () => ({ id: "session-id", account_id: "account-id", csrf_hash: sha256(csrfToken), expires_at: new Date(Date.now() + 60_000) }),
+  });
+
+  it("issues an additional-wallet link challenge for an account that already has wallets", async () => {
     const csrfToken = "current-csrf-token";
     const repository = {
-      findSession: async () => ({ id: "session-id", account_id: "account-id", csrf_hash: sha256(csrfToken), expires_at: new Date(Date.now() + 60_000) }),
-      accountView: async () => ({ id: "account-id", created_at: new Date(), wallet: "0x0000000000000000000000000000000000000001", identities: [] }),
+      ...session(csrfToken),
+      findWalletOwner: async () => null,
+      createChallenge: async () => undefined,
     } as unknown as AuthRepository;
     const app = await buildApp(config, repository);
     apps.push(app);
     const response = await app.inject({
       method: "POST", url: "/api/auth/wallet/link/challenge",
-      headers: { origin: config.authOrigin, cookie: `${config.COOKIE_NAME}=opaque-session; ${config.csrfCookieName}=${csrfToken}`, "x-csrf-token": csrfToken },
+      headers: linkChallengeHeaders(csrfToken),
       payload: { address: "0x0000000000000000000000000000000000000002" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ purpose: "wallet_link" });
+  });
+
+  it("rejects a link challenge when the address is already on the same account", async () => {
+    const csrfToken = "current-csrf-token";
+    const repository = {
+      ...session(csrfToken),
+      findWalletOwner: async () => "account-id",
+    } as unknown as AuthRepository;
+    const app = await buildApp(config, repository);
+    apps.push(app);
+    const response = await app.inject({
+      method: "POST", url: "/api/auth/wallet/link/challenge",
+      headers: linkChallengeHeaders(csrfToken),
+      payload: { address: "0x0000000000000000000000000000000000000001" },
     });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: "wallet_already_bound" });
+  });
+
+  it("rejects a link challenge when the address already belongs to another account", async () => {
+    const csrfToken = "current-csrf-token";
+    const repository = {
+      ...session(csrfToken),
+      findWalletOwner: async () => "another-account",
+    } as unknown as AuthRepository;
+    const app = await buildApp(config, repository);
+    apps.push(app);
+    const response = await app.inject({
+      method: "POST", url: "/api/auth/wallet/link/challenge",
+      headers: linkChallengeHeaders(csrfToken),
+      payload: { address: "0x0000000000000000000000000000000000000002" },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: "wallet_already_linked" });
   });
 
   it("returns a generic unauthenticated session and expires both cookies", async () => {

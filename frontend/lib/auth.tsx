@@ -8,7 +8,8 @@ export const CANONICAL_SITE = "https://agenttrust.site";
 export const OIDC_PROVIDER_ORDER = ["google", "github", "apple", "casdoor"] as const;
 export type OidcProvider = (typeof OIDC_PROVIDER_ORDER)[number];
 export type AuthIdentity = { provider: OidcProvider; email: string | null };
-export type AuthAccount = { id: string; created_at: string; wallet: `0x${string}` | null; identities: AuthIdentity[] };
+// 一个账户可关联多个钱包（支付工具），服务端按 linked_at 排序返回。
+export type AuthAccount = { id: string; created_at: string; wallets: `0x${string}`[]; identities: AuthIdentity[] };
 export type AuthCapabilities = {
   wallet: { enabled: boolean; chainId: number; siwe: boolean };
   oidc: Record<OidcProvider, { configured: boolean }>;
