@@ -9,12 +9,16 @@ const mocks = vi.hoisted(() => ({
   ],
   connectAsync: vi.fn(async () => ({ accounts: ["0x1111111111111111111111111111111111111111"], chainId: 31337 })),
   connections: [] as Array<{ connector: { id: string }; accounts: string[] }>,
+  activeConnector: undefined as { id: string } | undefined,
+  disconnectAsync: vi.fn(async () => {}),
 }));
 
 vi.mock("wagmi", () => ({
   useConnectors: () => mocks.connectors,
   useConnections: () => mocks.connections,
   useConnect: () => ({ connectAsync: mocks.connectAsync, isPending: false }),
+  useAccount: () => ({ connector: mocks.activeConnector }),
+  useDisconnect: () => ({ disconnectAsync: mocks.disconnectAsync }),
 }));
 
 import { WalletPicker } from "@/app/components/wallet-picker";
@@ -33,6 +37,7 @@ beforeEach(() => {
     { id: "io.rabby", name: "Rabby", type: "injected", rdns: "io.rabby" },
   ];
   mocks.connections = [];
+  mocks.activeConnector = undefined;
   mocks.connectAsync.mockResolvedValue({ accounts: ["0x1111111111111111111111111111111111111111"], chainId: 31337 });
   vi.clearAllMocks();
 });
@@ -118,21 +123,55 @@ describe("WalletPicker", () => {
     });
   });
 
-  it("reuses the existing connection when the picked wallet is already connected", async () => {
-    mocks.connections = [{ connector: { id: "io.metamask" }, accounts: ["0x1111111111111111111111111111111111111111"] }];
-    const onConnected = vi.fn();
-    await openPicker(vi.fn(), onConnected);
+  it("switches back to a wallet that was connected before but is not the active one", async () => {
+    // 回归：connections 里存的是**所有**已建立过的连接，current 只指向其中一个。
+    // 旧版只要能找到就直接 return，于是「Rabby → MetaMask → 想切回 Rabby」是无声的无效点击。
+    const metaMask = { id: "io.metamask", name: "MetaMask", type: "injected", rdns: "io.metamask" };
+    const rabby = { id: "io.rabby", name: "Rabby", type: "injected", rdns: "io.rabby" };
+    mocks.connectors = [metaMask, rabby];
+    mocks.activeConnector = rabby;              // 当前正在用 Rabby
+    mocks.connections = [{ connector: metaMask, accounts: ["0x2222222222222222222222222222222222222222"] }];
+    await openPicker(vi.fn());
 
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /MetaMask/ }));
 
-    // 不应调用 connectAsync（会抛「Connector already connected」），直接复用现有连接。
-    expect(mocks.connectAsync).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(onConnected).toHaveBeenCalledWith({
-        rdns: "io.metamask",
-        address: "0x1111111111111111111111111111111111111111",
+      expect(mocks.connectAsync).toHaveBeenCalledWith({
+        connector: expect.objectContaining({ id: "io.metamask" }),
       });
     });
+    // 不是当前连接，不需要先断开。
+    expect(mocks.disconnectAsync).not.toHaveBeenCalled();
+  });
+
+  it("reconnects the wallet already in use so it re-asks which account to use", async () => {
+    const metaMask = { id: "io.metamask", name: "MetaMask", type: "injected", rdns: "io.metamask" };
+    const rabby = { id: "io.rabby", name: "Rabby", type: "injected", rdns: "io.rabby" };
+    mocks.connectors = [metaMask, rabby];
+    mocks.activeConnector = metaMask;
+    mocks.connections = [{ connector: metaMask, accounts: ["0x1111111111111111111111111111111111111111"] }];
+    const { dialog } = await openPicker(vi.fn());
+
+    // 正在用的钱包要能被认出来。
+    expect(within(dialog).getByText("Connected")).toBeInTheDocument();
+    expect(within(dialog).getByText("In use · click to pick another account")).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: /MetaMask/ }));
+
+    // 只有目标**就是**当前连接时 wagmi 才会抛 ConnectorAlreadyConnectedError，
+    // 所以必须先断开再连，让钱包插件重新弹出账户选择；不能静默关掉弹层。
+    await waitFor(() => {
+      expect(mocks.disconnectAsync).toHaveBeenCalledWith({
+        connector: expect.objectContaining({ id: "io.metamask" }),
+      });
+    });
+    expect(mocks.connectAsync).toHaveBeenCalledWith({
+      connector: expect.objectContaining({ id: "io.metamask" }),
+    });
+    // 先断后连，顺序不能反。
+    expect(mocks.disconnectAsync.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.connectAsync.mock.invocationCallOrder[0],
+    );
   });
 
   it("closes on Escape and moves focus to the first wallet row", async () => {

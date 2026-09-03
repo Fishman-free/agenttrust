@@ -3,13 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  account: { address: "0x1111111111111111111111111111111111111111", chainId: 31337, isConnected: true },
+  account: { address: "0x1111111111111111111111111111111111111111", chainId: 31337, isConnected: true, connector: { id: "io.rabby", name: "Rabby", type: "injected", rdns: "io.rabby" } },
   connectors: [
     { id: "io.metamask", name: "MetaMask", type: "injected", rdns: "io.metamask" },
     { id: "io.rabby", name: "Rabby", type: "injected", rdns: "io.rabby" },
   ],
   connect: vi.fn(),
   connectAsync: vi.fn(async () => ({ accounts: ["0x1111111111111111111111111111111111111111"], chainId: 31337 })),
+  disconnectAsync: vi.fn(async () => {}),
   writeContract: vi.fn(),
   refetchCount: vi.fn(),
   refetchList: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("wagmi", () => ({
     connectors: mocks.connectors,
     isPending: false,
   }),
+  useDisconnect: () => ({ disconnect: vi.fn(), disconnectAsync: mocks.disconnectAsync }),
   useWriteContract: () => ({ data: mocks.feedback.current.hash, writeContract: mocks.writeContract, isPending: false, error: null }),
   useReadContract: ({ functionName }: { functionName: string }) => {
     if (functionName === "registrationDeposit") return { data: BigInt(1) };
@@ -63,6 +65,7 @@ beforeEach(() => {
   mocks.account.address = "0x1111111111111111111111111111111111111111";
   mocks.account.chainId = 31337;
   mocks.account.isConnected = true;
+  mocks.account.connector = { id: "io.rabby", name: "Rabby", type: "injected", rdns: "io.rabby" };
   mocks.activeSubject = false;
   mocks.pohVerified = false;
   mocks.feedback.current = { phase: "confirming", hash: `0x${"12".repeat(32)}` };
@@ -203,5 +206,26 @@ describe("AgentsPage", () => {
     expect(mocks.writeContract).toHaveBeenCalledWith(
       expect.objectContaining({ functionName: "bindPoH" }),
     );
+  });
+
+  it("keeps a wallet switch entry on the page once connected", async () => {
+    mocks.activeSubject = false;
+    mocks.feedback.current = { phase: "idle" };
+    render(<AgentsPage />);
+
+    // 回归：旧版只在未连接时渲染连接按钮，连上之后这一页就没有任何换钱包的入口，
+    // 唯一入口藏在页头头像菜单里。页内必须常驻一个。
+    await userEvent.click(screen.getByRole("button", { name: "Switch wallet" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Connect a wallet" });
+    expect(within(dialog).getByRole("button", { name: /MetaMask/ })).toBeInTheDocument();
+  });
+
+  it("names the wallet currently in use next to the switch entry", () => {
+    mocks.feedback.current = { phase: "idle" };
+    render(<AgentsPage />);
+
+    expect(screen.getByText("Wallet in use")).toBeInTheDocument();
+    expect(screen.getByText("Rabby · 0x1111…1111")).toBeInTheDocument();
   });
 });
