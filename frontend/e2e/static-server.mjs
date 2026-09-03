@@ -90,4 +90,4 @@ createServer(async (request, response) => {
   if (!existsSync(candidate) || !candidate.startsWith(root)) { candidate = join(root, "404.html"); status = 404; }
   response.writeHead(status, { "content-type": mime[extname(candidate)] ?? "application/octet-stream", "cache-control": "no-store" });
   createReadStream(candidate).pipe(response);
-}).listen(3000, "127.0.0.1", () => console.log("E2E static export + Auth BFF listening on http://127.0.0.1:3000"));
+}).listen(Number(process.env.E2E_PORT ?? 3000), "127.0.0.1", () => console.log("E2E static export + Auth BFF listening on http://127.0.0.1:" + (process.env.E2E_PORT ?? 3000)));
