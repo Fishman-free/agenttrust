@@ -1,0 +1,17 @@
+/* 自托管可变字体：latin 子集，两个文件合计 <30KB。
+   中文不在 latin 覆盖范围，自动回退到下一顺位的 Noto 系列字体。
+   注意：src 用相对路径（相对本文件所在目录），这样 GitHub Pages 的
+   basePath（/agenttrust）与东京根路径部署都能正确加载。
+   本文件由 app/layout.tsx 的 <link rel="stylesheet"> 引入。 */
+@font-face {
+  font-family: "Doto";
+  src: url("Doto-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("SpaceGrotesk-Variable.woff2") format("woff2");
+  font-weight: 300 700;
+  font-display: swap;
+}

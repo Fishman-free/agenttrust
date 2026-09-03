@@ -15,6 +15,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        {/* 自托管可变字体（@font-face 用相对路径，天然兼容 GitHub Pages basePath 子路径部署） */}
+        <link
+          rel="stylesheet"
+          href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fonts/fonts.css`}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

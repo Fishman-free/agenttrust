@@ -42,7 +42,7 @@ export default function Home() {
         视频纯装饰：pointer-events 关闭、无字幕内容，reduced-motion 下整体隐藏只留渐变底。 */}
     <section className="home-hero-stage" aria-labelledby="home-title">
       <video className="home-bg-video" autoPlay muted loop playsInline tabIndex={-1} aria-hidden="true">
-        <source src="/media/hero-loop.mp4" type="video/mp4" />
+        <source src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/media/hero-loop.mp4`} type="video/mp4" />
       </video>
       <div className="home-bg-scrim" aria-hidden="true" />
       <div className="home-hero-inner">
