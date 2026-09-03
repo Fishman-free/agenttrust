@@ -35,6 +35,29 @@ type RecoveryView = readonly [
 
 const NULLIFIER_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
+// 端点会永久写进链上（AgentInfo 没有 setter，注册后谁都改不了），
+// 所以这里必须在前端拦住两类必然无用的值：
+//   1. 本机/内网地址（localhost、127.0.0.1、192.168.x）—— 其他 agent 根本连不上；
+//   2. 非 https 地址 —— 明文端点不适合作为对外身份的一部分。
+// 注意这只是格式校验，不验证端点真的存在或真的能提供服务。
+const PRIVATE_HOST_PATTERN =
+  /^(?:localhost|::1|0\.0\.0\.0|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})$/;
+const PRIVATE_HOST_SUFFIXES = [".localhost", ".local", ".internal", ".home.arpa"];
+
+function isPublicEndpoint(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:") return false;
+  const host = url.hostname.toLowerCase();
+  if (PRIVATE_HOST_PATTERN.test(host)) return false;
+  if (PRIVATE_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))) return false;
+  return host.includes(".");
+}
+
 function shortAddress(value: string) {
   return value ? `${value.slice(0, 6)}…${value.slice(-4)}` : "—";
 }
@@ -227,10 +250,12 @@ export default function AgentsPage() {
             ? a.guardianDuplicate
             : undefined;
 
+  // 空着交给 completeInfo 提示；填了但不合法才报端点错误。
+  const endpointError = endpoint.trim() !== "" && !isPublicEndpoint(endpoint) ? a.endpointInvalid : undefined;
   const verifiedNullifier = isLocalMock ? mockNullifier.trim() : attestation?.nullifier;
   const verifiedProof = isLocalMock ? mockProof.trim() : attestation?.proof;
   const verifiedInputsValid = !verifiedMode || (Boolean(verifierBound || isLocalMock) && NULLIFIER_PATTERN.test(verifiedNullifier ?? "") && Boolean(verifiedProof));
-  const inputValid = Boolean(name.trim() && desc.trim() && endpoint.trim()) && !guardianError && verifiedInputsValid;
+  const inputValid = Boolean(name.trim() && desc.trim() && endpoint.trim()) && !guardianError && !endpointError && verifiedInputsValid;
   const busy = registration.isPending || registrationFeedback.phase === "confirming";
   const opsBusy = operations.isPending || operationsFeedback.phase === "confirming";
   const readiness = getWriteReadiness({
@@ -245,7 +270,7 @@ export default function AgentsPage() {
       "not-configured": WRITE_BLOCK_REASON,
       "wrong-chain": formatMessage(a.wrongNetwork, { chain: activeChain.name, chainId: CHAIN_ID }),
       "invalid-state": a.depositLoading,
-      "invalid-input": guardianError ?? (verifiedMode && !verifiedInputsValid ? a.validWorldId : a.completeInfo),
+      "invalid-input": guardianError ?? endpointError ?? (verifiedMode && !verifiedInputsValid ? a.validWorldId : a.completeInfo),
     },
     locale,
   });

@@ -129,6 +129,46 @@ describe("AgentsPage", () => {
     expect(mocks.writeContract).toHaveBeenCalledWith(expect.objectContaining({ functionName: "registerAgent", value: 1n }));
   });
 
+  it.each([
+    ["http://localhost:3000/mcp", "localhost over http"],
+    ["https://localhost/mcp", "localhost over https"],
+    ["https://127.0.0.1/mcp", "loopback IP"],
+    ["https://192.168.1.10/mcp", "private LAN IP"],
+    ["https://10.0.0.4/mcp", "private class-A IP"],
+    ["https://my-agent.local/mcp", "mDNS host"],
+    ["not-a-url", "not a URL at all"],
+  ])("blocks registration for an endpoint nobody else can reach: %s (%s)", async (badEndpoint) => {
+    mocks.feedback.current = { phase: "idle" };
+    render(<AgentsPage />);
+    await userEvent.type(screen.getByLabelText("Agent name (e.g. DataAgent)"), "Unreachable");
+    await userEvent.type(screen.getByLabelText("Capability description (e.g. on-chain data analysis)"), "Local only");
+    await userEvent.type(screen.getByLabelText("MCP/A2A endpoint (https://…)"), badEndpoint);
+    await userEvent.type(screen.getByLabelText("Guardian 1 (required)"), "0x2222222222222222222222222222222222222222");
+    await userEvent.type(screen.getByLabelText("Guardian 2 (required)"), "0x3333333333333333333333333333333333333333");
+
+    const register = screen.getByRole("button", { name: /Register \(lock/ });
+    expect(register).toBeDisabled();
+    expect(register.getAttribute("title")).toContain("public https://");
+    expect(mocks.writeContract).not.toHaveBeenCalled();
+  });
+
+  it("accepts a public https endpoint and keeps the register button enabled", async () => {
+    mocks.feedback.current = { phase: "idle" };
+    render(<AgentsPage />);
+    await userEvent.type(screen.getByLabelText("Agent name (e.g. DataAgent)"), "Reachable");
+    await userEvent.type(screen.getByLabelText("Capability description (e.g. on-chain data analysis)"), "Public agent");
+    await userEvent.type(screen.getByLabelText("MCP/A2A endpoint (https://…)"), "https://agent.example.com/mcp");
+    await userEvent.type(screen.getByLabelText("Guardian 1 (required)"), "0x2222222222222222222222222222222222222222");
+    await userEvent.type(screen.getByLabelText("Guardian 2 (required)"), "0x3333333333333333333333333333333333333333");
+
+    const register = screen.getByRole("button", { name: /Register \(lock/ });
+    expect(register).toBeEnabled();
+    await userEvent.click(register);
+    expect(mocks.writeContract).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "registerAgent", args: ["Reachable", "Public agent", "https://agent.example.com/mcp", expect.any(Array)] }),
+    );
+  });
+
   it("blocks registration on the wrong chain", () => {
     mocks.account.chainId = 1;
     mocks.feedback.current = { phase: "idle" };
