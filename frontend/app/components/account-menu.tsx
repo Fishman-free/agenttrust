@@ -11,6 +11,7 @@ import { useNickname } from "@/lib/nickname";
 import { useTxHistory, useTxRecorder, type TxKind } from "@/lib/tx-history";
 import { useTransactionFeedback } from "@/app/components/transaction-status";
 import { WalletPicker } from "@/app/components/wallet-picker";
+import { NetworkSwitchDialog } from "@/app/components/network-switch-dialog";
 
 type MenuView = "root" | "nickname" | "transactions" | "deregister";
 type RecoveryTuple = readonly [unknown, unknown, unknown, unknown, unknown, unknown, unknown, exists: boolean];
@@ -80,13 +81,14 @@ function useDepositStatus(address?: `0x${string}`) {
 export function AccountMenu() {
   const { dictionary: t } = useLocale();
   const a = t.account;
-  const { address, chainId, isConnected } = useAccount();
+  const { address, chainId, isConnected, connector } = useAccount();
   const { disconnect } = useDisconnect();
-  const { switchChain, isPending: isSwitching } = useSwitchChain();
+  const { switchChain, isPending: isSwitching, error: switchError } = useSwitchChain();
   const { nickname, save: saveNickname } = useNickname(address);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<MenuView>("root");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -214,6 +216,10 @@ export function AccountMenu() {
                 <button type="button" className="button button-warning" disabled={isSwitching} onClick={() => switchChain({ chainId: CHAIN_ID })}>
                   {isSwitching ? t.wallet.switching : formatMessage(t.wallet.switchTo, { chain: activeChain.name })}
                 </button>
+                {/* 全局引导弹窗被关掉之后的兜底入口：随时可以再看一遍切换步骤。 */}
+                <button type="button" className="account-alert-link" onClick={() => setGuideOpen(true)}>
+                  {t.wallet.networkGuideReopen}
+                </button>
               </div>
             )}
 
@@ -260,6 +266,19 @@ export function AccountMenu() {
       </AnimatePresence>
 
       <WalletPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
+      <NetworkSwitchDialog
+        open={guideOpen}
+        currentChainId={chainId}
+        expectedChainId={CHAIN_ID}
+        expectedChainName={activeChain.name}
+        walletName={connector?.name && connector.name !== "Injected" ? connector.name : t.wallet.networkGuideWalletFallback}
+        isSwitching={isSwitching}
+        error={switchError
+          ? formatMessage(t.wallet.networkGuideError, { wallet: connector?.name ?? t.wallet.networkGuideWalletFallback, chain: activeChain.name, chainId: CHAIN_ID })
+          : undefined}
+        onSwitch={() => switchChain({ chainId: CHAIN_ID })}
+        onDismiss={() => setGuideOpen(false)}
+      />
     </div>
   );
 }
