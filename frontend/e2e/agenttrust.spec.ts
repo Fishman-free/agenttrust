@@ -60,14 +60,15 @@ test("locale switch persists, updates html lang, and changes the documentation U
   await expect(page.getByRole("heading", { name: "为智能体建立可验证的信任" })).toBeVisible();
 });
 
-test("homepage stays compact, responsive, and accessible to reduced-motion users", async ({ page }) => {
+test("homepage keeps a full-viewport hero, responsive, and accessible to reduced-motion users", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
 
-  const heroBox = await page.locator(".home-hero").boundingBox();
+  // 2026-09 改版后 hero 是单视口全屏（100svh 减 header），capabilities 整体退到折叠之下
+  const heroBox = await page.locator(".home-hero-stage").boundingBox();
   const capabilitiesBox = await page.locator(".home-capabilities").boundingBox();
-  expect(heroBox?.height).toBeLessThan(700);
-  expect(capabilitiesBox?.y).toBeLessThan(850);
+  expect(heroBox?.height).toBeGreaterThan(700);
+  expect(capabilitiesBox?.y).toBeGreaterThan(850);
   await expect(page.getByRole("link", { name: /Agent identity/ })).toBeVisible();
 
   await page.setViewportSize({ width: 320, height: 800 });

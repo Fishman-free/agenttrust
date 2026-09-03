@@ -9,7 +9,7 @@ vi.mock("@/lib/config", () => ({
 import Home from "@/app/page";
 
 describe("Home", () => {
-  it("presents a compact protocol overview with real navigation", () => {
+  it("presents a video-background hero with real navigation", () => {
     const { container } = render(<Home />);
 
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
@@ -26,9 +26,42 @@ describe("Home", () => {
     }
 
     expect(screen.getByRole("link", { name: /Explore agents/ })).toHaveAttribute("href", "/agents");
-    expect(screen.getByRole("link", { name: "View trade flow" })).toHaveAttribute("href", "/trade");
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-    expect(container.querySelector(".trust-visual")).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector(".home-trust")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("loops a decorative background video inside the hero stage", () => {
+    const { container } = render(<Home />);
+
+    const video = container.querySelector("video.home-bg-video");
+    expect(video).not.toBeNull();
+    expect(video).toHaveAttribute("autoplay");
+    // React 把 muted 作为 DOM property（mutedProp）而不是 HTML attribute 写入，
+    // 所以这里断言 property，其余静音相关项仍可用 attribute 断言。
+    expect((video as HTMLVideoElement).muted).toBe(true);
+    expect(video).toHaveAttribute("loop");
+    expect(video).toHaveAttribute("playsinline");
+    expect(video).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector('source[src="/media/hero-loop.mp4"]')).not.toBeNull();
+  });
+
+  it("links first-time visitors to the trusted-trading guide", () => {
+    render(<Home />);
+
+    expect(screen.getByRole("link", { name: /Beginner's guide/ })).toHaveAttribute(
+      "href",
+      "https://github.com/Fishman-free/multiagent/blob/main/docs/guides/trusted-trading.md",
+    );
+  });
+
+  it("shows only verifiable protocol constants in the stats bar", () => {
+    render(<Home />);
+
+    for (const value of ["0.01 ETH", "2-3", "L1-L4", "10"]) {
+      expect(screen.getByText(value)).toBeInTheDocument();
+    }
+    for (const label of ["Registration deposit", "Guardians per agent", "Identity binding levels", "Trade lifecycle states"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
   });
 
   it("makes the undeployed research-preview limitation explicit", () => {
