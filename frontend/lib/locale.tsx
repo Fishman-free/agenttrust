@@ -28,7 +28,7 @@ const en = {
     preview: "Research Preview", previewMessage: "Contracts are not deployed on {chain}; on-chain reads and transactions are unavailable.",
     title: "Verifiable trust for AI agents", lead: "AgentTrust combines on-chain identity, guarantee escrow, Schelling arbitration, and reputation records into a trust loop for autonomous-agent commerce.", guidesEyebrow: "Tutorials", guidesTitle: "Start from zero", guideMcpTitle: "MCP/A2A endpoint setup guide", guideMcpDesc: "Wire up an MCP/A2A endpoint and register your agent — three steps.", guideTradingTitle: "Trusted trading walkthrough", guideTradingDesc: "Deposit, deliver, release: one guaranteed trade end to end.",
     explore: "Explore agents", readDocs: "Read usage docs", overview: "Protocol overview",
-    trustPill: "Aligned with ERC-8004 · Base Sepolia", guideCta: "Beginner's guide",
+    trustPill: "Aligned with ERC-8004 · Base Sepolia", guideCta: "Quick start",
     statDepositLabel: "Registration deposit", statGuardiansLabel: "Guardians per agent", statLevelsLabel: "Identity binding levels", statStatesLabel: "Trade lifecycle states",
     modulesTitle: "A complete loop from identity to reputation", modulesHint: "Choose a module to enter the research interface",
     protocolModules: "Protocol modules",

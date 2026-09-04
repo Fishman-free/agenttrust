@@ -20,8 +20,14 @@
   --muted: #9a9aa2;
   --border: #2b2e3a;
   --hairline: color-mix(in srgb, var(--foreground) 10%, transparent);
-  --accent: #4d8dff;        /* 比默认暗色蓝更亮一档，保证 4.5:1 对比 */
+  --accent: #4d8dff;        /* 亮蓝：用于「蓝字/描边压在深底上」，实测 6.04:1 达标 */
+  /* 实心按钮的底色单独压深一档：亮蓝配白字只有 3.20:1，不达 AA 的 4.5:1；
+     压深后白字 4.97:1。--accent 本身保持够亮，链接、eyebrow、光晕不受影响。 */
+  --accent-solid: #2c6ade;
   --accent-contrast: #ffffff;
+  /* 高饱和警示色配白字极差（橙 2.06:1），改用深色文字（橙 9.79:1）——
+     亮橙/亮黄的通行配对是深字；把它压深反而会让警示色失去辨识度。 */
+  --on-vivid: #06070b;
   --warning: #ff9f0a;
   --danger: #ff453a;
   --success: #30d158;
@@ -262,15 +268,15 @@ section, li, main > div.border { border-color: var(--border); background: var(--
     box-shadow 200ms var(--ease-standard);
 }
 .button:active:not(:disabled) { transform: scale(0.97); }
-.button-primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.button-primary { background: var(--accent-solid); color: var(--accent-contrast); border-color: var(--accent-solid); }
 .button-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 88%, #000);
-  border-color: color-mix(in srgb, var(--accent) 88%, #000);
+  background: color-mix(in srgb, var(--accent-solid) 88%, #000);
+  border-color: color-mix(in srgb, var(--accent-solid) 88%, #000);
   box-shadow: 0 0.45rem 1.2rem color-mix(in srgb, var(--accent) 28%, transparent);
 }
 .button-secondary { background: var(--surface); color: var(--foreground); }
 .button-secondary:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
-.button-warning { background: var(--warning); color: #fff; border-color: var(--warning); }
+.button-warning { background: var(--warning); color: var(--on-vivid); border-color: var(--warning); }
 
 /* ============ 内容块 ============ */
 
