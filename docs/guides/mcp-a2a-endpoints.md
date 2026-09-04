@@ -48,6 +48,124 @@ python server.py
 
 Node users: `npm i @modelcontextprotocol/sdk` — same idea.
 
+## 2.5 Wire it into the agent you already use
+
+The endpoint is running — now pick the path that matches your agent. All three paths share one goal:
+
+> Make `https://your.domain/mcp` a real, reachable, verified MCP service.
+
+### Path A — Claude Code (Anthropic CLI)
+
+For: you already work inside Claude Code and want it to call your own tools.
+
+**1. Open the agent**
+
+```bash
+# install (Node.js 18+)
+npm install -g @anthropic-ai/claude-code
+# start an interactive session in any project directory
+claude
+```
+
+**2. Connect your MCP endpoint**
+
+```bash
+# run inside Claude Code (or prefix with `claude` in a terminal):
+claude mcp add --transport http my-agent https://agent.example.com/mcp
+
+# management
+claude mcp list
+claude mcp remove my-agent
+```
+
+Or commit it to your repo as `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "my-agent": { "type": "http", "url": "https://agent.example.com/mcp" }
+  }
+}
+```
+
+**3. Verify**
+
+Type `/mcp` inside the Claude Code session — `my-agent` should be connected with your tools listed; ask it to call one ("look up the ETH price") to confirm end to end.
+
+> Want **Claude Code itself** to be your public agent endpoint? It is an interactive CLI, not a resident HTTP service. The simple path: use Claude Code to develop and run your own MCP server (Path C), rather than exposing the Claude Code process directly.
+
+### Path B — Codex CLI (OpenAI)
+
+For: you work in OpenAI's Codex CLI.
+
+**1. Open the agent**
+
+```bash
+npm install -g @openai/codex
+codex    # interactive session; first run walks you through sign-in / API key setup
+```
+
+**2. Configure MCP**
+
+Edit (or create) `~/.codex/config.toml`:
+
+```toml
+# newer versions accept an HTTP endpoint directly (streamable HTTP)
+[mcp_servers.my-agent]
+url = "https://agent.example.com/mcp"
+
+# older builds only support local stdio commands; run your server locally
+# (command = "python", args = ["server.py"]) or bridge the remote endpoint
+```
+
+**3. Verify**
+
+Restart `codex` and call one of your tools; use `codex mcp --help` to see what management subcommands your build supports.
+
+> ⚠️ Codex's MCP transport support moves fast. Use the latest version; if the connection fails, first confirm your server speaks streamable HTTP.
+
+### Path C — Build your own agent (Python / Node.js)
+
+For: you are writing your own agent program and want a real public service.
+
+**Python (FastMCP)**
+
+```python
+# server.py — a complete MCP service in a dozen lines
+from fastmcp import FastMCP
+
+mcp = FastMCP("MyAgent")
+
+@mcp.tool
+def get_price(symbol: str) -> str:
+    """Look up a token price (sample tool)."""
+    return f"{symbol} = 100 USD"
+
+# public mode: listen on all interfaces, Caddy terminates https in front
+mcp.run(transport="http", host="0.0.0.0", port=8000)
+```
+
+**Node.js / TypeScript (official SDK)**
+
+```bash
+npm install @modelcontextprotocol/sdk zod
+```
+
+```ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+
+const server = new McpServer({ name: "MyAgent", version: "0.1.0" });
+server.tool("get_price", { symbol: z.string() }, async ({ symbol }) => ({
+  content: [{ type: "text", text: `${symbol} = 100 USD` }],
+}));
+// mount the streamable HTTP transport in your HTTP layer (Express/Hono) and start
+```
+
+**Adding A2A (optional)**: A2A is the agent-to-agent negotiation protocol. Minimal version: serve `https://your.domain/.well-known/agent.json` describing name, capabilities and endpoints; community A2A SDKs (Python/JS) can run a full standard agent service.
+
+**Debugging**: `npx @modelcontextprotocol/inspector` — the official Inspector connects to your URL and shows tools and call results visually.
+
 ## 3. Step 2 — Expose it publicly
 
 ```python
@@ -97,6 +215,9 @@ A JSON response containing `serverInfo` means your MCP service works publicly. F
 | 502 behind proxy | Wrong upstream port | Verify `reverse_proxy` target |
 | Want to change endpoint later | Endpoints are immutable | Register a new identity; deposit is withdrawable per deregistration rules |
 | Private IP rejected | Registration-page validation | Use a public https domain |
+| `/mcp` doesn't show your server in Claude Code | Not registered, or wrong scope | Re-add with `claude mcp add`; mind `--scope` (user = global / project = this repo) |
+| Claude Code reports `Transport error` | Endpoint isn't streamable HTTP, or proxy strips POST | Re-run the curl initialize probe from Step 3 |
+| Codex can't reach the HTTP server | Older build without `url` support | Upgrade Codex; or bridge via local stdio for now |
 
 ---
 
