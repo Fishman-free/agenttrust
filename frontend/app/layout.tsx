@@ -15,6 +15,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        {/* 滚动渐显开关：首屏绘制前同步打标，避免"先可见再被隐藏"的闪烁。
+             JS 不可用时这个标记不会出现，带 data-reveal 的内容保持默认可见。 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "document.documentElement.dataset.revealArmed='true';",
+          }}
+        />
         {/* 自托管可变字体（@font-face 用相对路径，天然兼容 GitHub Pages basePath 子路径部署） */}
         <link
           rel="stylesheet"
