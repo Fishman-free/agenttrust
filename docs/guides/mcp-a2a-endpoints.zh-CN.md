@@ -57,6 +57,132 @@ Node.js 用户可用官方 SDK：`npm i @modelcontextprotocol/sdk`，思路完�
 
 ---
 
+## 二点五、把你手头的智能体接上你的端点
+
+端点跑起来只是第一步——接下来按你用的智能体分三路走。三路的**共同目标**只有一个：
+
+> 让 `https://你的域名/mcp` 变成一个真实可用、别人连得上、你自己也验证过的 MCP 服务。
+
+### 路线 A：Claude Code（Anthropic 官方 CLI）
+
+适合：你平时用 Claude Code 写代码/跑任务，想让它直接调用你自己的工具。
+
+**1. 打开智能体**
+
+```bash
+# 安装（需要 Node.js 18+）
+npm install -g @anthropic-ai/claude-code
+# 在任意项目目录启动交互式会话
+claude
+```
+
+**2. 把你的 MCP 端点接进 Claude Code**
+
+```bash
+# 在 Claude Code 里执行（或直接在终端加 claude 前缀）：
+# 把你的公网端点注册为 HTTP 型 MCP server
+claude mcp add --transport http my-agent https://agent.example.com/mcp
+
+# 常用管理命令
+claude mcp list          # 看已接了哪些 server
+claude mcp remove my-agent
+```
+
+也可以写进项目根目录的 `.mcp.json`（随仓库共享给协作者）：
+
+```json
+{
+  "mcpServers": {
+    "my-agent": { "type": "http", "url": "https://agent.example.com/mcp" }
+  }
+}
+```
+
+**3. 验证**
+
+在 Claude Code 会话里输入 `/mcp`，能看到 `my-agent` 已连接、`get_price` 等工具已列出；再让它实际调一次工具（"帮我查一下 ETH 价格"）返回正常，即端到端打通。
+
+> 想让 **Claude Code 本身**成为你的智能体端点？它是交互式 CLI，不是常驻 HTTP 服务。最简单的做法：用它来开发并运行你自己的 MCP server（下一节），而不是把 Claude Code 进程直接暴露到公网。
+
+### 路线 B：Codex CLI（OpenAI）
+
+适合：你用 OpenAI 的 Codex CLI 干活，想让它调用你的工具。
+
+**1. 打开智能体**
+
+```bash
+npm install -g @openai/codex
+codex          # 启动交互式会话（首次会引导登录 ChatGPT 账号或配置 API key）
+```
+
+**2. 配置 MCP**
+
+编辑（没有就新建）`~/.codex/config.toml`：
+
+```toml
+# 较新版本支持直接填 HTTP 端点（streamable HTTP）
+[mcp_servers.my-agent]
+url = "https://agent.example.com/mcp"
+
+# 老版本只支持本地 stdio 命令；这种情况把远端端点桥接到本地再挂进来，
+# 或先在本地跑你的 server（command = "python", args = ["server.py"]）
+```
+
+**3. 验证**
+
+重启 `codex`，会话里让它调用你的工具一次；或用 `codex mcp` 相关子命令查看已配置的 server（不同版本子命令略有差异，`codex mcp --help` 看你手里的版本支持什么）。
+
+> ⚠️ Codex 对 MCP 传输类型的支持随版本变化较快。装最新版，遇到连不上先确认你的 server 走的是 streamable HTTP。
+
+### 路线 C：自建智能体（Python / Node.js）
+
+适合：你在写自己的 agent 程序，要给它一个真正的对外服务。
+
+**Python（FastMCP，推荐起步）**
+
+```python
+# server.py —— 十几行就是一个完整 MCP 服务
+from fastmcp import FastMCP
+
+mcp = FastMCP("MyAgent")
+
+@mcp.tool
+def get_price(symbol: str) -> str:
+    """查询代币价格（示例工具）"""
+    return f"{symbol} = 100 USD"
+
+# 公网模式：监听所有网卡，等 Caddy 把 https 流量转进来
+mcp.run(transport="http", host="0.0.0.0", port=8000)
+```
+
+```bash
+pip install fastmcp
+python server.py
+```
+
+**Node.js / TypeScript（官方 SDK）**
+
+```bash
+npm install @modelcontextprotocol/sdk zod
+```
+
+```ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+
+const server = new McpServer({ name: "MyAgent", version: "0.1.0" });
+server.tool("get_price", { symbol: z.string() }, async ({ symbol }) => ({
+  content: [{ type: "text", text: `${symbol} = 100 USD` }],
+}));
+// 配合你的 HTTP 层（Express/Hono）挂载 streamable HTTP 传输后启动
+```
+
+**加一层 A2A（可选）**：A2A 是「智能体对智能体」的洽谈协议。最小做法是在同一个域名下暴露名片文件 `https://你的域名/.well-known/agent.json`，写明名称、能力与端点；社区也有现成的 A2A SDK（Python/JS）可以起一个标准 agent 服务。
+
+**调试利器**：`npx @modelcontextprotocol/inspector` 打开官方 Inspector，填入你的 URL 连一次，工具列表、调用结果全部可视化。
+
+---
+
 ## 三、第 2 步：把地址暴露到公网（关键一步）
 
 本地 stdio 只是"自家人用"。要让别的智能体访问，你需要一个**公网 https 地址**：
@@ -130,6 +256,9 @@ A2A 服务同理：访问 `https://你的域名/.well-known/agent.json`，能看
 | 本地好好的，公网 502 | 反向代理指向的端口不对 | 核对 Caddyfile 的 `reverse_proxy` 端口 |
 | 注册后想换地址 | 端点不可改 | 换新身份重新注册（押金按注销规则退） |
 | 只写了内网 IP 就想注册 | 注册页直接拦截 | 换公网 https 域名 |
+| Claude Code 里 `/mcp` 看不到你的 server | 没注册或 scope 不对 | 用 `claude mcp add` 重新加，注意 `--scope`（user 全局 / project 当前项目） |
+| Claude Code 报 `Transport error` | 端点不是 streamable HTTP，或反代截断了 POST | 回到第 3 步用 curl 自检 initialize 握手 |
+| Codex 连不上 HTTP server | 版本较老不支持 `url` 形式 | 升级 Codex；或本地 stdio + 桥接方案过渡 |
 
 ---
 

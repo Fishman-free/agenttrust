@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/config", () => ({
@@ -90,5 +91,29 @@ describe("Home", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "Contracts are not deployed on Base Sepolia; on-chain reads and transactions are unavailable.",
     );
+  });
+
+  it("opens the feedback dialog and builds a prefilled GitHub issue link", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    // 触发按钮在页首
+    await user.click(screen.getByRole("button", { name: /Feedback/ }));
+
+    // 弹窗抬头与交互元素（Apple 材质 sheet）
+    const dialog = screen.getByRole("dialog", { name: /Feedback · Build this community together/ });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(screen.getByText("Bug report")).toBeInTheDocument();
+    expect(screen.getByLabelText(/What happened\?/)).toBeInTheDocument();
+
+    // 填写内容后，提交按钮应携带预填的 GitHub Issue 链接（标题含类别、正文含描述）
+    await user.type(screen.getByLabelText(/What happened\?/), "Trade page times out");
+    await user.type(screen.getByLabelText(/Contact \(optional\)/), "tester@example.com");
+    const submit = screen.getByRole("link", { name: /Continue to GitHub/ });
+    const href = submit.getAttribute("href") ?? "";
+    expect(href.startsWith("https://github.com/Fishman-free/multiagent/issues/new?")).toBe(true);
+    expect(href).toContain(encodeURIComponent("[Bug report]"));
+    expect(href).toContain(encodeURIComponent("Trade page times out"));
+    expect(href).toContain(encodeURIComponent("tester@example.com"));
   });
 });
