@@ -357,252 +357,258 @@ export default function AgentsPage() {
   const recoverySubjectValid = recoverySubject.trim() !== "" && isAddress(recoverySubject.trim());
 
   return (
-    <main className="page">
+    <>
+      {/* 氛围背景必须留在 .page 之外：.page 带 page-enter 入场动画，末帧的
+          transform 因为 fill-mode:both 会一直保留，使内部 position:fixed 退化成
+          相对 .page 定位 —— 背景就只剩中间 46rem 宽的一条窄框。提到外层后，
+          fixed 才认视口，整页通铺。 */}
       <AmbientBackground intense />
-      <div className="page-head">
-        <h1 className="page-title">{a.title}</h1>
-        <p className="page-sub">{a.subtitle}</p>
-      </div>
-      {!isConnected && <div className="mt-4"><ConnectWalletButton /></div>}
-      {!registryConfigured && <p className="form-warning mt-3" role="status">{a.registryMissing}</p>}
-      {isConnected && chainId !== CHAIN_ID && (
-        <p className="form-error mb-4" role="alert">
-          {formatMessage(a.wrongNetwork, { chain: activeChain.name, chainId: CHAIN_ID })}
-        </p>
-      )}
-      {isConnected && (
-        <>
-          {/* 责任主体就是当前钱包地址，所以切换入口必须留在这页里：
-              未连接时下方有连接按钮，但一旦连上它就没了，只剩这行纯文本，
-              用户在这页根本换不了钱包（唯一入口藏在页头头像菜单里）。 */}
-          <div className="subject-bar">
-            <span className="subject-bar-text">
-              <span className="subject-bar-label">{a.currentWallet}</span>
-              <span className="subject-bar-value">{connectorName} · {shortAddress(address ?? "")}</span>
-            </span>
-            <button
-              type="button"
-              className="button button-secondary"
-              onClick={() => setWalletPickerOpen(true)}
-            >
-              {t.wallet.switchWallet}
-            </button>
-          </div>
-          <p className="form-hint mb-4">{formatMessage(a.currentSubject, { address: address ?? "" })}</p>
-
-          {!activeSubject && (
-            <div className="card space-y-3">
-              <input aria-label={a.name} placeholder={a.name} value={name} onChange={(e) => setName(e.target.value)}
-                className="field-input" />
-              <input aria-label={a.description} placeholder={a.description} value={desc} onChange={(e) => setDesc(e.target.value)}
-                className="field-input" />
-              <input aria-label={a.endpoint} placeholder={a.endpoint} value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
-                className="field-input" />
-              {/* 端点是注册时卡得最多的字段（要填什么？怎么暴露？），直接给教程入口 */}
-              <p className="form-hint"><a href={mcpGuideUrl(locale)} target="_blank" rel="noopener noreferrer">{a.endpointGuide}</a></p>
-              <label className="field-label">
-                {a.guardian1}
-                <input aria-label={a.guardian1Aria} placeholder="0x…" value={guardian1} onChange={(e) => setGuardian1(e.target.value)} className="field-input" />
-              </label>
-              <label className="field-label">
-                {a.guardian2}
-                <input aria-label={a.guardian2} placeholder="0x…" value={guardian2} onChange={(e) => setGuardian2(e.target.value)} className="field-input" />
-              </label>
-              <label className="field-label">
-                {a.guardian3}
-                <input aria-label={a.guardian3} placeholder={a.optionalAddress} value={guardian3} onChange={(e) => setGuardian3(e.target.value)} className="field-input" />
-              </label>
-              <details className="labs-card agent-labs">
-                <summary>{t.auth.labs}</summary>
-                <p className="form-hint">{t.auth.worldIdLabs}</p>
-                <label className="field-checkbox">
-                  <input type="checkbox" aria-label={a.verifiedMode} checked={verifiedMode} onChange={(e) => setVerifiedMode(e.target.checked)} />
-                  {a.verifiedModeHelp}
-                </label>
-                {verifiedMode && address && (isLocalMock ? (
-                  <>
-                    <label className="field-label">{a.nullifier}<input aria-label={a.nullifierAria} placeholder="0x…" value={mockNullifier} onChange={(e) => setMockNullifier(e.target.value)} className="field-input" /></label>
-                    <label className="field-label">{a.proof}<input aria-label={a.proofAria} placeholder="0x01" value={mockProof} onChange={(e) => setMockProof(e.target.value)} className="field-input" /></label>
-                  </>
-                ) : verifierBound ? (
-                  <WorldIdButton subject={address} disabled={busy} label={a.worldIdButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={setAttestation} />
-                ) : <p className="form-warning" role="status">{a.verifierMissing}</p>)}
-              </details>
-              <p className="form-hint">
-                {a.depositHelp}
-              </p>
+      <main className="page">
+        <div className="page-head">
+          <h1 className="page-title">{a.title}</h1>
+          <p className="page-sub">{a.subtitle}</p>
+        </div>
+        {!isConnected && <div className="mt-4"><ConnectWalletButton /></div>}
+        {!registryConfigured && <p className="form-warning mt-3" role="status">{a.registryMissing}</p>}
+        {isConnected && chainId !== CHAIN_ID && (
+          <p className="form-error mb-4" role="alert">
+            {formatMessage(a.wrongNetwork, { chain: activeChain.name, chainId: CHAIN_ID })}
+          </p>
+        )}
+        {isConnected && (
+          <>
+            {/* 责任主体就是当前钱包地址，所以切换入口必须留在这页里：
+                未连接时下方有连接按钮，但一旦连上它就没了，只剩这行纯文本，
+                用户在这页根本换不了钱包（唯一入口藏在页头头像菜单里）。 */}
+            <div className="subject-bar">
+              <span className="subject-bar-text">
+                <span className="subject-bar-label">{a.currentWallet}</span>
+                <span className="subject-bar-value">{connectorName} · {shortAddress(address ?? "")}</span>
+              </span>
               <button
-                onClick={register}
-                disabled={!readiness.ready}
-                title={readiness.ready ? undefined : readiness.reason}
-                className="button button-primary"
+                type="button"
+                className="button button-secondary"
+                onClick={() => setWalletPickerOpen(true)}
               >
-                {busy
-                  ? a.registering
-                  : depositData === undefined
-                    ? t.common.loading
-                    : formatMessage(a.registerDeposit, { amount: verifiedMode ? depositEth : plainDepositEth })}
+                {t.wallet.switchWallet}
               </button>
-              {!readiness.ready && readiness.code !== "invalid-input" && (
-                <p className="form-warning" role="status">{readiness.reason}</p>
-              )}
             </div>
-          )}
+            <p className="form-hint mb-4">{formatMessage(a.currentSubject, { address: address ?? "" })}</p>
 
-          {activeSubject && (
-            <div className="space-y-3">
+            {!activeSubject && (
               <div className="card space-y-3">
-                <h2 className="card-title">{a.identity}</h2>
-                <p className="text-sm">
-                  {a.status} {deregistered ? <strong className="warning-text">{a.deregistered}</strong> : <strong>{a.active}</strong>} ·{" "}
-                  {a.poh} {poHVerified ? <strong>{a.verified}</strong> : <strong className="warning-text">{a.unverified}</strong>} ·{" "}
-                  {a.lockedDeposit} <strong>{lockedDeposit === undefined ? "—" : `${formatEther(lockedDeposit)} ETH`}</strong> ·{" "}
-                  {a.pending} <strong>{pendingBalance === undefined ? "—" : `${formatEther(pendingBalance)} ETH`}</strong>
-                </p>
-                {activeSubject && !deregistered && poHVerified === false && (
-                  <div className="callout space-y-2" role="alert">
-                    <p className="warning-text">{a.notVerified}</p>
-                    <p className="text-sm">
-                      {a.notVerifiedRisk}
-                    </p>
-                    {isLocalMock ? (
-                      <>
-                        <label className="field-label">{a.bindNullifier}<input aria-label={a.bindNullifier} placeholder="0x…" value={bindMockNullifier} onChange={(e) => setBindMockNullifier(e.target.value)} className="field-input" /></label>
-                        <label className="field-label">{a.bindProof}<input aria-label={a.bindProof} placeholder="0x01" value={bindMockProof} onChange={(e) => setBindMockProof(e.target.value)} className="field-input" /></label>
-                        <button className="button button-primary" disabled={!bindReady} title={bindReady ? undefined : a.bindInvalid} onClick={() => runOperation("bindPoH", [bindMockNullifier.trim(), bindMockProof.trim()], a.bindSuccess)}>{a.bindButton}</button>
-                      </>
-                    ) : verifierBound && address ? (
-                      <WorldIdButton subject={address} disabled={opsBusy} label={a.bindButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={(value) => runOperation("bindPoH", [value.nullifier, value.proof], a.bindSuccess)} />
-                    ) : <p className="form-warning" role="status">{a.verifierMissing}</p>}
-                  </div>
-                )}
-                {activeSubject && !deregistered && (
-                  <div className="callout space-y-2" role="status">
-                    <p className="text-sm">
-                      {a.externalIdentityTitle}{" "}
-                      {externalBound
-                        ? formatMessage(a.externalBound, {
-                            platform: externalIdentity?.[0] ?? "",
-                            externalId: externalIdentity?.[1] ?? "",
-                            level: Number(externalLevel ?? 0) + 1,
-                          })
-                        : a.externalUnbound}
-                    </p>
-                    {!externalBound && (
-                      <>
-                        <p className="text-sm">{a.externalIdentityHelp}</p>
-                        <label className="field-label">{a.externalPlatform}<input aria-label={a.externalPlatform} placeholder="dify / coze / openai / a2a / mcp / erc8004" value={bindPlatform} onChange={(e) => setBindPlatform(e.target.value)} className="field-input" /></label>
-                        <label className="field-label">{a.externalAgentIdLabel}<input aria-label={a.externalAgentIdLabel} placeholder="app-123" value={bindExternalId} onChange={(e) => setBindExternalId(e.target.value)} className="field-input" /></label>
-                        <button
-                          className="button button-secondary"
-                          disabled={!externalBindReady}
-                          title={externalBindReady ? undefined : a.externalBindInvalid}
-                          onClick={() => ownAgentId !== undefined && runOperation("bindExternalIdentity", [ownAgentId, bindPlatform.trim(), bindExternalId.trim()], a.externalBindSuccess)}
-                        >
-                          {a.externalBindButton}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
-                {!deregistered && (
-                  <div className="action-row">
-                    <button
-                      className="button button-secondary"
-                      disabled={!deregisterReady}
-                      title={deregisterReady ? undefined : (hasLiveRecovery ? a.recoveryBlocks : (obligationReason ?? a.conditions))}
-                      onClick={() => runOperation("deregister", [], a.deregisterSuccess)}
-                    >
-                      {a.deregister}
-                    </button>
-                  </div>
-                )}
-                {!deregisterReady && activeSubject && !deregistered && (
-                  <p className="form-warning" role="status">
-                    {hasLiveRecovery ? a.recoveryDeregisterBlock : (obligationReason ?? a.walletCheck)}
-                  </p>
-                )}
-                {Number(pendingBalance ?? 0) > 0 && (
-                  <div className="action-row">
-                    <button
-                      className="button button-primary"
-                      disabled={!WRITES_ENABLED || opsBusy}
-                      onClick={() => runOperation("withdraw", [address], a.withdrawSuccess)}
-                    >
-                      {a.withdrawDeposit}
-                    </button>
-                  </div>
-                )}
-                <TransactionStatus feedback={operationsFeedback} />
-              </div>
-
-              <div className="card space-y-3">
-                <h2 className="card-title">{a.recovery}</h2>
-                {hasLiveRecovery ? (
-                  <div className="callout space-y-2">
-                    <p className="text-sm">
-                      {formatMessage(a.recoveryLive, {
-                        wallet: shortAddress(ownRecoveryView?.[0] ?? ""),
-                        approvals: String(ownRecoveryView?.[5] ?? 0),
-                        required: recoveryRequiredApprovals,
-                        path: ownRecoveryView?.[6] === 0 ? a.samePersonPath : a.guardianPath,
-                        date: new Date(Number(ownRecoveryView?.[2] ?? 0) * 1000).toLocaleString(locale),
-                      })}
-                    </p>
-                    <p className="form-hint">{formatMessage(a.vetoWarning, { hours: recoveryWindowHours })}</p>
-                    <button
-                      className="button button-warning"
-                      disabled={!WRITES_ENABLED || opsBusy}
-                      onClick={() => runOperation("vetoRecovery", [address], a.vetoSuccess)}
-                    >
-                      {a.veto}
-                    </button>
-                  </div>
-                ) : (
-                  <p className="form-hint">
-                    {a.noRecovery}
-                  </p>
-                )}
+                <input aria-label={a.name} placeholder={a.name} value={name} onChange={(e) => setName(e.target.value)}
+                  className="field-input" />
+                <input aria-label={a.description} placeholder={a.description} value={desc} onChange={(e) => setDesc(e.target.value)}
+                  className="field-input" />
+                <input aria-label={a.endpoint} placeholder={a.endpoint} value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
+                  className="field-input" />
+                {/* 端点是注册时卡得最多的字段（要填什么？怎么暴露？），直接给教程入口 */}
+                <p className="form-hint"><a href={mcpGuideUrl(locale)} target="_blank" rel="noopener noreferrer">{a.endpointGuide}</a></p>
                 <label className="field-label">
-                  {a.approveHelp}
-                  <input aria-label={a.protectedAddress} placeholder="0x…" value={recoverySubject} onChange={(e) => setRecoverySubject(e.target.value)} className="field-input" />
+                  {a.guardian1}
+                  <input aria-label={a.guardian1Aria} placeholder="0x…" value={guardian1} onChange={(e) => setGuardian1(e.target.value)} className="field-input" />
                 </label>
+                <label className="field-label">
+                  {a.guardian2}
+                  <input aria-label={a.guardian2} placeholder="0x…" value={guardian2} onChange={(e) => setGuardian2(e.target.value)} className="field-input" />
+                </label>
+                <label className="field-label">
+                  {a.guardian3}
+                  <input aria-label={a.guardian3} placeholder={a.optionalAddress} value={guardian3} onChange={(e) => setGuardian3(e.target.value)} className="field-input" />
+                </label>
+                <details className="labs-card agent-labs">
+                  <summary>{t.auth.labs}</summary>
+                  <p className="form-hint">{t.auth.worldIdLabs}</p>
+                  <label className="field-checkbox">
+                    <input type="checkbox" aria-label={a.verifiedMode} checked={verifiedMode} onChange={(e) => setVerifiedMode(e.target.checked)} />
+                    {a.verifiedModeHelp}
+                  </label>
+                  {verifiedMode && address && (isLocalMock ? (
+                    <>
+                      <label className="field-label">{a.nullifier}<input aria-label={a.nullifierAria} placeholder="0x…" value={mockNullifier} onChange={(e) => setMockNullifier(e.target.value)} className="field-input" /></label>
+                      <label className="field-label">{a.proof}<input aria-label={a.proofAria} placeholder="0x01" value={mockProof} onChange={(e) => setMockProof(e.target.value)} className="field-input" /></label>
+                    </>
+                  ) : verifierBound ? (
+                    <WorldIdButton subject={address} disabled={busy} label={a.worldIdButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={setAttestation} />
+                  ) : <p className="form-warning" role="status">{a.verifierMissing}</p>)}
+                </details>
+                <p className="form-hint">
+                  {a.depositHelp}
+                </p>
                 <button
-                  className="button button-secondary"
-                  disabled={!WRITES_ENABLED || opsBusy || !recoverySubjectValid}
-                  onClick={() => runOperation("approveRecovery", [recoverySubject.trim()], a.approveSuccess)}
+                  onClick={register}
+                  disabled={!readiness.ready}
+                  title={readiness.ready ? undefined : readiness.reason}
+                  className="button button-primary"
                 >
-                  {a.approve}
+                  {busy
+                    ? a.registering
+                    : depositData === undefined
+                      ? t.common.loading
+                      : formatMessage(a.registerDeposit, { amount: verifiedMode ? depositEth : plainDepositEth })}
                 </button>
+                {!readiness.ready && readiness.code !== "invalid-input" && (
+                  <p className="form-warning" role="status">{readiness.reason}</p>
+                )}
               </div>
-            </div>
-          )}
+            )}
 
-          <TransactionStatus feedback={registrationFeedback} successLabel={successLabel} />
+            {activeSubject && (
+              <div className="space-y-3">
+                <div className="card space-y-3">
+                  <h2 className="card-title">{a.identity}</h2>
+                  <p className="text-sm">
+                    {a.status} {deregistered ? <strong className="warning-text">{a.deregistered}</strong> : <strong>{a.active}</strong>} ·{" "}
+                    {a.poh} {poHVerified ? <strong>{a.verified}</strong> : <strong className="warning-text">{a.unverified}</strong>} ·{" "}
+                    {a.lockedDeposit} <strong>{lockedDeposit === undefined ? "—" : `${formatEther(lockedDeposit)} ETH`}</strong> ·{" "}
+                    {a.pending} <strong>{pendingBalance === undefined ? "—" : `${formatEther(pendingBalance)} ETH`}</strong>
+                  </p>
+                  {activeSubject && !deregistered && poHVerified === false && (
+                    <div className="callout space-y-2" role="alert">
+                      <p className="warning-text">{a.notVerified}</p>
+                      <p className="text-sm">
+                        {a.notVerifiedRisk}
+                      </p>
+                      {isLocalMock ? (
+                        <>
+                          <label className="field-label">{a.bindNullifier}<input aria-label={a.bindNullifier} placeholder="0x…" value={bindMockNullifier} onChange={(e) => setBindMockNullifier(e.target.value)} className="field-input" /></label>
+                          <label className="field-label">{a.bindProof}<input aria-label={a.bindProof} placeholder="0x01" value={bindMockProof} onChange={(e) => setBindMockProof(e.target.value)} className="field-input" /></label>
+                          <button className="button button-primary" disabled={!bindReady} title={bindReady ? undefined : a.bindInvalid} onClick={() => runOperation("bindPoH", [bindMockNullifier.trim(), bindMockProof.trim()], a.bindSuccess)}>{a.bindButton}</button>
+                        </>
+                      ) : verifierBound && address ? (
+                        <WorldIdButton subject={address} disabled={opsBusy} label={a.bindButton} loadingLabel={a.worldIdLoading} errorLabel={a.worldIdError} onAttestation={(value) => runOperation("bindPoH", [value.nullifier, value.proof], a.bindSuccess)} />
+                      ) : <p className="form-warning" role="status">{a.verifierMissing}</p>}
+                    </div>
+                  )}
+                  {activeSubject && !deregistered && (
+                    <div className="callout space-y-2" role="status">
+                      <p className="text-sm">
+                        {a.externalIdentityTitle}{" "}
+                        {externalBound
+                          ? formatMessage(a.externalBound, {
+                              platform: externalIdentity?.[0] ?? "",
+                              externalId: externalIdentity?.[1] ?? "",
+                              level: Number(externalLevel ?? 0) + 1,
+                            })
+                          : a.externalUnbound}
+                      </p>
+                      {!externalBound && (
+                        <>
+                          <p className="text-sm">{a.externalIdentityHelp}</p>
+                          <label className="field-label">{a.externalPlatform}<input aria-label={a.externalPlatform} placeholder="dify / coze / openai / a2a / mcp / erc8004" value={bindPlatform} onChange={(e) => setBindPlatform(e.target.value)} className="field-input" /></label>
+                          <label className="field-label">{a.externalAgentIdLabel}<input aria-label={a.externalAgentIdLabel} placeholder="app-123" value={bindExternalId} onChange={(e) => setBindExternalId(e.target.value)} className="field-input" /></label>
+                          <button
+                            className="button button-secondary"
+                            disabled={!externalBindReady}
+                            title={externalBindReady ? undefined : a.externalBindInvalid}
+                            onClick={() => ownAgentId !== undefined && runOperation("bindExternalIdentity", [ownAgentId, bindPlatform.trim(), bindExternalId.trim()], a.externalBindSuccess)}
+                          >
+                            {a.externalBindButton}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {!deregistered && (
+                    <div className="action-row">
+                      <button
+                        className="button button-secondary"
+                        disabled={!deregisterReady}
+                        title={deregisterReady ? undefined : (hasLiveRecovery ? a.recoveryBlocks : (obligationReason ?? a.conditions))}
+                        onClick={() => runOperation("deregister", [], a.deregisterSuccess)}
+                      >
+                        {a.deregister}
+                      </button>
+                    </div>
+                  )}
+                  {!deregisterReady && activeSubject && !deregistered && (
+                    <p className="form-warning" role="status">
+                      {hasLiveRecovery ? a.recoveryDeregisterBlock : (obligationReason ?? a.walletCheck)}
+                    </p>
+                  )}
+                  {Number(pendingBalance ?? 0) > 0 && (
+                    <div className="action-row">
+                      <button
+                        className="button button-primary"
+                        disabled={!WRITES_ENABLED || opsBusy}
+                        onClick={() => runOperation("withdraw", [address], a.withdrawSuccess)}
+                      >
+                        {a.withdrawDeposit}
+                      </button>
+                    </div>
+                  )}
+                  <TransactionStatus feedback={operationsFeedback} />
+                </div>
 
-          <h2 className="section-title mt-8 mb-2">{formatMessage(a.registeredAgents, { count: String(agentCount ?? 0) })}</h2>
-          {count === 0 ? (
-            <p className="form-hint">{a.noAgents}</p>
-          ) : (
-            <ul className="agent-list space-y-2">
-              {agentList?.map((item, i) => {
-                const agent = item?.status === "success" ? (item.result as unknown as AgentMetadata) : undefined;
-                return (
-                  <li key={i} className="list-row text-sm break-all">
-                    <span className="font-semibold">#{i}</span>
-                    {agent ? (
-                      <> · {agent[0]} ({agent[1]}) · {agent[2]} · {agent[3]}</>
-                    ) : (
-                      <> · {t.common.failedToLoad}</>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </>
-      )}
-      <WalletPicker open={walletPickerOpen} onClose={() => setWalletPickerOpen(false)} />
-    </main>
+                <div className="card space-y-3">
+                  <h2 className="card-title">{a.recovery}</h2>
+                  {hasLiveRecovery ? (
+                    <div className="callout space-y-2">
+                      <p className="text-sm">
+                        {formatMessage(a.recoveryLive, {
+                          wallet: shortAddress(ownRecoveryView?.[0] ?? ""),
+                          approvals: String(ownRecoveryView?.[5] ?? 0),
+                          required: recoveryRequiredApprovals,
+                          path: ownRecoveryView?.[6] === 0 ? a.samePersonPath : a.guardianPath,
+                          date: new Date(Number(ownRecoveryView?.[2] ?? 0) * 1000).toLocaleString(locale),
+                        })}
+                      </p>
+                      <p className="form-hint">{formatMessage(a.vetoWarning, { hours: recoveryWindowHours })}</p>
+                      <button
+                        className="button button-warning"
+                        disabled={!WRITES_ENABLED || opsBusy}
+                        onClick={() => runOperation("vetoRecovery", [address], a.vetoSuccess)}
+                      >
+                        {a.veto}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="form-hint">
+                      {a.noRecovery}
+                    </p>
+                  )}
+                  <label className="field-label">
+                    {a.approveHelp}
+                    <input aria-label={a.protectedAddress} placeholder="0x…" value={recoverySubject} onChange={(e) => setRecoverySubject(e.target.value)} className="field-input" />
+                  </label>
+                  <button
+                    className="button button-secondary"
+                    disabled={!WRITES_ENABLED || opsBusy || !recoverySubjectValid}
+                    onClick={() => runOperation("approveRecovery", [recoverySubject.trim()], a.approveSuccess)}
+                  >
+                    {a.approve}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <TransactionStatus feedback={registrationFeedback} successLabel={successLabel} />
+
+            <h2 className="section-title mt-8 mb-2">{formatMessage(a.registeredAgents, { count: String(agentCount ?? 0) })}</h2>
+            {count === 0 ? (
+              <p className="form-hint">{a.noAgents}</p>
+            ) : (
+              <ul className="agent-list space-y-2">
+                {agentList?.map((item, i) => {
+                  const agent = item?.status === "success" ? (item.result as unknown as AgentMetadata) : undefined;
+                  return (
+                    <li key={i} className="list-row text-sm break-all">
+                      <span className="font-semibold">#{i}</span>
+                      {agent ? (
+                        <> · {agent[0]} ({agent[1]}) · {agent[2]} · {agent[3]}</>
+                      ) : (
+                        <> · {t.common.failedToLoad}</>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        )}
+        <WalletPicker open={walletPickerOpen} onClose={() => setWalletPickerOpen(false)} />
+      </main>
+    </>
   );
 }

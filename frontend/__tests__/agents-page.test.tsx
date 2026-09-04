@@ -228,4 +228,19 @@ describe("AgentsPage", () => {
     expect(screen.getByText("Wallet in use")).toBeInTheDocument();
     expect(screen.getByText("Rabby · 0x1111…1111")).toBeInTheDocument();
   });
+
+  it("keeps the ambient background outside the animated .page box", () => {
+    const { container } = render(<AgentsPage />);
+
+    const page = container.querySelector("main.page");
+    const ambient = container.querySelector(".ambient-bg");
+    expect(page).not.toBeNull();
+    expect(ambient).not.toBeNull();
+
+    // 回归防线：.page 带 page-enter 入场动画，末帧 transform 因 fill-mode:both 保留下来，
+    // 会把内部 position:fixed 的包含块拽成 .page 自身（46rem 窄框），背景只剩中间一条。
+    // 背景必须当 .page 的兄弟节点，而不是塞在它里面。
+    expect(container.querySelector(".page .ambient-bg")).toBeNull();
+    expect(ambient?.parentElement).toBe(page?.parentElement);
+  });
 });
