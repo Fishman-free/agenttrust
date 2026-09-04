@@ -71,13 +71,13 @@ describe("Home", () => {
   it("links first-time visitors to the trusted-trading guide", () => {
     render(<Home />);
 
-    expect(screen.getByRole("link", { name: /Beginner's guide/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Quick start/ })).toHaveAttribute(
       "href",
       "https://github.com/Fishman-free/multiagent/blob/main/docs/guides/trusted-trading.md",
     );
   });
 
-  it("shows both beginner tutorials as guide rows", () => {
+  it("shows both starter tutorials as guide rows", () => {
     render(<Home />);
 
     expect(screen.getByRole("heading", { name: /Start from zero/ })).toBeInTheDocument();
