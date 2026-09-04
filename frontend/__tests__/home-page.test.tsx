@@ -50,6 +50,24 @@ describe("Home", () => {
     expect(videoSrc.endsWith("/media/hero-loop.mp4")).toBe(true);
   });
 
+  it("replicates the ambient background into every landing section", () => {
+    const { container } = render(<Home />);
+
+    // 四份背景复刻分别落在首屏 / 模块区 / 教程区 / 叙事区
+    for (const section of [".home-hero-stage", ".home-capabilities", ".home-guides", ".home-story"]) {
+      expect(container.querySelector(`${section} .ambient-echo`), section).not.toBeNull();
+    }
+    expect(container.querySelectorAll(".ambient-echo")).toHaveLength(4);
+
+    // 复刻层纯装饰，不接交互
+    for (const echo of Array.from(container.querySelectorAll(".ambient-echo"))) {
+      expect(echo).toHaveAttribute("aria-hidden", "true");
+    }
+
+    // 视频仍然只有一份：其余区块用 CSS 复刻，避免多路解码拖垮低端机
+    expect(container.querySelectorAll("video")).toHaveLength(1);
+  });
+
   it("links first-time visitors to the trusted-trading guide", () => {
     render(<Home />);
 

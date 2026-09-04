@@ -9,6 +9,7 @@ import { formatMessage, useLocale } from "../lib/locale";
 import { AmbientBackground } from "./components/ambient-background";
 import { FeedbackSheet } from "./components/feedback-sheet";
 import { LanguageSwitch } from "./components/language-switch";
+import { useScrollReveal } from "./components/scroll-reveal";
 
 function Logo() {
   return <span className="home-logo"><svg width="24" height="24" viewBox="0 0 22 22" fill="none" aria-hidden="true"><rect x="4" y="1" width="11" height="18" rx="3.2" fill="currentColor" transform="rotate(-35 9.5 10)" /><rect x="9" y="4" width="11" height="18" rx="3.2" fill="currentColor" transform="rotate(-35 14.5 13)" /></svg><span>AgentTrust</span></span>;
@@ -18,6 +19,8 @@ export default function Home() {
   const { locale, dictionary: t } = useLocale();
   const previewMode = !WRITES_ENABLED;
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // 滚动渐显：首屏沿用 home-anim-d* 编排，折叠线以下的区块交给 IntersectionObserver 逐段淡入
+  useScrollReveal();
   const capabilities = [
     { href: "/agents", icon: Fingerprint, eyebrow: t.home.identityEyebrow, title: t.home.capabilityIdentity, description: t.home.capabilityIdentityDesc },
     { href: "/trade", icon: ShieldCheck, eyebrow: t.home.escrowEyebrow, title: t.home.capabilityEscrow, description: t.home.capabilityEscrowDesc },
@@ -46,7 +49,9 @@ export default function Home() {
     <FeedbackSheet open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     {previewMode && <div className="home-preview" role="status"><div className="home-container home-preview-inner"><span>{t.home.preview}</span><p>{formatMessage(t.home.previewMessage, { chain: activeChain.name })}</p></div></div>}
     {/* 首屏：满屏 hero（标题 / 副标题 / CTA / 协议指标）。视频已在页面根部 fixed 铺满。 */}
-    <section className="home-hero-stage" aria-labelledby="home-title">
+    <section className="home-hero-stage home-section" aria-labelledby="home-title">
+      {/* 背景复刻 1/4：首屏光晕铺在页面根部的视频层之上 */}
+      <AmbientBackground variant="echo" tone={1} />
       <div className="home-hero-inner">
         {/* 信任行：钱包 / 智能体 / 裁决三枚交叠圆环 + 对齐标识。纯装饰，图标不给文字名。 */}
         <div className="home-trust home-anim-d0" aria-hidden="true">
@@ -65,15 +70,15 @@ export default function Home() {
         <dl className="home-stats home-anim-d4" aria-label={t.home.overview}>{stats.map(({ value, label }) => <div key={label}><dt>{value}</dt><dd>{label}</dd></div>)}</dl>
       </div>
     </section>
-    <section className="home-capabilities" aria-labelledby="capabilities-title"><div className="home-container"><div className="home-section-heading"><div><span>{t.home.protocolModules}</span><h2 id="capabilities-title">{t.home.modulesTitle}</h2></div><p>{t.home.modulesHint}</p></div><div className="capability-grid">{capabilities.map(({ href, icon: Icon, eyebrow, title, description }) => <Link href={href} className="capability-card" key={href}><div className="capability-card-top"><span className="capability-icon"><Icon size={19} aria-hidden="true" /></span><ArrowUpRight className="capability-arrow" size={18} aria-hidden="true" /></div><span className="capability-eyebrow">{eyebrow}</span><h3>{title}</h3><p>{description}</p></Link>)}</div></div></section>
+    <section className="home-capabilities home-section" aria-labelledby="capabilities-title">{/* 背景复刻 2/4：模块区光晕偏右，与首屏错开位置 */}<AmbientBackground variant="echo" tone={2} /><div className="home-container"><div className="home-section-heading" data-reveal><div><span>{t.home.protocolModules}</span><h2 id="capabilities-title">{t.home.modulesTitle}</h2></div><p>{t.home.modulesHint}</p></div><div className="capability-grid">{capabilities.map(({ href, icon: Icon, eyebrow, title, description }) => <Link href={href} className="capability-card" key={href} data-reveal><div className="capability-card-top"><span className="capability-icon"><Icon size={19} aria-hidden="true" /></span><ArrowUpRight className="capability-arrow" size={18} aria-hidden="true" /></div><span className="capability-eyebrow">{eyebrow}</span><h3>{title}</h3><p>{description}</p></Link>)}</div></div></section>
     {/* 新手教程区：两条行式链接（无卡片框），直达 GitHub 上的两份教程 */}
-    <section className="home-guides" aria-labelledby="guides-title"><div className="home-container"><div className="home-section-heading"><div><span>{t.home.guidesEyebrow}</span><h2 id="guides-title">{t.home.guidesTitle}</h2></div></div><a className="guide-row" href={mcpGuideUrl(locale)} target="_blank" rel="noopener noreferrer"><span className="guide-icon"><BookOpen size={20} aria-hidden="true" /></span><span className="guide-copy"><h3>{t.home.guideMcpTitle}</h3><p>{t.home.guideMcpDesc}</p></span><ArrowUpRight className="guide-arrow" size={20} aria-hidden="true" /></a><a className="guide-row" href={tradingGuideUrl(locale)} target="_blank" rel="noopener noreferrer"><span className="guide-icon"><GraduationCap size={20} aria-hidden="true" /></span><span className="guide-copy"><h3>{t.home.guideTradingTitle}</h3><p>{t.home.guideTradingDesc}</p></span><ArrowUpRight className="guide-arrow" size={20} aria-hidden="true" /></a></div></section>
-    <section className="home-story"><div className="home-container">
-      <div className="story-heading"><span>{t.home.flowEyebrow}</span><h2>{t.home.flowTitle}</h2></div>
-      <ol className="flow-list">{t.home.flowSteps.map((step, index) => <li key={step}><span>{String(index + 1).padStart(2, "0")}</span><strong>{step}</strong></li>)}</ol>
-      <div className="story-grid"><article><span>{t.home.rolesEyebrow}</span><h2>{t.home.rolesTitle}</h2><ul>{t.home.roles.map((role) => <li key={role}>{role}</li>)}</ul></article><article><span>{t.home.levelsEyebrow}</span><h2>{t.home.levelsTitle}</h2><ul>{t.home.levels.map((level) => <li key={level}>{level}</li>)}</ul></article></div>
-      <article className="recovery-panel"><span>{t.home.recoveryEyebrow}</span><h2>{t.home.recoveryTitle}</h2><p>{t.home.recoveryBody}</p></article>
-      <aside className="testnet-warning" role="note"><ShieldCheck size={22} aria-hidden="true" /><div><strong>{t.home.testnetTitle}</strong><p>{t.home.testnetBody}</p></div></aside>
+    <section className="home-guides home-section" aria-labelledby="guides-title">{/* 背景复刻 3/4：教程区光晕偏左，压住行式链接的底 */}<AmbientBackground variant="echo" tone={3} /><div className="home-container"><div className="home-section-heading" data-reveal><div><span>{t.home.guidesEyebrow}</span><h2 id="guides-title">{t.home.guidesTitle}</h2></div></div><a className="guide-row" data-reveal href={mcpGuideUrl(locale)} target="_blank" rel="noopener noreferrer"><span className="guide-icon"><BookOpen size={20} aria-hidden="true" /></span><span className="guide-copy"><h3>{t.home.guideMcpTitle}</h3><p>{t.home.guideMcpDesc}</p></span><ArrowUpRight className="guide-arrow" size={20} aria-hidden="true" /></a><a className="guide-row" data-reveal href={tradingGuideUrl(locale)} target="_blank" rel="noopener noreferrer"><span className="guide-icon"><GraduationCap size={20} aria-hidden="true" /></span><span className="guide-copy"><h3>{t.home.guideTradingTitle}</h3><p>{t.home.guideTradingDesc}</p></span><ArrowUpRight className="guide-arrow" size={20} aria-hidden="true" /></a></div></section>
+    <section className="home-story home-section">{/* 背景复刻 4/4：叙事区光晕居中偏下，收住整页尾段 */}<AmbientBackground variant="echo" tone={4} /><div className="home-container">
+      <div className="story-heading" data-reveal><span>{t.home.flowEyebrow}</span><h2>{t.home.flowTitle}</h2></div>
+      <ol className="flow-list">{t.home.flowSteps.map((step, index) => <li key={step} data-reveal><span>{String(index + 1).padStart(2, "0")}</span><strong>{step}</strong></li>)}</ol>
+      <div className="story-grid"><article data-reveal><span>{t.home.rolesEyebrow}</span><h2>{t.home.rolesTitle}</h2><ul>{t.home.roles.map((role) => <li key={role}>{role}</li>)}</ul></article><article data-reveal><span>{t.home.levelsEyebrow}</span><h2>{t.home.levelsTitle}</h2><ul>{t.home.levels.map((level) => <li key={level}>{level}</li>)}</ul></article></div>
+      <article className="recovery-panel" data-reveal><span>{t.home.recoveryEyebrow}</span><h2>{t.home.recoveryTitle}</h2><p>{t.home.recoveryBody}</p></article>
+      <aside className="testnet-warning" role="note" data-reveal><ShieldCheck size={22} aria-hidden="true" /><div><strong>{t.home.testnetTitle}</strong><p>{t.home.testnetBody}</p></div></aside>
     </div></section>
   </main>;
 }

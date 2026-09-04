@@ -5,7 +5,7 @@ export const REPO_URL = "https://github.com/Fishman-free/multiagent";
 export const DOCS_URL = `${REPO_URL}/blob/main/docs/USAGE.md`;
 export const DOCS_ZH_CN_URL = `${REPO_URL}/blob/main/docs/USAGE.zh-CN.md`;
 
-// 面向小白的操作教程（docs/guides/，与本仓库同库维护）。
+// 从零上手的操作教程（docs/guides/，与本仓库同库维护）。
 // 中文版是主版本；英文版为同一份步骤的英文对照。
 export const GUIDE_MCP_ZH_CN_URL = `${REPO_URL}/blob/main/docs/guides/mcp-a2a-endpoints.zh-CN.md`;
 export const GUIDE_MCP_URL = `${REPO_URL}/blob/main/docs/guides/mcp-a2a-endpoints.md`;

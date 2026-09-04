@@ -441,18 +441,63 @@ section, li, main > div.border { border-color: var(--border); background: var(--
   object-fit: cover;
   pointer-events: none;
 }
-/* 落地页遮罩：顶部保视频可见度，向下渐深保正文对比度 */
+/* 落地页遮罩：顶部保视频可见度，向下渐深保正文对比度。
+   区块底已改透明（见 .home-main section），所以遮罩底部不能压到接近全黑，
+   否则滚到下半页时视频完全看不见，背景"消失"。 */
 .ambient-scrim {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(62rem 36rem at 50% 30%, rgba(6, 7, 11, 0.2), rgba(6, 7, 11, 0.68) 78%),
-    linear-gradient(to bottom, rgba(6, 7, 11, 0.58), rgba(6, 7, 11, 0.3) 26%, rgba(6, 7, 11, 0.72) 62%, rgba(6, 7, 11, 0.92) 100%);
+    radial-gradient(62rem 36rem at 50% 30%, rgba(6, 7, 11, 0.2), rgba(6, 7, 11, 0.6) 78%),
+    linear-gradient(to bottom, rgba(6, 7, 11, 0.58), rgba(6, 7, 11, 0.28) 26%, rgba(6, 7, 11, 0.6) 62%, rgba(6, 7, 11, 0.78) 100%);
 }
 /* 表单页（注册/登录）遮罩整体加深：优先保证输入文字对比度 */
 .ambient-bg-intense .ambient-scrim {
   background: linear-gradient(to bottom, rgba(6, 7, 11, 0.88), rgba(6, 7, 11, 0.84) 40%, rgba(6, 7, 11, 0.94) 100%);
 }
+/* 极淡噪点：给纯渐变/视频加一层胶片颗粒，避免大面积渐变出现色带（banding） */
+.ambient-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.055;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/* ---- 背景复刻层：落地页四个区块各一份，铺在唯一的 fixed 视频之上 ----
+   复刻的是同一套氛围语言：品牌光晕 + 竖向渐变 + 细网格。
+   只解码一份视频（.ambient-bg），其余区块用纯 CSS 复刻，低端机不会多路解码掉帧。 */
+.ambient-echo {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(38rem 26rem at var(--echo-x) var(--echo-y), color-mix(in srgb, var(--accent) 16%, transparent), transparent 72%),
+    linear-gradient(180deg, rgba(6, 7, 11, 0.5), rgba(6, 7, 11, 0.14) 34%, rgba(6, 7, 11, 0.52));
+}
+/* 细网格：协议感，只在光晕附近可见（用遮罩把边缘吃掉，避免整块方格压内容） */
+.ambient-echo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--foreground) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--foreground) 5%, transparent) 1px, transparent 1px);
+  background-size: 4.5rem 4.5rem;
+  -webkit-mask-image: radial-gradient(58% 58% at var(--echo-x) var(--echo-y), #000 0%, transparent 76%);
+  mask-image: radial-gradient(58% 58% at var(--echo-x) var(--echo-y), #000 0%, transparent 76%);
+}
+.ambient-echo-1 { --echo-x: 22%; --echo-y: 26%; }
+.ambient-echo-2 { --echo-x: 84%; --echo-y: 16%; }
+.ambient-echo-3 { --echo-x: 12%; --echo-y: 30%; }
+.ambient-echo-4 { --echo-x: 62%; --echo-y: 62%; }
+
+/* 落地页区块：定位上下文 + 独立层叠上下文，让复刻层的 z-index:-1 落在区块内容之后、
+   区块自身背景之前；同时取消第 93 行全局兜底刷的不透明底色，让视频透上来。 */
+.home-section { position: relative; isolation: isolate; }
+.home-main section, .home-main li { background: transparent; }
 
 .home-container {
   width: min(72rem, calc(100% - 2rem));
@@ -817,6 +862,15 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 .home-button-secondary { background: rgba(16, 18, 25, 0.62); color: var(--foreground); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
 .home-button-secondary:hover { border-color: var(--accent); color: var(--accent); }
 
+/* 首页大字号统一 hero 展示字体（Doto 点阵，中文回退 Noto Serif SC）：
+   h1/h2/h3、统计数字与流程步骤都走 display，正文小字继续用 sans 保证长句可读性。 */
+.home-lead-hero,
+.flow-list strong,
+.testnet-warning strong {
+  font-family: var(--font-display);
+  letter-spacing: 0.005em;
+}
+
 .home-capabilities { border-top: 1px solid var(--hairline); }
 .home-capabilities .home-container { padding-block: clamp(2.5rem, 5vw, 4rem); }
 .home-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 1.5rem; }
@@ -878,6 +932,25 @@ section, li, main > div.border { border-color: var(--border); background: var(--
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ---- 滚动渐显（Apple 式：进入视口后错峰淡入）----
+   隐藏样式只在 <html data-reveal-armed> 下生效，这个标记由 layout.tsx 的内联脚本
+   在首屏绘制前同步打上；JS 不可用或脚本没跑到时内容保持默认可见，不会白屏。 */
+[data-reveal-armed] [data-reveal] {
+  opacity: 0;
+  transform: translate3d(0, 1.35rem, 0);
+  filter: blur(6px);
+}
+[data-reveal-armed] [data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+  filter: blur(0);
+  transition:
+    opacity 900ms var(--ease-out),
+    transform 900ms var(--ease-out),
+    filter 900ms var(--ease-out);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
 @media (max-width: 900px) {
   .capability-card { padding: 1.6rem 1.4rem 1.8rem; }
 }
@@ -920,6 +993,9 @@ section, li, main > div.border { border-color: var(--border); background: var(--
   .button, .nav-link, .field-input, .footer-links a, .login-social { transition: none; }
   .home-button:active, .button:active:not(:disabled) { transform: none; }
   .login-social:active:not(:disabled) { transform: none; }
+  /* 渐显退化：直接可见，不做位移与模糊（JS 侧也会跳过观察器） */
+  [data-reveal-armed] [data-reveal] { opacity: 1; transform: none; filter: none; }
+  .ambient-grain { display: none; }
 }
 
 /* Authentication and long-form product story */
