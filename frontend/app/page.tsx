@@ -7,6 +7,7 @@ import { activeChain, WRITES_ENABLED } from "../lib/config";
 import { docsUrl, mcpGuideUrl, tradingGuideUrl } from "../lib/docs";
 import { formatMessage, useLocale } from "../lib/locale";
 import { AmbientBackground } from "./components/ambient-background";
+import { CursorSpotlight } from "./components/cursor-spotlight";
 import { FeedbackSheet } from "./components/feedback-sheet";
 import { LanguageSwitch } from "./components/language-switch";
 import { useScrollReveal } from "./components/scroll-reveal";
@@ -40,6 +41,8 @@ export default function Home() {
   return <main className="home-main">
     {/* 全页氛围背景：视频 fixed 铺满整页（不只是首屏），下方内容直接压在视频+遮罩上 */}
     <AmbientBackground />
+    {/* 鼠标聚光灯：accent 蓝色径向渐变跟随指针。prefers-reduced-motion / 触屏自动跳过 */}
+    <CursorSpotlight />
     <header className="home-header"><div className="home-container home-topbar">
       <Link href="/" className="home-logo-link" aria-label={t.common.agentTrustHome}><Logo /></Link>
       <nav className="home-nav" aria-label={t.common.primaryNav}><Link href="/agents">{t.common.agents}</Link><Link href="/trade">{t.common.trade}</Link><Link href="/disputes">{t.common.disputes}</Link><Link href="/reputation">{t.common.reputation}</Link><a href={documentationUrl} target="_blank" rel="noopener noreferrer">{t.common.usageDocs}</a></nav>

@@ -443,6 +443,31 @@ section, li, main > div.border { border-color: var(--border); background: var(--
 /* 背景交给页面根部 fixed 的 .ambient-bg（视频+遮罩），main 自身保持透明 */
 .home-main {
   min-height: 100svh;
+
+/* 鼠标跟随聚光灯（仅 landing 用）：38rem 圆形 accent 蓝色径向渐变，
+   跟着指针 transform 平移。pointer-events:none 不挡任何交互；z-index 1 介于
+   内容 (z:auto) 与导航 (z:10) 之间，所以 nav 不会被它染色。
+   translate(-50%, -50%) 在 JS 里跟 translate3d(x, y, 0) 复合，让 div 中心落在鼠标位置。
+   prefers-reduced-motion / pointer:coarse(触屏) 整段跳过 —— JS 端已判、这里再加一道 CSS 兜底。 */
+.cursor-spotlight {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 38rem;
+  height: 38rem;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 11%, transparent) 0%,
+    transparent 62%
+  );
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce), (pointer: coarse) {
+  .cursor-spotlight { display: none; }
+}
   overflow: hidden;
 }
 

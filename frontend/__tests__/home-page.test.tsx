@@ -50,6 +50,26 @@ describe("Home", () => {
     expect(videoSrc.endsWith("/media/hero-loop.mp4")).toBe(true);
   });
 
+  it("renders the cursor-following spotlight as a non-interactive layer", () => {
+    const { container } = render(<Home />);
+
+    // 聚光灯必须存在（位置在 AmbientBackground 之后、header 之前）
+    const spot = container.querySelector(".cursor-spotlight");
+    expect(spot, ".cursor-spotlight").not.toBeNull();
+
+    // 纯装饰，不被 SR 读出来
+    expect(spot).toHaveAttribute("aria-hidden", "true");
+
+    // 位置契约：必须是 .home-main 的直接子节点，且排在 header 之前。
+    // 塞进任何 .home-section 会被 isolation:isolate 关进独立层叠上下文，聚光就只在区块内可见。
+    const main = container.querySelector("main.home-main");
+    expect(spot?.parentElement).toBe(main);
+    expect(main?.firstElementChild?.className).toContain("ambient-bg");
+
+    // 注意：pointer-events / position 都在 globals.css 里，jsdom 不加载外部样式表，
+    // 所以这里不断言计算样式 —— 那些由线上探针（页面滚全页截图）覆盖。
+  });
+
   it("replicates the ambient background into every landing section", () => {
     const { container } = render(<Home />);
 
