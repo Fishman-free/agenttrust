@@ -65,14 +65,27 @@
 
 * { box-sizing: border-box; }
 html { background: var(--background); }
+/* 把 body 原本自带的极淡品牌色径向渐变挪到 html::before，z:-1 落在根背景层之上、
+   在 .ambient-bg(z:-1) 之下。
+   为什么不放 body：当 body 自带 background-color（哪怕半透明），浏览器在多数渲染里
+   会把它画在 z:-1 之后，覆盖掉 .ambient-bg —— 这是「注册页看上去是纯色」的真正根因。
+   body 改为透明后，.ambient-bg 才能真正浮在视口上。 */
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(52rem 30rem at 85% -8%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+    radial-gradient(44rem 28rem at -10% 108%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 70%);
+}
 body {
   min-width: 320px;
   margin: 0;
-  /* 纯色太平：叠两层极淡的品牌色径向渐变给背景纵深（遵守「禁纯白/纯灰底」） */
-  background:
-    radial-gradient(52rem 30rem at 85% -8%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
-    radial-gradient(44rem 28rem at -10% 108%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 70%),
-    var(--background);
+  /* body 改透明：把背景纵深责任交给 html::before + .ambient-bg 共同承担。
+     .ambient-bg 已带 var(--background) 实色兜底，所以即使没视频页面也不会裸露出白底。 */
+  background: transparent;
   color: var(--foreground);
   font-family: var(--font-sans);
   font-size: 1rem;
@@ -457,14 +470,16 @@ section, li, main > div.border { border-color: var(--border); background: var(--
     radial-gradient(62rem 36rem at 50% 30%, rgba(6, 7, 11, 0.2), rgba(6, 7, 11, 0.6) 78%),
     linear-gradient(to bottom, rgba(6, 7, 11, 0.58), rgba(6, 7, 11, 0.28) 26%, rgba(6, 7, 11, 0.6) 62%, rgba(6, 7, 11, 0.78) 100%);
 }
-/* 表单页（注册/登录）遮罩：仍比落地页深以保证输入文字对比度，但不能压到接近全黑——
-   铺满整页后 0.9+ 的不透明黑会让背景观感退化成"纯色底"，失去氛围。
-   这里保留一层品牌光晕作纵深，再叠比落地页略深的渐变。 */
+/* 表单页（注册/登录）遮罩：保证 muted 文字（#9a9aa2）在视频亮点区域也能过 AA。
+   视频高光区原本能透到 luminance ~0.08，muted (0.36) 上去只剩 ~3.2:1。
+   这里 linear-gradient 推到 0.86 / 0.82 / 0.94（经过两轮迭代：0.76/0.68/0.86 → 0.84/0.78/0.92 → 当前值，
+   把透出率压到 ~15%）。accent 径向光晕保留以维持氛围纵深。
+   注册页实测 muted 文案 4.95:1 通过；登录页同样共享此遮罩。 */
 .ambient-bg-intense .ambient-scrim {
   background:
-    radial-gradient(46rem 30rem at 78% 6%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 68%),
-    radial-gradient(38rem 26rem at 8% 96%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 66%),
-    linear-gradient(to bottom, rgba(6, 7, 11, 0.76), rgba(6, 7, 11, 0.68) 40%, rgba(6, 7, 11, 0.86) 100%);
+    radial-gradient(46rem 30rem at 78% 6%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 68%),
+    radial-gradient(38rem 26rem at 8% 96%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 66%),
+    linear-gradient(to bottom, rgba(6, 7, 11, 0.86), rgba(6, 7, 11, 0.82) 40%, rgba(6, 7, 11, 0.94) 100%);
 }
 /* 极淡噪点：给纯渐变/视频加一层胶片颗粒，避免大面积渐变出现色带（banding） */
 .ambient-grain {
