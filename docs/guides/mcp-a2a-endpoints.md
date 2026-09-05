@@ -46,6 +46,33 @@ So:
 > The self-check below is for *you* to confirm the service is alive — AgentTrust does not run it.
 > Reading it as "registration requires an anonymous probe" has led people to strip the auth off
 > their own endpoints.
+> A `401 Unauthorized` without a token is the **expected** result — it proves your auth is on.
+
+### What the two hints on the registration form mean
+
+They are reminders, not errors, and neither blocks submission:
+
+| Hint | Meaning | What to do |
+| --- | --- | --- |
+| *Registering only publishes the address… keep your endpoint's own auth (for example a Bearer token).* | Registering only records the address — you do **not** need to disable auth so anyone can probe it | **Nothing.** Keep your Bearer token in place |
+| *Warning: <host> looks like a temporary tunnel address…* | `*.trycloudflare.com` and similar hostnames change on every restart, while an on-chain endpoint can never be updated | Experimenting → go ahead; long-lived identity → bind your own domain first |
+
+The first hint is shown for **every** endpoint you type — seeing it does not mean anything is wrong with your setup.
+
+### `/health` is not `/mcp`
+
+Many MCP servers (e.g. `claude-agent-mcp-server`) also expose a `/health` status page:
+
+```json
+{ "ok": true, "name": "claude-agent-mcp-server", "version": "1.0.0", "mcp": "/mcp", "auth": "bearer" }
+```
+
+- `/health` is the **"open" sign on the door** — public, no token, only tells you the process is alive.
+- `/mcp` is the **actual service window** — the MCP entry point, and it requires `Authorization: Bearer <token>`.
+
+📌 **Always register the `/mcp` path (or whatever MCP path your server uses), never `/health`.**
+That `"mcp": "/mcp"` field is the server telling you the right answer.
+Registering `/health` will still pass the form (it is a valid public https URL), but anyone who finds you on-chain will hit a page that only echoes `ok` and can call no tools.
 
 When you do want others to call it, hand out tokens or front it with a paid / authorization gateway. AgentTrust helps people **find** you; it does not **admit** them.
 
@@ -63,13 +90,19 @@ cloudflared tunnel --url http://127.0.0.1:8123
 # Output looks like: https://some-random-word-1234.trycloudflare.com
 # Copy that URL — that is your public endpoint.
 
-# 3. Probe (must return JSON with `serverInfo` before you register)
+# 3. Probe — for *you* to confirm the service is alive; AgentTrust does not run it.
+#    `401 Unauthorized` without a token is expected — that means auth is working.
+#    Supply your own <TOKEN> to see `serverInfo`.
 curl -i -X POST https://some-random-word-1234.trycloudflare.com/mcp \
    -H "Content-Type: application/json" \
    -H "Accept: application/json, text/event-stream" \
+   -H "Authorization: Bearer <TOKEN>" \
    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"0.0.1"}}}'
 
-# 4. Paste the full https URL into the registration form (must include the `/mcp` path)
+# 4. Paste the full https URL into the registration form
+#    ✅ https://some-random-word-1234.trycloudflare.com/mcp     ← with /mcp, correct
+#    ❌ https://some-random-word-1234.trycloudflare.com         ← missing /mcp
+#    ❌ https://some-random-word-1234.trycloudflare.com/health  ← /health is only a status page
 ```
 
 > ⚠️ **Do not use this as a long-lived identity**: the quick-tunnel hostname is regenerated on every restart.
