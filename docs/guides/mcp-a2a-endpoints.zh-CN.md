@@ -43,6 +43,33 @@ AgentTrust 注册时**只把端点地址写进链上目录**：
 
 > 有人把下面的自检命令误解成"注册必须先通过匿名探测"，于是拆掉了自家端点的鉴权。
 > 自检是**你自己确认服务活着**的手段，AgentTrust 不会跑它。
+> 不带 token 时自检返回 `401 Unauthorized` **才是正常的**——那正好证明鉴权生效了。
+
+### 注册页上那两条提示是什么意思
+
+填端点时，表单下方可能出现两行提示。它们都只是**提醒**，不会阻止你提交：
+
+| 提示 | 含义 | 你要做什么 |
+| --- | --- | --- |
+| *Registering only publishes the address… keep your endpoint's own auth (for example a Bearer token).* | 提示你：注册只是登记地址，**不必**为了让别人（或平台）探测而关掉鉴权 | **什么都不用做**。端点照常挂 Bearer token 就行 |
+| *Warning: <主机名> looks like a temporary tunnel address…* | 提示你：这个域名是临时隧道，`*.trycloudflare.com` 之类每次重启都会变，而链上端点永久不可改 | 只是试水 → 可以继续；要当长期身份 → 先绑自有域名 |
+
+看到第一条**不等于**你的配置有问题，它对所有填写的端点都会显示。
+
+### `/health` 和 `/mcp` 不是一回事
+
+很多 MCP 服务（比如 `claude-agent-mcp-server`）会额外开一个 `/health` 状态页。它的典型响应长这样：
+
+```json
+{ "ok": true, "name": "claude-agent-mcp-server", "version": "1.0.0", "mcp": "/mcp", "auth": "bearer" }
+```
+
+- `/health` 是**门口的营业状态牌**：公开的、不需要 token、只用来确认进程活着；
+- `/mcp` 才是**真正的服务窗口**：MCP 协议入口，要带 `Authorization: Bearer <token>`。
+
+📌 **注册时一律填 `/mcp`（或你服务端自己的 MCP 路径），不要填 `/health`。**
+上面那个响应里的 `"mcp": "/mcp"` 就是服务自己告诉你的正确答案。
+把 `/health` 填进去也不会被拦（格式是合法的 https 公网地址），但别人顺着链上找到的会是一个只会回 `ok` 的状态页，调不了任何工具。
 
 希望别人能调用时，让他们向你索取 token，或者接入付费/授权网关。
 AgentTrust 只负责让别人**找到**你，不负责**放行**。
@@ -61,13 +88,19 @@ cloudflared tunnel --url http://127.0.0.1:8123
 # 输出类似：https://some-random-word-1234.trycloudflare.com
 # 复制这个 URL —— 它就是你的公网端点
 
-# 3. 自检（必须返回带 serverInfo 的 JSON 才能注册）
+# 3. 自检（你自己确认服务活着用的，AgentTrust 不会跑它）
+#    不带 token 时返回 401 Unauthorized 是正常的 —— 说明鉴权在工作。
+#    想看到 serverInfo，就把 <TOKEN> 换成你自己的 token 再跑一遍。
 curl -i -X POST https://some-random-word-1234.trycloudflare.com/mcp \
    -H "Content-Type: application/json" \
    -H "Accept: application/json, text/event-stream" \
+   -H "Authorization: Bearer <TOKEN>" \
    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"0.0.1"}}}'
 
-# 4. 把这个 https URL 填进注册页（必须是 https://some-random-word-.../mcp 这种带 /mcp 后缀的完整路径）
+# 4. 把这个 https URL 填进注册页
+#    ✅ https://some-random-word-1234.trycloudflare.com/mcp     ← 带 /mcp，对的
+#    ❌ https://some-random-word-1234.trycloudflare.com         ← 少了 /mcp
+#    ❌ https://some-random-word-1234.trycloudflare.com/health  ← /health 只是状态页，不是服务入口
 ```
 
 > ⚠️ **别拿这个地址当长期身份**：quick tunnel 域名每次启动都会变。
