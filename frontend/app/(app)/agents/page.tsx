@@ -61,6 +61,32 @@ function isPublicEndpoint(value: string): boolean {
   return host.includes(".");
 }
 
+// 临时隧道服务：主机名每次重启都会重新生成。端点上链后没有 setter，
+// 拿这类地址注册等于铸造一个必然失效的身份，所以在表单里提醒一道。
+// 注意按**后缀**匹配而不是 includes：mcp.trycloudflare.example.com 这种只是域名里
+// 提到 trycloudflare，主机名其实稳定，不该误报。
+const EPHEMERAL_HOST_SUFFIXES = [
+  ".trycloudflare.com",
+  ".ngrok.io",
+  ".ngrok-free.app",
+  ".loca.lt",
+  ".serveo.net",
+  ".tunnelto.dev",
+  ".bore.pub",
+];
+
+function ephemeralHostOf(value: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") return null;
+  const host = url.hostname.toLowerCase();
+  return EPHEMERAL_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix)) ? host : null;
+}
+
 function shortAddress(value: string) {
   return value ? `${value.slice(0, 6)}…${value.slice(-4)}` : "—";
 }
@@ -257,6 +283,8 @@ export default function AgentsPage() {
 
   // 空着交给 completeInfo 提示；填了但不合法才报端点错误。
   const endpointError = endpoint.trim() !== "" && !isPublicEndpoint(endpoint) ? a.endpointInvalid : undefined;
+  // 临时隧道地址：只警告、不拦截。试水场景确实存在，但必须让人知道这个地址会变。
+  const ephemeralHost = endpoint.trim() !== "" ? ephemeralHostOf(endpoint) : null;
   const verifiedNullifier = isLocalMock ? mockNullifier.trim() : attestation?.nullifier;
   const verifiedProof = isLocalMock ? mockProof.trim() : attestation?.proof;
   const verifiedInputsValid = !verifiedMode || (Boolean(verifierBound || isLocalMock) && NULLIFIER_PATTERN.test(verifiedNullifier ?? "") && Boolean(verifiedProof));
@@ -405,6 +433,12 @@ export default function AgentsPage() {
                   className="field-input" />
                 {/* 端点是注册时卡得最多的字段（要填什么？怎么暴露？），直接给教程入口 */}
                 <p className="form-hint"><a href={mcpGuideUrl(locale)} target="_blank" rel="noopener noreferrer">{a.endpointGuide}</a></p>
+                {/* 注册只登记地址、不探测端点、也不要求匿名可访问。写在这里是为了防止
+                    owner 为了「过校验」把自家端点的鉴权关掉 —— 那等于把服务裸奔到公网。 */}
+                <p className="form-hint">{a.endpointAuthHint}</p>
+                {ephemeralHost && (
+                  <p className="form-error" role="alert">{formatMessage(a.endpointEphemeral, { host: ephemeralHost })}</p>
+                )}
                 <label className="field-label">
                   {a.guardian1}
                   <input aria-label={a.guardian1Aria} placeholder="0x…" value={guardian1} onChange={(e) => setGuardian1(e.target.value)} className="field-input" />

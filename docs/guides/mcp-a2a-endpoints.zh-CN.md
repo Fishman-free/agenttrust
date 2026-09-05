@@ -2,6 +2,82 @@
 
 > 三步走：**本地跑通 → 暴露到公网 https → 注册进 AgentTrust**。
 
+## 〇、硬规则：注册表单只接受这一种端点（不满足直接拦截）
+
+| 规则 | 怎么校验 | 不满足的后果 |
+| --- | --- | --- |
+| 协议必须是 `https://` | URL 的 `protocol === "https:"` | 表单直接报"端点不合法"，无法提交 |
+| 主机名是公网可达的域名 | 主机名不在内网黑名单 + 主机名含 `.` | 同上 |
+| 端点注册后**永久不可改** | 合约 `AgentInfo.endpoint` 没有 setter | 填错只能注销重新注册（押金按规则退） |
+
+**完整内网黑名单**（与前端 `isPublicEndpoint` 校验对齐，注册页会直接拦下，**不要试图绕**）：
+
+| 类型 | 命中示例 |
+| --- | --- |
+| 字面写法 | `localhost`、`::1`、`0.0.0.0` |
+| IPv4 环回 | `127.x.x.x`（任意） |
+| IPv4 私网 | `10.x.x.x`、`192.168.x.x`、`172.16.x.x` ~ `172.31.x.x` |
+| 特殊主机名后缀 | `*.localhost`、`*.local`、`*.internal`、`*.home.arpa` |
+
+> **为什么 `0.0.0.0` 也在黑名单里**：它是"监听所有网卡"的绑定地址，不是任何客户端能连到的门牌号（Linux 会映射到 `127.0.0.1`、Windows/macOS 直接失败），注册后等于永久废掉的身份。服务照旧绑 `0.0.0.0:8123` 完全没问题——只是注册时**必须填对外可达的域名**。
+
+## 〇之二、注册 ≠ 开放：端点请照常开鉴权
+
+这是最容易搞错的一点，**弄错了会把你的服务裸奔到公网**。
+
+AgentTrust 注册时**只把端点地址写进链上目录**：
+
+- **不会**主动探测你的端点（注册表单只做 https + 非内网两项**格式校验**，不发任何网络请求）；
+- **不会**要求你的端点匿名可访问；
+- **不会**替任何调用方做鉴权或转发。
+
+| 环节 | 谁负责 |
+| --- | --- |
+| 把地址登记进目录，让别人能找到你 | AgentTrust（链上） |
+| 谁能调、要不要 token、限不限流 | **你的 MCP 服务自己** |
+
+所以：
+
+- ✅ **正确**：端点照常要求 `Authorization: Bearer <token>`，把 `https://mcp.你的域名/mcp` 填进注册表单即可。
+- ❌ **错误**：为了让"注册校验通过"而关掉鉴权、开放匿名调用。注册**根本不校验这个**——关掉只会让任何人都能白嫖你的算力和模型额度。
+
+> 有人把下面的自检命令误解成"注册必须先通过匿名探测"，于是拆掉了自家端点的鉴权。
+> 自检是**你自己确认服务活着**的手段，AgentTrust 不会跑它。
+
+希望别人能调用时，让他们向你索取 token，或者接入付费/授权网关。
+AgentTrust 只负责让别人**找到**你，不负责**放行**。
+
+### 零服务器、零配置的小白方案（推荐先试）
+
+**Cloudflare Tunnel（cloudflared quick tunnel）**：一行命令，无需注册账号，本地进程跑起来就给你一个 `https://*.trycloudflare.com` 的公网域名，HTTPS 证书自动签。验证通过后再决定要不要绑自己的域名。
+
+```bash
+# 1. 装 cloudflared（macOS / Linux）
+brew install cloudflared      # macOS
+# 或 Linux：到 https://github.com/cloudflare/cloudflared/releases 下一个二进制
+
+# 2. 假设你的 MCP 服务在 127.0.0.1:8123
+cloudflared tunnel --url http://127.0.0.1:8123
+# 输出类似：https://some-random-word-1234.trycloudflare.com
+# 复制这个 URL —— 它就是你的公网端点
+
+# 3. 自检（必须返回带 serverInfo 的 JSON 才能注册）
+curl -i -X POST https://some-random-word-1234.trycloudflare.com/mcp \
+   -H "Content-Type: application/json" \
+   -H "Accept: application/json, text/event-stream" \
+   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"0.0.1"}}}'
+
+# 4. 把这个 https URL 填进注册页（必须是 https://some-random-word-.../mcp 这种带 /mcp 后缀的完整路径）
+```
+
+> ⚠️ **别拿这个地址当长期身份**：quick tunnel 域名每次启动都会变。
+> 端点写进链上后**永久不可改**（合约 `AgentInfo.endpoint` 没有 setter），
+> 隧道一重启，链上身份就指向一个死地址，只能注销重来。
+> 注册页现在会对 `*.trycloudflare.com`、`*.ngrok.io`、`*.loca.lt` 这类临时隧道域名亮红字警告——
+> 看到警告先想清楚：我只是试水，还是要拿它当长期身份？后者请绑自有域名。
+
+---
+
 ## 一、端点是什么
 
 端点就是一个普通的 `https://` 网址，只不过它响应的不是网页，而是 MCP / A2A 协议请求。

@@ -172,6 +172,51 @@ describe("AgentsPage", () => {
     );
   });
 
+  // 端点上链后没有 setter。临时隧道主机名每次重启都会变，写进链上等于铸造一个必然失效的身份，
+  // 所以必须拦在表单里提醒 —— 但仍然允许注册，因为「先填一个临时地址试水」是合理场景。
+  it.each([
+    ["https://cheats-providence-ships-delaware.trycloudflare.com/mcp", "Cloudflare quick tunnel"],
+    ["https://abc123.ngrok.io/mcp", "ngrok"],
+    ["https://abc123.ngrok-free.app/mcp", "ngrok free"],
+    ["https://foo.loca.lt/mcp", "localtunnel"],
+    ["https://foo.serveo.net/mcp", "serveo"],
+  ])("warns about a temporary tunnel address (%s) but still allows registering: %s", async (ephemeral) => {
+    mocks.feedback.current = { phase: "idle" };
+    render(<AgentsPage />);
+    await userEvent.type(screen.getByLabelText("Agent name (e.g. DataAgent)"), "TempTunnel");
+    await userEvent.type(screen.getByLabelText("Capability description (e.g. on-chain data analysis)"), "Tunnel test");
+    await userEvent.type(screen.getByLabelText("MCP/A2A endpoint (https://…)"), ephemeral);
+    await userEvent.type(screen.getByLabelText("Guardian 1 (required)"), "0x2222222222222222222222222222222222222222");
+    await userEvent.type(screen.getByLabelText("Guardian 2 (required)"), "0x3333333333333333333333333333333333333333");
+
+    expect(screen.getByText(/looks like a temporary tunnel address/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Register \(lock/ })).toBeEnabled();
+  });
+
+  // 反例比正例更重要：只按后缀匹配，不能用 includes，否则这些「域名里提到隧道厂商
+  // 但主机名其实稳定」的地址会被误报。
+  it.each([
+    ["https://mcp.example.com/mcp", "stable hostname"],
+    ["https://mcp.trycloudflare.example.com/mcp", "hostname that merely mentions trycloudflare"],
+    ["https://ngrok.io.example.com/mcp", "ngrok as a label of another domain"],
+    // 这条最关键：后缀出现在中间而非结尾。用 includes 会误报，必须 endsWith 才正确 ——
+    // attacker.com 的子域不是 Cloudflare 隧道，主机名其实是稳定的。
+    ["https://foo.trycloudflare.com.attacker.com/mcp", "tunnel vendor as an inner label we do not control"],
+  ])("does not warn about %s: %s", async (stable) => {
+    mocks.feedback.current = { phase: "idle" };
+    render(<AgentsPage />);
+    await userEvent.type(screen.getByLabelText("MCP/A2A endpoint (https://…)"), stable);
+    expect(screen.queryByText(/temporary tunnel/)).toBeNull();
+  });
+
+  // 注册只登记地址，不探测、不要求匿名可访问。这条提示用来防止 owner 为了「过校验」
+  // 把自家端点的鉴权关掉（真实事故：有人这么干，结果公网谁都能白嫖他的额度）。
+  it("tells the owner the endpoint may keep its own auth", () => {
+    mocks.feedback.current = { phase: "idle" };
+    render(<AgentsPage />);
+    expect(screen.getByText(/does not require anonymous access/)).toBeTruthy();
+  });
+
   it("blocks registration on the wrong chain", () => {
     mocks.account.chainId = 1;
     mocks.feedback.current = { phase: "idle" };
