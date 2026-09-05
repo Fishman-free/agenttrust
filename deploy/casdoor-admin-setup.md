@@ -29,6 +29,25 @@
 
 **核心结论：旧 BFF 与新前端、新 BFF 与旧前端双向都不兼容，没有灰度空间，必须同批切换。**
 
+### 2026-09-04 补充实测（当前线上故障的确定根因）
+
+`agenttrust-google` / `agenttrust-github` 两个应用**已经建好、provider 也已经挂上**，
+但 provider 项的三个开关被留在关闭状态。直接查 Casdoor 库得到：
+
+```
+agenttrust        | provider_google + provider_github | canSignUp=true  canSignIn=true   canUnlink=true   ← 旧应用，按钮正常
+agenttrust-google | provider_google                   | canSignUp=false canSignIn=false  canUnlink=false  ← 线上报错的这个
+agenttrust-github | provider_github                   | canSignUp=false canSignIn=false  canUnlink=false
+```
+
+`client_id=c9c9f7cf0f7f234b0986`（用户报错 URL 里的那个）确认为 `agenttrust-google`。
+Casdoor 登录页只渲染 `canSignIn=true` 的 provider，所以两个新应用**一个按钮都不渲染**，
+只剩 "To access agenttrust-google:" 标题 —— 与用户所见完全一致。
+上游 `provider_google` / `provider_github` 本身是好的（表里有正确的原生 client id），
+问题只出在应用级开关。
+
+**修复动作：把那三个开关的 SignIn 打开即可，零代码、保存即生效、老用户零影响。**
+
 ---
 
 ## 零、Casdoor 侧改动（唯一需要动 Casdoor 的地方）
@@ -41,6 +60,10 @@ main 代码把 `google` / `github` 当作两个独立 OIDC provider（各自独�
      `https://agenttrust.site/api/auth/oidc/google/callback`，Authorization Code 勾选，关密码登录。
    - **`agenttrust-github`**：Providers **只勾** `provider_github`，重定向 URL 填
      `https://agenttrust.site/api/auth/oidc/github/callback`，同上。
+   - ⚠️ **勾上 provider 之后，还要把该 provider 项里的 `SignIn` 开关打开。**
+     Casdoor 把每个 provider 项拆成 SignUp / SignIn / Unlink 三个复选框，默认全关；
+     只勾 provider 而 SignIn 关着，登录页会一个按钮都不渲染 —— 这正是 2026-09-04
+     线上故障的根因（详见「现状盘点」末尾的补充实测）。
 2. 记下两个应用各自的 Client ID / Client Secret。
 3. 原有 `agenttrust` 应用（client `63808dbff09be34d759a`）保留：升级期间它服务旧版 BFF 回滚窗口，
    升级完成并稳定后可禁用（见第五步）。
@@ -120,7 +143,7 @@ cd frontend && npm ci && npm run build   # next build（输出 static export）
 
 | 症状 | 第一时间验证 | 修复位置 |
 | --- | --- | --- |
-| **点 Google/GitHub 按钮跳 Casdoor 后只显示 "To access agenttrust-google:" 标题，下方空白（无任何登录方式按钮可点）** | `curl -s 'https://login.agenttrust.site/api/get-application?id=admin/agenttrust-google' \| jq` 看返回的 JSON 里 `providers` 字段是否为空数组 `[]` | **第零节** —— Casdoor 里编辑 `agenttrust-google` 应用，Providers 勾上 `provider_google`；GitHub 同理勾 `provider_github`（每个应用只勾自己的 provider，不要混搭）。保存即热加载，不用重启容器 |
+| **点 Google/GitHub 按钮跳 Casdoor 后只显示 "To access agenttrust-google:" 标题，下方空白（无任何登录方式按钮可点）** | 查库确认：`sudo docker exec casdoor-casdoor-postgres-1 psql -U casdoor -d casdoor -t -A -c "SELECT name, providers FROM application;" \| grep agenttrust`，看 provider 项里的 `canSignIn` 是不是 `false` | **第零节** —— 根因是 provider 项的 **SignIn 开关没开**（provider 本身已挂上，不是没勾）。Casdoor 里编辑 `agenttrust-google` → Providers → 把 `provider_google` 那一行的 **SignIn** 勾上；GitHub 同理勾 `agenttrust-github` 里 `provider_github` 的 SignIn。保存即热加载，不用重启容器 |
 | 点 Google 跳 Casdoor 后直接回到登录页（"未授权"） | 同上 + 看 Casdoor 日志 `docker logs casdoor-app 2>&1 \| tail -50` | Casdoor 应用里 Check **Authorized redirect URI** 必须填 `https://agenttrust.site/api/auth/oidc/google/callback`（或 github）——拼写错误、空格、结尾斜杠都会失败 |
 | `curl /api/auth/capabilities` 里 `oidc.google.configured=false` | `sudo cat /etc/agenttrust/auth-bff-production.env \| grep GOOGLE_OIDC` | **第一节** —— 四个 `GOOGLE_OIDC_*` 必须齐全（ISSUER、CLIENT_ID、CLIENT_SECRET、REDIRECT_URI），缺一项就 fail closed |
 | 登录成功跳回 `https://agenttrust.site/` 而不是 `/agents/` | 看 `?returnTo=` 是否被前端拼上 | **第一节** + `RETURN_TO_ORIGINS` 必须含 `https://agenttrust.site` |
@@ -150,9 +173,9 @@ cd frontend && npm ci && npm run build   # next build（输出 static export）
 ## 七、直连绕过 Casdoor（兜底方案，不用改前端）
 
 **什么时候用这一节**：点 Google / GitHub 按钮后跳到 `login.agenttrust.site`，页面只有
-"To access agenttrust-google:" 一行标题、下面没有任何可点的登录方式（根因是 Casdoor 应用
-的 `providers` 字段为空，见四点五），而管理员暂时动不了 Casdoor。此时把登录链路从 Casdoor
-中转改成直连官方，即可恢复登录。
+"To access agenttrust-google:" 一行标题、下面没有任何可点的登录方式，而管理员暂时动不了 Casdoor。
+已知根因是 Casdoor 应用里 provider 项的 **SignIn 开关没开**（见「现状盘点」末尾的 2026-09-04 补充实测），
+管理员只要勾一下就能好；本节的直连路径是管理员不可达时的自救手段。
 
 代价：丢掉 Casdoor 提供的统一审计和多 provider 编排便利。换回中转随时可以（见七.5 回滚），
 所以这一节是「先恢复登录，再慢慢修 Casdoor」的顺序，不是二选一。
@@ -161,7 +184,7 @@ cd frontend && npm ci && npm run build   # next build（输出 static export）
 
 | 方案 | 谁动手 | 代码改动 | 说明 |
 | --- | --- | --- | --- |
-| **A. 修 Casdoor**（首选） | 服务器管理员，仅点几下 UI | 无 | 在 Casdoor 里给 `agenttrust-google` / `agenttrust-github` 应用勾上对应 provider，保存即热加载。**登录方式不变，老用户不受影响** |
+| **A. 修 Casdoor**（首选，30 秒） | 服务器管理员，仅点几下 UI | 无 | 在 Casdoor 里编辑 `agenttrust-google`，把 provider 项 `provider_google` 的 **SignIn** 勾上（GitHub 同理）。**登录方式不变，老用户完全不受影响** |
 | **B. Google 直连** | 需要 Google Cloud Console 权限 | 无（只改 env） | `oidc.ts` 是 provider 无关的（`oidc.discovery(new URL(issuer))`），把 issuer 指向 `https://accounts.google.com` 就能用 |
 | **C. GitHub 直连** | 需要 GitHub 账号建 OAuth App | 已内置（`auth-bff/src/github-direct.ts`） | GitHub OAuth App **不是 OIDC**（无 discovery 端点、不发 `id_token`），所以必须手写 OAuth2 流程，不能只改 issuer |
 
