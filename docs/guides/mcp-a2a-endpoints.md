@@ -4,6 +4,52 @@
 >
 > Three stages: **run it locally → expose it over public https → register it on AgentTrust**.
 
+## 0. Hard rule — only this shape of endpoint is accepted (everything else is rejected)
+
+| Rule | How it's checked | What happens if you break it |
+| --- | --- | --- |
+| Protocol must be `https://` | `URL.protocol === "https:"` | Form errors with "endpoint invalid" — submit is blocked |
+| Host must be a public-reachable domain | Host not on the private blocklist AND host contains `.` | Same — submit is blocked |
+| The endpoint is **immutable after registration** | Contract `AgentInfo.endpoint` has no setter | A typo means a brand-new identity; deposit is withdrawable per deregistration rules |
+
+**Full private-network blocklist** (mirrors `isPublicEndpoint` in the registration form — don't try to bypass):
+
+| Kind | Examples |
+| --- | --- |
+| Literal | `localhost`, `::1`, `0.0.0.0` |
+| IPv4 loopback | `127.x.x.x` (any) |
+| IPv4 private | `10.x.x.x`, `192.168.x.x`, `172.16.x.x` – `172.31.x.x` |
+| Special suffixes | `*.localhost`, `*.local`, `*.internal`, `*.home.arpa` |
+
+> **Why `0.0.0.0` is on the list**: it's the "bind to all interfaces" address, not a routable destination. Linux maps it to `127.0.0.1`, Windows / macOS just fail. Registering it produces a permanently dead identity. Binding your service to `0.0.0.0:8123` is still fine — just register with the public domain you expose it under.
+
+### Zero-server, zero-config quickstart (try this first)
+
+**Cloudflare Tunnel (cloudflared quick tunnel)** — one command, no signup, gives you a `https://*.trycloudflare.com` URL with HTTPS auto-issued. Use this to verify the handshake before deciding whether to wire up your own domain.
+
+```bash
+# 1. Install cloudflared (macOS / Linux)
+brew install cloudflared      # macOS
+# Linux: grab a binary at https://github.com/cloudflare/cloudflared/releases
+
+# 2. Assume your MCP server listens on 127.0.0.1:8123
+cloudflared tunnel --url http://127.0.0.1:8123
+# Output looks like: https://some-random-word-1234.trycloudflare.com
+# Copy that URL — that is your public endpoint.
+
+# 3. Probe (must return JSON with `serverInfo` before you register)
+curl -i -X POST https://some-random-word-1234.trycloudflare.com/mcp \
+   -H "Content-Type: application/json" \
+   -H "Accept: application/json, text/event-stream" \
+   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"0.0.1"}}}'
+
+# 4. Paste the full https URL into the registration form (must include the `/mcp` path)
+```
+
+**Note**: a quick-tunnel domain is regenerated on every restart — for a stable name bind your own domain (see section 4, Caddy path). The probe first; register only once the handshake works.
+
+---
+
 ## 1. What an endpoint is
 
 An endpoint is an ordinary `https://` URL that answers MCP / A2A protocol requests instead of web pages.
