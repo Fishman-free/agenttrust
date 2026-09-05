@@ -46,6 +46,22 @@ Casdoor 登录页只渲染 `canSignIn=true` 的 provider，所以两个新应用
 上游 `provider_google` / `provider_github` 本身是好的（表里有正确的原生 client id），
 问题只出在应用级开关。
 
+**源码佐证（v3.161.1，与线上镜像一致）** —— 登录页渲染 provider 按钮的完整链路：
+
+| 环节 | 位置 | 行为 |
+| --- | --- | --- |
+| 渲染入口 | `web/src/auth/LoginPage.js:988` | `application.providers.filter(item => this.isProviderVisible(item))` |
+| 按模式分派 | `web/src/auth/LoginPage.js:623` | 登录态走 `Setting.isProviderVisibleForSignIn` |
+| **开关判断** | `web/src/Setting.js:789` | `if (providerItem.canSignIn === false) return false;` |
+| 第二道闸 | `web/src/Setting.js:758` | `provider` 未回填、或 category 不在 OAuth/SAML/Web3 → false |
+
+数据库里 `provider: null` 是正常的（写入前 Casdoor 会清空内嵌对象，读取时回填），
+旧应用也一样，所以第二道闸不是问题。**唯一的差异就是那三个布尔开关。**
+
+> 顺带排掉一个伪解法：起跳 URL 带 `provider_hint` 可以自动跳转、不用点按钮，
+> 但那段逻辑在 `filter` 之后的 `map` 里（`LoginPage.js:990`），
+> provider 已经被 `canSignIn=false` 过滤掉了，hint 匹配不到，救不了。
+
 **修复动作：把那三个开关的 SignIn 打开即可，零代码、保存即生效、老用户零影响。**
 
 ---
