@@ -34,6 +34,12 @@ const envSchema = z.object({
   GITHUB_OIDC_ISSUER: optionalUrl, GITHUB_OIDC_CLIENT_ID: z.string().default(""), GITHUB_OIDC_CLIENT_SECRET: z.string().default(""), GITHUB_OIDC_REDIRECT_URI: optionalUrl,
   APPLE_OIDC_ISSUER: optionalUrl, APPLE_OIDC_CLIENT_ID: z.string().default(""), APPLE_OIDC_CLIENT_SECRET: z.string().default(""), APPLE_OIDC_REDIRECT_URI: optionalUrl,
   CASDOOR_OIDC_ISSUER: optionalUrl, CASDOOR_OIDC_CLIENT_ID: z.string().default(""), CASDOOR_OIDC_CLIENT_SECRET: z.string().default(""), CASDOOR_OIDC_REDIRECT_URI: optionalUrl,
+  // GitHub 直连 OAuth（绕过 Casdoor）：仅 GitHub 需要走非 OIDC 路径，
+  // 因为 GitHub OAuth App 没有 discovery 端点也没有 id_token。
+  // 三项齐全即视为启用，启用后 oidc.github.configured 必须同时为 false（互斥）。
+  GITHUB_OAUTH_CLIENT_ID: z.string().default(""),
+  GITHUB_OAUTH_CLIENT_SECRET: z.string().default(""),
+  GITHUB_OAUTH_REDIRECT_URI: optionalUrl,
   AGENT_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).default(""),
   AGENT_REGISTRY_RPC_URL: z.string().url().default(""),
   IDENTITY_VERIFIER_PRIVATE_KEY: z.string().regex(/^0x[0-9a-fA-F]{64}$/).default(""),
@@ -56,9 +62,17 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env) {
     const clientSecret = value[`${prefix}_OIDC_CLIENT_SECRET`];
     const redirectUri = value[`${prefix}_OIDC_REDIRECT_URI`];
     // 所有 provider 都是标准 OIDC，四项齐全才算配置完成（fail closed）。
-    const configured = Boolean(issuer && clientId && clientSecret && redirectUri);
+    // 例外：GitHub 当 GITHUB_OAUTH_* 三项齐全时切到直连路径，OIDC 必须关闭以避免双轨混乱。
+    const oauthBypass = provider === "github" && Boolean(value.GITHUB_OAUTH_CLIENT_ID && value.GITHUB_OAUTH_CLIENT_SECRET && value.GITHUB_OAUTH_REDIRECT_URI);
+    const configured = oauthBypass ? false : Boolean(issuer && clientId && clientSecret && redirectUri);
     return [provider, { configured, issuer, clientId, clientSecret, redirectUri }];
   })) as Record<Provider, { configured: boolean; issuer: string; clientId: string; clientSecret: string; redirectUri: string }>;
+  const githubDirect = {
+    configured: Boolean(value.GITHUB_OAUTH_CLIENT_ID && value.GITHUB_OAUTH_CLIENT_SECRET && value.GITHUB_OAUTH_REDIRECT_URI),
+    clientId: value.GITHUB_OAUTH_CLIENT_ID,
+    clientSecret: value.GITHUB_OAUTH_CLIENT_SECRET,
+    redirectUri: value.GITHUB_OAUTH_REDIRECT_URI,
+  };
   // 允许的浏览器 Origin 集合。AUTH_ORIGIN 始终包含在内，AUTH_ORIGINS 用于本地开发
   // 额外放行 127.0.0.1 之类的等价入口。
   const browserOrigins = new Set<string>([authOrigin]);
@@ -75,5 +89,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env) {
     csrfCookieName: cookieSecure ? "__Host-auth_csrf" : `${value.COOKIE_NAME}_csrf`,
     trustProxy: value.TRUST_PROXY === "true" ? true : value.TRUST_PROXY === "loopback" ? "127.0.0.1" : false,
     oidc,
+    githubDirect,
   };
 }

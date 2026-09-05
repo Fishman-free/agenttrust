@@ -8,6 +8,7 @@ import { ZodError, z } from "zod";
 import { PROVIDERS, type Config, type Purpose } from "./config.js";
 import { AuthRepository, type Session } from "./db.js";
 import { registerOidcRoutes } from "./oidc.js";
+import { registerGithubDirectRoutes } from "./github-direct.js";
 import { registerAgentIdentityRoutes } from "./agent-identity-routes.js";
 import { enforceBrowserRequest, randomAlphanumeric, randomToken, safeEqual, setNoStore, sha256 } from "./security.js";
 import { addressSchema, buildSiweMessage, nonceSchema, signatureSchema, verifyExactSiwe } from "./siwe.js";
@@ -128,7 +129,11 @@ export async function buildApp(config: Config, repository: AuthRepository, deps:
     setNoStore(reply);
     return {
       wallet: { enabled: true, chainId: config.SIWE_CHAIN_ID, siwe: true },
-      oidc: Object.fromEntries(PROVIDERS.map((provider) => [provider, { configured: config.oidc[provider].configured }])),
+      // 前端按 configured 决定是否渲染该 provider 的按钮。GitHub 走直连时 oidc.github.configured
+      // 被互斥置为 false，这里必须把直连也算进去，否则 GitHub 按钮会凭空消失。
+      oidc: Object.fromEntries(PROVIDERS.map((provider) => [provider, {
+        configured: config.oidc[provider].configured || (provider === "github" && config.githubDirect.configured),
+      }])),
       agentIdentity: { challenge: true, domainAttestation: Boolean(deps.identity?.attestWriter), chainId: config.SIWE_CHAIN_ID },
     };
   });
@@ -195,6 +200,10 @@ export async function buildApp(config: Config, repository: AuthRepository, deps:
     return { linked: true, account: await repository.accountView(auth.session.account_id) };
   });
 
+  // 直连 GitHub 的路由前缀与 OIDC 的 /api/auth/oidc/github/* 完全重合。
+  // Fastify 按注册顺序匹配，所以必须先挂直连：配了 GITHUB_OAUTH_* 就走直连，
+  // 没配就整段跳过（函数内部 return），OIDC 路径照旧。
+  registerGithubDirectRoutes(app, config, repository, issueSession);
   registerOidcRoutes(app, config, repository, issueSession);
   registerAgentIdentityRoutes(app, config, {
     requireAuth: async (request) => requireAuth(request),
@@ -211,7 +220,7 @@ export async function buildApp(config: Config, repository: AuthRepository, deps:
     // @fastify/rate-limit 抛出的错误带 429，但消息不在 safeErrors 里，会掉到 500。
     // 那样客户端无法区分「请求太频繁」和「服务端故障」，重试逻辑无从下手。
     if (candidate.statusCode === 429) return reply.code(429).send({ error: "rate_limited" });
-    const safeErrors = new Set(["invalid_origin", "cross_site_request_blocked", "authentication_required", "csrf_validation_failed", "invalid_or_consumed_challenge", "wallet_already_bound", "wallet_already_linked", "provider_not_configured", "invalid_or_consumed_oidc_state", "oidc_subject_missing", "oidc_issuer_missing", "siwe_message_mismatch", "siwe_message_invalid", "siwe_domain_mismatch", "siwe_uri_mismatch", "siwe_chain_mismatch", "siwe_nonce_mismatch", "siwe_purpose_mismatch", "siwe_expired", "siwe_issued_at_invalid", "siwe_address_mismatch", "siwe_signature_invalid", "wellknown_unreachable", "wellknown_invalid_domain", "wellknown_invalid_json", "wellknown_registration_not_found", "identity_attestation_disabled", "attestation_write_failed"]);
+    const safeErrors = new Set(["invalid_origin", "cross_site_request_blocked", "authentication_required", "csrf_validation_failed", "invalid_or_consumed_challenge", "wallet_already_bound", "wallet_already_linked", "provider_not_configured", "invalid_or_consumed_oidc_state", "oidc_subject_missing", "oidc_issuer_missing", "siwe_message_mismatch", "siwe_message_invalid", "siwe_domain_mismatch", "siwe_uri_mismatch", "siwe_chain_mismatch", "siwe_nonce_mismatch", "siwe_purpose_mismatch", "siwe_expired", "siwe_issued_at_invalid", "siwe_address_mismatch", "siwe_signature_invalid", "wellknown_unreachable", "wellknown_invalid_domain", "wellknown_invalid_json", "wellknown_registration_not_found", "identity_attestation_disabled", "attestation_write_failed", "invalid_or_consumed_oauth_state", "github_token_exchange_failed", "github_token_missing", "github_user_lookup_failed"]);
     const statusCode = candidate.statusCode && candidate.statusCode >= 400 && candidate.statusCode < 600
       ? candidate.statusCode : candidate.message.startsWith("siwe_") ? 400 : 500;
     if (safeErrors.has(candidate.message)) return reply.code(statusCode).send({ error: candidate.message });

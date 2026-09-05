@@ -116,6 +116,17 @@ cd frontend && npm ci && npm run build   # next build（输出 static export）
 5. 钱包登录回归测试（SIWE 登录、会话、登出），确认同批切换未破坏钱包路径。
 6. BFF 日志确认 migration 记录了 `003_add_github_provider.sql`。
 
+## 四点五、常见故障速查（按症状直接跳修）
+
+| 症状 | 第一时间验证 | 修复位置 |
+| --- | --- | --- |
+| **点 Google/GitHub 按钮跳 Casdoor 后只显示 "To access agenttrust-google:" 标题，下方空白（无任何登录方式按钮可点）** | `curl -s 'https://login.agenttrust.site/api/get-application?id=admin/agenttrust-google' \| jq` 看返回的 JSON 里 `providers` 字段是否为空数组 `[]` | **第零节** —— Casdoor 里编辑 `agenttrust-google` 应用，Providers 勾上 `provider_google`；GitHub 同理勾 `provider_github`（每个应用只勾自己的 provider，不要混搭）。保存即热加载，不用重启容器 |
+| 点 Google 跳 Casdoor 后直接回到登录页（"未授权"） | 同上 + 看 Casdoor 日志 `docker logs casdoor-app 2>&1 \| tail -50` | Casdoor 应用里 Check **Authorized redirect URI** 必须填 `https://agenttrust.site/api/auth/oidc/google/callback`（或 github）——拼写错误、空格、结尾斜杠都会失败 |
+| `curl /api/auth/capabilities` 里 `oidc.google.configured=false` | `sudo cat /etc/agenttrust/auth-bff-production.env \| grep GOOGLE_OIDC` | **第一节** —— 四个 `GOOGLE_OIDC_*` 必须齐全（ISSUER、CLIENT_ID、CLIENT_SECRET、REDIRECT_URI），缺一项就 fail closed |
+| 登录成功跳回 `https://agenttrust.site/` 而不是 `/agents/` | 看 `?returnTo=` 是否被前端拼上 | **第一节** + `RETURN_TO_ORIGINS` 必须含 `https://agenttrust.site` |
+| BFF 日志报 `issuer mismatch` 或 `discovery failed` | `curl https://login.agenttrust.site/.well-known/openid-configuration` | 第零节建应用时默认 issuer 就是 Casdoor 自己；若改了要把新 issuer 写进 BFF env |
+| **任意时刻想走"直连绕过 Casdoor"** | 看 **第七节** —— 部署 Google/GitHub 直连 OAuth（牺牲 Casdoor 留的运维便利，换"不再依赖 Casdoor 配置正确"） | 第七节 |
+
 ## 五、收尾与回滚
 
 **收尾**（观察 1–2 天稳定后）：
@@ -133,6 +144,123 @@ cd frontend && npm ci && npm run build   # next build（输出 static export）
 3. `/var/www/agenttrust` 换回 `.previous-*` 前端目录。
 4. 旧 BFF 起跳走 `agenttrust` 应用 + `provider_hint`，该应用未删即回滚可用——
    所以第五节收尾里的「禁用旧应用」必须放在稳定观察期之后。
+
+---
+
+## 七、直连绕过 Casdoor（兜底方案，不用改前端）
+
+**什么时候用这一节**：点 Google / GitHub 按钮后跳到 `login.agenttrust.site`，页面只有
+"To access agenttrust-google:" 一行标题、下面没有任何可点的登录方式（根因是 Casdoor 应用
+的 `providers` 字段为空，见四点五），而管理员暂时动不了 Casdoor。此时把登录链路从 Casdoor
+中转改成直连官方，即可恢复登录。
+
+代价：丢掉 Casdoor 提供的统一审计和多 provider 编排便利。换回中转随时可以（见七.5 回滚），
+所以这一节是「先恢复登录，再慢慢修 Casdoor」的顺序，不是二选一。
+
+### 七.0 三条路怎么选
+
+| 方案 | 谁动手 | 代码改动 | 说明 |
+| --- | --- | --- | --- |
+| **A. 修 Casdoor**（首选） | 服务器管理员，仅点几下 UI | 无 | 在 Casdoor 里给 `agenttrust-google` / `agenttrust-github` 应用勾上对应 provider，保存即热加载。**登录方式不变，老用户不受影响** |
+| **B. Google 直连** | 需要 Google Cloud Console 权限 | 无（只改 env） | `oidc.ts` 是 provider 无关的（`oidc.discovery(new URL(issuer))`），把 issuer 指向 `https://accounts.google.com` 就能用 |
+| **C. GitHub 直连** | 需要 GitHub 账号建 OAuth App | 已内置（`auth-bff/src/github-direct.ts`） | GitHub OAuth App **不是 OIDC**（无 discovery 端点、不发 `id_token`），所以必须手写 OAuth2 流程，不能只改 issuer |
+
+建议顺序：先试 A（零成本、零副作用）；A 不可达时用 B + C 先把登录救回来。
+
+### 七.1 Google 直连：只改 env
+
+1. 在 [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials)
+   建一个 **OAuth client ID**（类型 Web application）。
+2. **Authorized redirect URI** 填：
+   `https://agenttrust.site/api/auth/oidc/google/callback`
+   （与中转模式完全同一个回调地址，Caddy 和前端都不用动）
+3. 把 `/etc/agenttrust/auth-bff-production.env` 里的四个 `GOOGLE_OIDC_*` 改成：
+
+   ```
+   GOOGLE_OIDC_ISSUER=https://accounts.google.com
+   GOOGLE_OIDC_CLIENT_ID=<Google 签发的 client id>
+   GOOGLE_OIDC_CLIENT_SECRET=<Google 签发的 client secret>
+   GOOGLE_OIDC_REDIRECT_URI=https://agenttrust.site/api/auth/oidc/google/callback
+   ```
+
+4. 按第二节部署（先 migrate 再 restart）。不需要改任何代码。
+
+### 七.2 GitHub 直连：建 OAuth App + 三项 env
+
+1. 在 [GitHub → Settings → Developer settings → OAuth Apps](https://github.com/settings/developers)
+   点 **New OAuth App**：
+
+   | 字段 | 值 |
+   | --- | --- |
+   | Application name | `AgentTrust` |
+   | Homepage URL | `https://agenttrust.site` |
+   | Authorization callback URL | `https://agenttrust.site/api/auth/oidc/github/callback` |
+
+2. 建好后拿 **Client ID**，点 **Generate a new client secret**（**只显示一次**）。
+3. 在 BFF env 里**新增**三项（不要动 `GITHUB_OIDC_*`，留着方便回滚）：
+
+   ```
+   GITHUB_OAUTH_CLIENT_ID=<GitHub Client ID>
+   GITHUB_OAUTH_CLIENT_SECRET=<GitHub client secret>
+   GITHUB_OAUTH_REDIRECT_URI=https://agenttrust.site/api/auth/oidc/github/callback
+   ```
+
+4. 按第二节部署（先 migrate 再 restart）。
+
+**互斥规则**：`GITHUB_OAUTH_*` 三项齐全时，`GITHUB_OIDC_*` 会被 BFF 自动视为未配置
+（见 `auth-bff/src/config.ts` 的 `oauthBypass`），两条路径不会同时生效。
+前端按钮也**不会**消失：`/api/auth/capabilities` 会把直连计入 `oidc.github.configured`。
+
+代码行为要点（`auth-bff/src/github-direct.ts`）：
+
+- 路由仍是 `/api/auth/oidc/github/start` 与 `/api/auth/oidc/github/callback`，前端零改动。
+- token 交换带 `Accept: application/json`（否则 GitHub 返回 200 + urlencoded 错误体，
+  看起来像成功），所有 GitHub 调用带 `User-Agent`（匿名请求会被 403）。
+- `allow_signup=false`，关掉 GitHub 授权页的"注册新账号"入口。
+- 主邮箱未公开时回落到 `/user/emails` 取 `primary && verified`。
+- 身份主键：`issuer = github:direct`、`subject = GitHub 数字 ID`。
+
+### 七.3 身份兼容性：切换路径会开新账号（重要）
+
+`oidc_identities` 的主键是 `UNIQUE (issuer, subject)`。切换登录路径等于换了 issuer，
+**老用户会以新身份再开一个账号**，钱包绑定和交易历史不会自动跟过来。
+
+| 路径 | issuer | subject | 能否平滑迁移 |
+| --- | --- | --- | --- |
+| Casdoor 中转 | `https://login.agenttrust.site` | Casdoor 内部用户 ID | — |
+| Google 直连 | `https://accounts.google.com` | Google 的 `sub` | **可以**：subject 不变，只换 issuer |
+| GitHub 直连 | `github:direct` | GitHub 数字 ID | **不行**：Casdoor 里的 subject 是 Casdoor 自己的 ID，与 GitHub 数字 ID 无映射 |
+
+所以：
+
+- **Google**：若已有一批 Casdoor 中转用户，切直连后跑一条 UPDATE 即可并回原账号：
+  ```sql
+  UPDATE oidc_identities
+     SET issuer = 'https://accounts.google.com'
+   WHERE provider = 'google'
+     AND issuer = 'https://login.agenttrust.site';
+  ```
+  ⚠️ 执行前先 `BEGIN;` 看 `rowCount`，确认无误再 `COMMIT;`。
+- **GitHub**：只能让用户重新绑定（或从 Casdoor 导出 GitHub 外部 ID 做映射后批量改写 subject）。
+- **结论**：不要在两条路径之间来回切。一旦切到直连，就当它是最终态。
+
+### 七.4 验证
+
+```bash
+# 1) BFF 认为 GitHub 可用（直连也会被计入 configured）
+curl -s https://agenttrust.site/api/auth/capabilities | jq '.oidc'
+
+# 2) 点登录按钮后跳转的域名
+#    Google 直连 → accounts.google.com
+#    GitHub 直连 → github.com/login/oauth/authorize
+#    仍是中转   → login.agenttrust.site   ← 说明 env 没生效
+```
+
+### 七.5 回滚到 Casdoor 中转
+
+删掉 BFF env 里的三项 `GITHUB_OAUTH_*`（Google 则把 issuer 改回
+`https://login.agenttrust.site` 并把 client id/secret 换回 Casdoor 签发的），重启 BFF 即可。
+**不需要数据库回滚**，也不需要动前端——路由地址从头到尾没变过。
 
 ---
 
