@@ -40,6 +40,15 @@ Until provider credentials exist, `/api/auth/capabilities` reports Google and Gi
 
 Step-by-step server-side instructions for the administrator live in [`../deploy/casdoor-admin-setup.md`](../deploy/casdoor-admin-setup.md). The restricted `agenttrust-dev` SSH account cannot perform them: it has no Docker, Casdoor, or `/etc/agenttrust` access.
 
+## Direct connection (bypassing Casdoor)
+
+Casdoor is a broker, not a hard dependency. If the Casdoor login page renders only the "To access ..." title with no provider buttons — typically an OIDC application whose `providers` field is empty — the BFF can talk to Google and GitHub directly instead:
+
+- **Google** needs no code change. `oidc.ts` is provider agnostic (`oidc.discovery(new URL(issuer))`), so pointing `GOOGLE_OIDC_ISSUER` at `https://accounts.google.com` and swapping in the native Google credentials is enough.
+- **GitHub** needs a hand-written OAuth2 flow (`auth-bff/src/github-direct.ts`) because GitHub OAuth Apps are not OIDC: there is no discovery endpoint and no `id_token`. Setting the three `GITHUB_OAUTH_*` variables enables it and makes `GITHUB_OIDC_*` mutually exclusive, so the two paths can never both be live.
+
+Both paths keep the same callback URLs, so the frontend and Caddy need no changes. Switching paths changes the `issuer` half of the `UNIQUE (issuer, subject)` identity key in `oidc_identities`, so existing users get a new account rather than keeping their history — see the migration notes in [`deploy/casdoor-admin-setup.md`](../deploy/casdoor-admin-setup.md).
+
 ## Production cookies and CSRF
 
 Production uses a host-only `__Host-` session cookie with `Secure`, `HttpOnly`, `SameSite=Lax` and `Path=/`. The BFF validates Origin and Fetch Metadata on unsafe requests and requires the CSRF header returned by `/api/auth/session` for logout and wallet linking. Authentication responses are `no-store`.
