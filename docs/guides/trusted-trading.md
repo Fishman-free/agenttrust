@@ -65,34 +65,53 @@ Registration costs **deposit + gas**, two separate things:
 
 ### Where to claim
 
-Most faucets have daily caps; if one is exhausted, move to the next:
+🔴 **Read this first: most faucets now gate on an Ethereum *mainnet* balance.**
+They are not charging you — they require your address to already hold some ETH on mainnet, as an
+anti-sybil check against mass-registered bots. If your mainnet balance is zero, every row marked ⚠️
+below will reject you. Don't burn an hour trying them one by one.
 
-| Faucet | Allowance | Note |
+#### If you have zero mainnet ETH — use one of these two
+
+| Path | How | Gate |
 | --- | --- | --- |
-| **Chainstack** | once / 24h, tops up to a cap | Supports Base Sepolia; just a free personal account |
-| **thirdweb** | 0.5 ETH / 24h | Largest allowance, social login supported |
-| **Chainlink** | once / 24h | Connect a wallet and go |
-| **Bware Labs** | 0.2 ETH / 24h | No registration |
-| **Ethereum Ecosystem** | 0.5 ETH / 24h | No login |
-| **Coinbase Developer Platform** | 0.1 ETH / 24h | Official Base faucet — see "asks me to register a business?" below |
-| Alchemy | once / 24h | ⚠️ Requires ≥0.001 ETH on **Ethereum mainnet** first; if you don't have it, use another one |
+| **PoW faucet + official bridge** (most reliable) | 1. Open `https://sepolia-faucet.pk910.de/`, paste your address, let the browser mine for a few minutes — you receive ETH on **Ethereum Sepolia**<br>2. Open `https://bridge.base.org` and bridge that ETH to **Base Sepolia** | **None**: no login, no mainnet check, no card |
+| **Ask someone who already has some** | The project deployer wallet usually still holds test ETH; have a teammate send you 0.02 ETH | None (needs a willing teammate) |
 
-Full list: https://docs.base.org/docs/tools/network-faucets
+#### Regular faucets (lowest mainnet gate first)
 
-> **Alchemy says `You need at least 0.001 ETH on Ethereum Mainnet` — now what?**
-> That is an anti-sybil gate, unrelated to your Base Sepolia balance.
-> **Do not top up mainnet for it** — just switch to any faucet above.
+| Faucet | Allowance | Mainnet balance gate |
+| --- | --- | --- |
+| **Google Cloud Web3** | varies by network | None, just a Google account |
+| **Bware Labs** | 0.2 ETH / 24h | None (no registration) |
+| **Ethereum Ecosystem** | 0.5 ETH / 24h | None (no login) |
+| **thirdweb** | 0.5 ETH / 24h | Not published — connect a wallet and try |
+| **Chainlink** | 0.5 ETH / 24h | ⚠️ Some networks require ≥1 LINK on mainnet |
+| **Chainstack** | 0.5 ETH / 24h | ⚠️ **≥0.08 ETH on mainnet plus a holding history** |
+| **Coinbase CDP** | 0.1 ETH / 24h | See "asks me to register a business?" below |
+| **Alchemy** | once / 24h | ⚠️ ≥0.001 ETH on mainnet |
+
+> Gates change with operator policy; the table reflects measured/documented values as of 2026-09.
+> Trust what the page says at the time.
+
+Full list: https://docs.base.org/base-chain/network-information/network-faucets
+
+> **It says `Insufficient current balance` or `You need at least X ETH on mainnet` — now what?**
+> That is an anti-sybil gate, completely unrelated to your Base Sepolia balance.
+> 🔴 **Never top up mainnet just to pass it** — that is real money and it may still not be enough.
+> Jump back to "If you have zero mainnet ETH" above.
 
 > **CDP (Coinbase Developer Platform) asks me to register a business — do I need a company?**
 > No. After sign-in it asks for an **organization / project name**, which is only a label used to
 > group your API calls. Type anything (`my-test` works) — it is **not** a business registration and
 > no documents are needed. Then go to Products → Faucet.
-> If that is a hassle, skip it and use Chainstack / thirdweb / Chainlink above.
 
 ### ⚠️ Three hard rules
 
 1. **Never send real funds from an exchange or mainnet to a Base Sepolia address** — they are gone for good.
-   Testnet ETH can only be claimed from a faucet; it cannot be bought or bridged in.
+   Testnet ETH can only be claimed from a faucet; it cannot be bought.
+   ⚠️ Keep two cases apart: **mainnet → testnet = real money lost, never do it**;
+   **testnet → testnet = fine**, e.g. bridging test ETH from Ethereum Sepolia to Base Sepolia via the
+   official `bridge.base.org`.
 2. **Never trust a faucet that asks for payment, a seed phrase, or an "activation transfer"** — it is a scam.
 3. **Leave your real funds on mainnet** — running the whole flow on testnet costs nothing.
 
