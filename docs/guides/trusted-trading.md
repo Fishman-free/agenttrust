@@ -74,7 +74,7 @@ below will reject you. Don't burn an hour trying them one by one.
 
 | Path | How | Gate |
 | --- | --- | --- |
-| **PoW faucet + official bridge** (most reliable) | 1. Open `https://sepolia-faucet.pk910.de/`, paste your address, let the browser mine for a few minutes — you receive ETH on **Ethereum Sepolia**<br>2. Open `https://bridge.base.org` and bridge that ETH to **Base Sepolia** | **None**: no login, no mainnet check, no card |
+| **PoW faucet + official contract bridge** (most reliable) | 1. Open `https://sepolia-faucet.pk910.de/`, paste your address, let the browser mine for a few minutes — you receive ETH on **Ethereum Sepolia**<br>2. Follow section 3c below to bridge it to **Base Sepolia** via the official contract (⚠️ avoid web bridge UIs — see why below) | **None**: no login, no mainnet check, no card |
 | **Ask someone who already has some** | The project deployer wallet usually still holds test ETH; have a teammate send you 0.02 ETH | None (needs a willing teammate) |
 
 #### Regular faucets (lowest mainnet gate first)
@@ -110,10 +110,82 @@ Full list: https://docs.base.org/base-chain/network-information/network-faucets
 1. **Never send real funds from an exchange or mainnet to a Base Sepolia address** — they are gone for good.
    Testnet ETH can only be claimed from a faucet; it cannot be bought.
    ⚠️ Keep two cases apart: **mainnet → testnet = real money lost, never do it**;
-   **testnet → testnet = fine**, e.g. bridging test ETH from Ethereum Sepolia to Base Sepolia via the
-   official `bridge.base.org`.
+   **testnet → testnet = fine**, e.g. moving test ETH from Ethereum Sepolia to Base Sepolia through the
+   official L1StandardBridge contract (see section 3c).
 2. **Never trust a faucet that asks for payment, a seed phrase, or an "activation transfer"** — it is a scam.
 3. **Leave your real funds on mainnet** — running the whole flow on testnet costs nothing.
+
+## 3c. Bridging Ethereum Sepolia ETH to Base Sepolia
+
+If you took the pk910 mining route above, your ETH is currently on **Ethereum Sepolia** and cannot be
+used yet — AgentTrust runs on **Base Sepolia**. This section moves it across.
+
+> The contract addresses, function selector and pitfalls below were verified on-chain on 2026-09-07.
+> Method credit: [KerryChia/sepolia-to-base-bridge](https://github.com/KerryChia/sepolia-to-base-bridge).
+
+### ⚠️ Why not use a web bridge UI
+
+In testing, **some "testnet" bridge links actually run in mainnet mode** — the page prices things in
+USD and shows your **mainnet** balance. Confirming a transaction on such a page spends **real money**.
+
+How to tell: if the page shows USD amounts like `$1.25`, or a balance identical to your mainnet
+holdings, **close it immediately**. Below we call the official contract directly — the network is
+pinned in the parameters, so there is no way to pick the wrong chain.
+
+### Contract parameters (verified)
+
+| Item | Value |
+| --- | --- |
+| L1StandardBridge (Sepolia) | `0xfd0Bf71F60660E2f608ed56e1659C450eB113120` |
+| OptimismPortal (Sepolia) | `0x49f53e41452C74589E85cA1677426Ba426459e85` |
+| Function | `depositETH(uint32 _minGasLimit, bytes _extraData)` |
+| Selector | `0xb1a1a882` |
+| Network | Ethereum Sepolia, chainId `11155111` (`0xaa36a7`) |
+
+🔴 The address circulating online as `0xfd0B…311362` (ending **311362**) is **wrong** —
+`eth_getCode` returns `0x`; there is no contract there. The correct ending is **311320**.
+Verify before sending:
+
+```bash
+cast code 0xfd0Bf71F60660E2f608ed56e1659C450eB113120 --rpc-url https://ethereum-sepolia-rpc.publicnode.com
+```
+
+### calldata (minGasLimit = 200000, empty extraData)
+
+```
+0xb1a1a882
+0000000000000000000000000000000000000000000000000000000000030d40
+0000000000000000000000000000000000000000000000000000000000000040
+0000000000000000000000000000000000000000000000000000000000000000
+```
+
+### 🔴 The 16x amount trap
+
+The amount goes in the transaction's `value` field, in wei. **Always compute it programmatically —
+never hand-write the hex**:
+
+```python
+hex(int(0.86 * 10**18))   # '0xbef55718ad60000'
+```
+
+One extra zero makes the amount **16x** larger (0.86 → 13.76), and the wallet simply reports
+insufficient funds.
+
+### Execution order (do not skip a step)
+
+1. Read `eth_chainId` — it must be `0xaa36a7`. If it returns `0x1` you are on mainnet — **stop**.
+2. Check the balance via a public RPC and confirm the magnitude matches what you expect.
+3. Simulate with `eth_call`. If it reverts, do not send.
+4. `eth_sendTransaction` — **the confirmation click is always yours. Never let a script or an AI
+   sign for you.**
+
+For reference: gas ≈ 620k–660k, costing ≈ 0.0007–0.0009 ETH. If you want to move everything, keep at
+least **0.003 ETH** behind for gas.
+
+### Confirming arrival
+
+Usually 2–5 minutes. Look up your address on https://sepolia.basescan.org — **the block explorer is
+the source of truth**; your wallet may still be showing a different network.
 
 ## 4. Step 1 — Register an agent identity
 
