@@ -63,34 +63,50 @@
 
 ### 去哪儿领
 
-多数水龙头有每日限额，一个不够就换下一个：
+🔴 **先看清一件事：现在大多数水龙头都加了「主网余额」门槛。**
+不是要你花钱，而是要你的地址在**以太坊主网**上先持有一定数量的 ETH——运营方用它来挡批量注册的机器人。
+主网没钱的话，下面带 ⚠️ 的都会把你挡在门外，**别挨个试浪费时间**。
 
-| 水龙头 | 额度 | 备注 |
+#### 如果你主网一分钱都没有 —— 直接走这两条
+
+| 路径 | 怎么做 | 门槛 |
 | --- | --- | --- |
-| **Chainstack** | 每 24h 一次，补到上限 | 支持 Base Sepolia，只需一个免费个人账号 |
-| **thirdweb** | 0.5 ETH / 24h | 额度最大，支持社交登录 |
-| **Chainlink** | 每 24h 一次 | 连钱包即可 |
-| **Bware Labs** | 0.2 ETH / 24h | 免注册 |
-| **Ethereum Ecosystem** | 0.5 ETH / 24h | 免登录 |
-| **Coinbase Developer Platform** | 0.1 ETH / 24h | Base 官方；见下方「要我注册企业？」 |
-| Alchemy | 一次 / 24h | ⚠️ 要求你**以太坊主网**先有 ≥0.001 ETH，没有就换一个 |
+| **挖矿水龙头 + 官方桥**（最稳） | 1. 打开 `https://sepolia-faucet.pk910.de/`，粘地址，让浏览器挖几分钟，领到 **Ethereum Sepolia** 的 ETH<br>2. 打开 `https://bridge.base.org`，把 Sepolia 的 ETH 桥到 **Base Sepolia** | **零**：不登录、不查主网余额、不要信用卡 |
+| **让已经有人的人转一笔** | 项目部署者钱包里通常还留着测试币，让同伴/同事直接转 0.02 ETH 给你，一分钟到账 | 零（但要有人肯转） |
 
-完整列表见 Base 官方文档：https://docs.base.org/docs/tools/network-faucets
+#### 常规水龙头（按主网门槛从低到高）
 
-> **Alchemy 提示 `You need at least 0.001 ETH on Ethereum Mainnet` 怎么办？**
-> 那是它的防刷门槛，跟你的 Base Sepolia 余额无关。
-> **不用去主网充钱**，直接换上面任意一个水龙头即可。
+| 水龙头 | 额度 | 主网余额门槛 |
+| --- | --- | --- |
+| **Google Cloud Web3** | 按网络定 | 无，只要 Google 账号 |
+| **Bware Labs** | 0.2 ETH / 24h | 无（免注册） |
+| **Ethereum Ecosystem** | 0.5 ETH / 24h | 无（免登录） |
+| **thirdweb** | 0.5 ETH / 24h | 未公开，连钱包试一下 |
+| **Chainlink** | 0.5 ETH / 24h | ⚠️ 部分网络要求主网 ≥1 LINK |
+| **Chainstack** | 0.5 ETH / 24h | ⚠️ **主网 ≥0.08 ETH，且要有持币历史** |
+| **Coinbase CDP** | 0.1 ETH / 24h | 见下方「要我注册企业？」 |
+| **Alchemy** | 一次 / 24h | ⚠️ 主网 ≥0.001 ETH |
+
+> 门槛会随运营方策略变化，上表为 2026-09 的实测/文档值，以页面当时的提示为准。
+
+完整列表见 Base 官方文档：https://docs.base.org/base-chain/network-information/network-faucets
+
+> **提示 `Insufficient current balance` 或 `You need at least X ETH on mainnet` 怎么办？**
+> 这是防刷门槛，跟你的 Base Sepolia 余额**完全无关**。
+> 🔴 **绝对不要为了过门槛去主网充钱**——那是真钱，而且充了也不一定够。
+> 直接跳回上面「如果你主网一分钱都没有」那两条。
 
 > **CDP（Coinbase Developer Platform）让我「注册企业」，还要营业执照吗？**
 > 不用。它登录后会让你填一个 **organization / 项目名**——那只是给你的调用分组起个名字，
 > 填 `my-test` 这种随便什么都行，**不是企业注册、也不需要任何证件**。
 > 填完进 Products → Faucet 就能领。
-> 觉得麻烦就跳过它，直接用上表的 Chainstack / thirdweb / Chainlink。
 
 ### ⚠️ 三条红线
 
 1. **不要从交易所或主网提真币到 Base Sepolia 地址** —— 币会永久丢失，找不回来。
-   测试网的币只能从水龙头免费领，不能买、也不能跨链转过去。
+   测试网的币只能从水龙头免费领，不能买。
+   ⚠️ 区分两件事：**主网 → 测试网 = 真钱打水漂，绝对不行**；
+   **测试网 → 测试网 = 可以**，比如 Ethereum Sepolia 的测试币走官方桥 `bridge.base.org` 转到 Base Sepolia，这是正常操作。
 2. **不要相信任何要你先付款、要助记词、要"先转一笔激活"的水龙头** —— 全是骗局。
 3. **真钱留在主网别动** —— 在测试网上跑通全流程不需要花一分钱。
 
